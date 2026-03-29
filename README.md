@@ -8,11 +8,11 @@ RIPPLE detects distance-dependent gene expression gradients from any query cell 
 
 ## Overview
 
-RIPPLE answers a fundamental question in spatial biology: *"Which genes in cell type B change expression as a function of physical distance from cell type A?"*
+RIPPLE tries to answer a common question in spatial biology: *"Which genes in cell type B change expression as a function of physical distance from cell type A?"*
 
 Given a spatial transcriptomics dataset with cell type annotations and biological replicates, RIPPLE fits per-sample Poisson GLMs to model gene expression as a function of distance to a query cell population, then combines evidence across replicates using Fisher's combined p-value with a sign consistency gate. The result is a ranked list of genes with distance-dependent expression gradients, along with effect sizes, significance measures, and confounder controls.
 
-**Supported platforms:** Xenium, MERFISH, CosMx, seqFISH, CODEX, Visium (with deconvolution) -- any platform that provides single-cell resolved spatial coordinates and count data.
+**Supported platforms:** Xenium, MERFISH, CosMx, CODEX. In theory, any platform that provides single-cell resolved spatial coordinates and count data.
 
 **Use cases:**
 - Tumor border effects on neighboring immune and stromal cells
@@ -27,7 +27,7 @@ Given a spatial transcriptomics dataset with cell type annotations and biologica
 - **Spatial transcriptomics data** with single-cell resolution (coordinates + counts)
 - **Cell type annotations** including the query population of interest
 - **Biological replicates** (minimum 3, ideally 4+)
-- **Raw count matrix** (not normalized -- the model handles normalization internally via cell-size offset)
+- **Raw count matrix** (not normalized, the model handles normalization internally via cell-size offset)
 
 ---
 
