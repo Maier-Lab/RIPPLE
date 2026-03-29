@@ -43,10 +43,19 @@ cat("Results base:", results_base, "\n")
 cat("Date:", format(Sys.time()), "\n")
 cat("==============================================\n\n")
 
-# Cell types to process
-CELL_TYPES <- c("LEC", "FRC", "BEC", "CD4_T_cells", "CD8_T_cells",
-                "gdT_cells", "Macrophages", "Monocyte", "Fibroblasts_mac",
-                "cDC1", "cDC2", "mature_migDC", "B_cells", "Plasma_cell")
+# Cell types to process: auto-discover from per_celltype directories
+ct_base <- file.path(results_base, "per_celltype")
+if (dir.exists(ct_base)) {
+  CELL_TYPES <- basename(list.dirs(ct_base, recursive = FALSE))
+  message("Found ", length(CELL_TYPES), " cell type directories")
+} else {
+  # Legacy fallback (backward compatible)
+  CELL_TYPES <- c("LEC", "FRC", "BEC", "CD4_T_cells", "CD8_T_cells",
+                  "gdT_cells", "Macrophages", "Monocyte", "Fibroblasts_mac",
+                  "cDC1", "cDC2", "mature_migDC", "B_cells", "Plasma_cell")
+  message("WARNING: per_celltype directory not found at ", ct_base)
+  message("Using legacy cell type list (", length(CELL_TYPES), " types)")
+}
 
 ct_dirs <- file.path(results_base, "per_celltype", CELL_TYPES)
 names(ct_dirs) <- CELL_TYPES

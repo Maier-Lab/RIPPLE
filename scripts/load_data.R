@@ -23,12 +23,8 @@ get_script_dir <- function() {
     ofile <- sys.frame(i)$ofile
     if (!is.null(ofile)) return(dirname(normalizePath(ofile)))
   }
-  # Fallback (platform-aware)
-  if (.Platform$OS.type == "windows") {
-    return("N:/lab_maier/Projects/mXenium/CMM/scripts/workflow/scripts/one_off/spatial_analysis")
-  } else {
-    return("/nobackup/lab_maier/Projects/mXenium/CMM/scripts/workflow/scripts/one_off/spatial_analysis")
-  }
+  # Fallback: current working directory
+  getwd()
 }
 script_dir <- get_script_dir()
 source(file.path(script_dir, "utils.R"))
@@ -59,15 +55,15 @@ load_metadata_only <- function(path = NULL) {
     meta[, cell_id := barcode]
   }
 
-  # Ensure we have coordinates as x, y columns
-  if (!"x" %in% names(meta) && "spatial_x" %in% names(meta)) {
-    meta[, x := spatial_x]
-    meta[, y := spatial_y]
-  }
+  # Resolve coordinate columns and create x/y aliases
+
+  coord_cols <- get_coord_columns(meta)
+  if (coord_cols[1] != "x") meta[, x := get(coord_cols[1])]
+  if (coord_cols[2] != "y") meta[, y := get(coord_cols[2])]
 
   # Handle cell type annotation based on configuration
-  if (USE_HYMY_ANNOTATION) {
-    # HyMy annotation: Merge from CSV (has HyMy_GMM and IL1B_myeloid)
+  if (USE_HYMY_ANNOTATION && nchar(INPUT_PATH) == 0) {
+    # HyMy annotation: Merge from CSV (legacy CeMM mode only)
     if (!"cell_type_with_HyMy" %in% names(meta) ||
         !any(meta$cell_type_with_HyMy == "HyMy_GMM", na.rm = TRUE)) {
       message("\nMerging HyMy annotations from CSV...")
@@ -155,8 +151,25 @@ check_data <- function(path = NULL) {
   message("")
 
   message("  Metadata columns:")
-  key_cols <- c(CELLTYPE_COLUMN, "spatial_x", "spatial_y",
-                "sample_id", "group", "experiment", "HyMy_UCell")
+  # Build dynamic key columns list based on configuration
+  key_cols <- unique(c(CELLTYPE_COLUMN, SAMPLE_COL))
+  # Add coordinate columns (user-specified or common candidates)
+  if (nchar(X_COL_ENV) > 0 && nchar(Y_COL_ENV) > 0) {
+    key_cols <- c(key_cols, X_COL_ENV, Y_COL_ENV)
+  } else {
+    # Check common coordinate column names
+    for (pair in list(c("spatial_x", "spatial_y"), c("x", "y"),
+                      c("x_centroid", "y_centroid"))) {
+      if (all(pair %in% colnames(obj@meta.data))) {
+        key_cols <- c(key_cols, pair)
+        break
+      }
+    }
+  }
+  # Add condition column if set
+  if (nchar(CONDITION_COL) > 0) {
+    key_cols <- c(key_cols, CONDITION_COL)
+  }
   for (col in key_cols) {
     if (col %in% colnames(obj@meta.data)) {
       message(sprintf("    ✓ %s", col))

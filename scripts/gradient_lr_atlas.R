@@ -323,14 +323,24 @@ crossref_nichenet <- function(new_results, nichenet_dir, target_type) {
   return(crossref)
 }
 
-crossref_lec <- crossref_nichenet(all_combined, NICHENET_LEC_DIR, "LEC")
-if (!is.null(crossref_lec)) {
-  fwrite(crossref_lec, file.path(SUMMARY_DIR, "cross_reference_nichenet_lec.csv"))
+if (dir.exists(NICHENET_LEC_DIR)) {
+  crossref_lec <- crossref_nichenet(all_combined, NICHENET_LEC_DIR, "LEC")
+  if (!is.null(crossref_lec)) {
+    fwrite(crossref_lec, file.path(SUMMARY_DIR, "cross_reference_nichenet_lec.csv"))
+  }
+} else {
+  message("Skipping NicheNet LEC cross-reference (directory not found: ", NICHENET_LEC_DIR, ")")
+  crossref_lec <- NULL
 }
 
-crossref_frc <- crossref_nichenet(all_combined, NICHENET_FRC_DIR, "FRC")
-if (!is.null(crossref_frc)) {
-  fwrite(crossref_frc, file.path(SUMMARY_DIR, "cross_reference_nichenet_frc.csv"))
+if (dir.exists(NICHENET_FRC_DIR)) {
+  crossref_frc <- crossref_nichenet(all_combined, NICHENET_FRC_DIR, "FRC")
+  if (!is.null(crossref_frc)) {
+    fwrite(crossref_frc, file.path(SUMMARY_DIR, "cross_reference_nichenet_frc.csv"))
+  }
+} else {
+  message("Skipping NicheNet FRC cross-reference (directory not found: ", NICHENET_FRC_DIR, ")")
+  crossref_frc <- NULL
 }
 
 # =============================================================================
@@ -462,7 +472,7 @@ if (nrow(all_combined) > 0) {
   message("  Saved: artifact_classification.pdf")
 
   # ===========================================================================
-  # Reproducibility Bar: Per-Mouse Support for Clean Pairs
+  # Reproducibility Bar: Per-Sample Support for Clean Pairs
   # ===========================================================================
 
   if ("n_samples_supporting" %in% names(all_combined)) {
@@ -472,6 +482,8 @@ if (nrow(all_combined) > 0) {
     if (nrow(clean_reprod) > 0) {
       reprod_summary <- clean_reprod[, .N, by = .(cell_type, n_samples_supporting)]
 
+      condition_label_atlas <- if (nchar(CONDITION_VAL) > 0) CONDITION_VAL else "all"
+
       p_reprod <- ggplot(reprod_summary,
         aes(x = factor(cell_type, levels = ct_totals$cell_type),
             y = N, fill = factor(n_samples_supporting))) +
@@ -480,8 +492,8 @@ if (nrow(all_combined) > 0) {
                           direction = 1) +
         theme_bw(base_size = 11) +
         theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-        labs(title = "Per-Mouse Reproducibility of Clean L-R Pairs",
-             subtitle = "How many TDLN samples independently support each pair",
+        labs(title = "Per-Sample Reproducibility of Clean L-R Pairs",
+             subtitle = paste0("How many ", condition_label_atlas, " samples independently support each pair"),
              x = "Cell Type", y = "Number of L-R Pairs")
 
       ggsave(file.path(PLOT_DIR, "reproducibility_by_celltype.pdf"),
@@ -606,10 +618,12 @@ if (nrow(all_combined) > 0) {
                   length(unique(all_combined[artifact_flag == "clean"]$receptor))))
 
   if ("n_samples_supporting" %in% names(all_combined)) {
-    n_reprod_3plus <- sum(all_combined$artifact_flag == "clean" &
-                          all_combined$n_samples_supporting >= 3, na.rm = TRUE)
-    message(sprintf("Clean pairs reproduced in ≥3/4 mice: %d / %d",
-                    n_reprod_3plus, n_clean))
+    max_samp <- max(all_combined$n_samples_supporting, na.rm = TRUE)
+    repro_thresh <- max(1, max_samp - 1)
+    n_reprod_high <- sum(all_combined$artifact_flag == "clean" &
+                          all_combined$n_samples_supporting >= repro_thresh, na.rm = TRUE)
+    message(sprintf("Clean pairs reproduced in >=%d/%d samples: %d / %d",
+                    repro_thresh, max_samp, n_reprod_high, n_clean))
   }
 
   if (nrow(all_enrichment) > 0) {

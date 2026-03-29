@@ -1,76 +1,83 @@
 #!/bin/bash
-#SBATCH --job-name=hymy_dist_v2
-#SBATCH --output=/nobackup/lab_maier/Projects/mXenium/CMM/results/logs/hymy_dist_v2_%A_%a.out
-#SBATCH --error=/nobackup/lab_maier/Projects/mXenium/CMM/results/logs/hymy_dist_v2_%A_%a.err
-#SBATCH --partition=tinyq
-#SBATCH --qos=tinyq
+#SBATCH --job-name=ripple_v2
+#SBATCH --output=logs/ripple_v2_%A_%a.out
+#SBATCH --error=logs/ripple_v2_%A_%a.err
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=2:00:00
 #SBATCH --mem=64g
-#SBATCH --array=1-14
-#SBATCH --mail-type=END
-#SBATCH --mail-user=cmangana@cemm.at
+## Set --array via sbatch: sbatch --array=1-N run_hymy_distance_correlation_v2.sh
+## Partition/QOS: uncomment and adjust for your cluster
+##SBATCH --partition=tinyq
+##SBATCH --qos=tinyq
+## Mail notifications (uncomment and set your email)
+##SBATCH --mail-type=END
+##SBATCH --mail-user=your@email.com
 
 # =============================================================================
-# HyMy Distance Correlation v2 (Poisson GLM) - SLURM Array Job
+# RIPPLE Stage 1: Distance Correlation v2 (Poisson GLM) - SLURM Array Job
 # =============================================================================
 # Uses Poisson GLM: counts ~ distance + offset(log(total_counts))
-# Coefficient = log-rate change per um (negative = HyMy-induced)
-#
-# Cell type mapping:
-#   1 = LEC, 2 = FRC, 3 = BEC, 4 = CD4_T_cells, 5 = CD8_T_cells,
-#   6 = gdT_cells, 7 = Macrophages, 8 = Monocyte, 9 = Fibroblasts_mac,
-#   10 = cDC1, 11 = cDC2, 12 = mature_migDC, 13 = B_cells, 14 = Plasma_cell
+# Coefficient = log-rate change per um (negative = query-induced)
 #
 # Usage:
-#   sbatch run_hymy_distance_correlation_v2.sh
-#   ANNOTATION_LEVEL=L1 sbatch run_hymy_distance_correlation_v2.sh
-#   sbatch --array=1-2 run_hymy_distance_correlation_v2.sh  # LEC+FRC only
+#   sbatch --array=1-N run_hymy_distance_correlation_v2.sh
+#   sbatch --array=1-2 run_hymy_distance_correlation_v2.sh  # first 2 types only
+#
+# Required env vars: INPUT_PATH, QUERY_CELLTYPE, CELLTYPE_COLUMN
+# See README.md for full env var reference.
 # =============================================================================
 
 set -e
 
-# Query cell type configuration (pass through to R/Python)
-export QUERY_CELLTYPE=${QUERY_CELLTYPE:-}
-export CELLTYPE_COLUMN=${CELLTYPE_COLUMN:-}
-export QUERY_LABEL=${QUERY_LABEL:-}
-export ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
+# Auto-detect script directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
-CELLTYPE_INDEX=${SLURM_ARRAY_TASK_ID}
+# Create logs directory
+mkdir -p logs
 
-CELLTYPE_NAMES=("" "LEC" "FRC" "BEC" "CD4_T_cells" "CD8_T_cells" "gdT_cells" "Macrophages" "Monocyte" "Fibroblasts_mac" "cDC1" "cDC2" "mature_migDC" "B_cells" "Plasma_cell")
-CELLTYPE_NAME=${CELLTYPE_NAMES[$CELLTYPE_INDEX]}
+# Pass through RIPPLE env vars (set these before sbatch, or in a wrapper script)
+export INPUT_PATH="${INPUT_PATH:-}"
+export OUTPUT_DIR="${OUTPUT_DIR:-}"
+export QUERY_CELLTYPE="${QUERY_CELLTYPE:-}"
+export CELLTYPE_COLUMN="${CELLTYPE_COLUMN:-}"
+export SAMPLE_COLUMN="${SAMPLE_COLUMN:-}"
+export CONDITION_COLUMN="${CONDITION_COLUMN:-}"
+export CONDITION_VALUE="${CONDITION_VALUE:-}"
+export X_COLUMN="${X_COLUMN:-}"
+export Y_COLUMN="${Y_COLUMN:-}"
+export TARGET_CELLTYPES="${TARGET_CELLTYPES:-}"
+export CONTROL_CELLTYPE="${CONTROL_CELLTYPE:-}"
+export QUERY_LABEL="${QUERY_LABEL:-}"
+export ANNOTATION_LEVEL="${ANNOTATION_LEVEL:-}"
+export ANALYSIS_NAME="${ANALYSIS_NAME:-}"
+export QUERY_SIGNATURE_GENES="${QUERY_SIGNATURE_GENES:-}"
+export ADATA_PATH="${ADATA_PATH:-}"
+
+export CELLTYPE_INDEX=${SLURM_ARRAY_TASK_ID}
+export N_PERMUTATIONS=${N_PERMUTATIONS:-0}
+export K_NEIGHBORS=${K_NEIGHBORS:-1}
 
 echo "=============================================="
-echo "HyMy Distance Correlation v2 (Poisson GLM)"
+echo "RIPPLE Stage 1: Distance Correlation v2 (Poisson GLM)"
 echo "Job ID: ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
-echo "Cell Type: ${CELLTYPE_NAME} (index ${CELLTYPE_INDEX})"
-echo "Annotation Level: ${ANNOTATION_LEVEL}"
-echo "K Neighbors: 1 (default)"
+echo "Cell Type Index: ${CELLTYPE_INDEX}"
+echo "K Neighbors: ${K_NEIGHBORS}"
 echo "CPUs: ${SLURM_CPUS_PER_TASK}"
 echo "Date: $(date)"
 echo "=============================================="
 
-cd /nobackup/lab_maier/Projects/mXenium/CMM/scripts/workflow/scripts/one_off/spatial_analysis
-
-mkdir -p /nobackup/lab_maier/Projects/mXenium/CMM/results/logs
-
-source /home/cmangana/miniconda3/etc/profile.d/conda.sh
-conda activate R_IMC_2024
-
-export ANNOTATION_LEVEL
-export CELLTYPE_INDEX
-export SLURM_CPUS_PER_TASK
-export N_PERMUTATIONS=${N_PERMUTATIONS:-0}
-export K_NEIGHBORS=1
+# Conda environment setup (conditional)
+if [ -n "${CONDA_SETUP:-}" ]; then source "$CONDA_SETUP"; fi
+if [ -n "${CONDA_ENV:-}" ]; then conda activate "$CONDA_ENV"; fi
 
 echo ""
-echo "Running hymy_distance_correlation_v2.R for ${CELLTYPE_NAME}..."
+echo "Running hymy_distance_correlation_v2.R..."
 Rscript hymy_distance_correlation_v2.R
 
 echo ""
 echo "=============================================="
-echo "Cell type ${CELLTYPE_NAME} complete: $(date)"
+echo "Complete: $(date)"
 echo "=============================================="

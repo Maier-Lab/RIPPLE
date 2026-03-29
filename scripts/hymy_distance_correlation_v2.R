@@ -150,39 +150,21 @@ PERM_PRIORITY_GENES <- c(
   "Tslp", "Mif", "Spp1", "Kitl", "Kit", "Epo", "Epor", "Thpo", "Mpl"
 )
 
-# Target cell types to analyze
-TARGET_CELLTYPES <- list(
-  LEC = "LEC",
-  FRC = "FRC",
-  BEC = "BEC",
-  CD4_T_cells = c("Naive_CD4", "Tfh", "Treg"),
-  CD8_T_cells = c("Naive_CD8", "Activated_CD8", "Cytotoxic_CD8", "Tpex"),
-  gdT_cells = "gdT_cell",
-  Macrophages = "Macrophages",
-  Monocyte = "Monocyte",
-  Fibroblasts_mac = "Fibroblasts_mac",
-  cDC1 = "cDC1",
-  cDC2 = "cDC2",
-  mature_migDC = "mature_migDC",
-  B_cells = c("B_cell", "Follicular_B"),
-  Plasma_cell = "Plasma_cell"
-)
+# Target cell types: user-specified or auto-detect (populated after data load)
+TARGET_CELLTYPES_ENV <- Sys.getenv("TARGET_CELLTYPES", unset = "")
+if (nchar(TARGET_CELLTYPES_ENV) > 0) {
+  target_names <- trimws(strsplit(TARGET_CELLTYPES_ENV, ",")[[1]])
+} else {
+  target_names <- NULL  # Will be populated after data load
+}
 
 # =============================================================================
 # Cell Type Selection (for SLURM array job parallelization)
 # =============================================================================
+# Note: CELLTYPE_INDEX selection is applied AFTER data load and auto-detection.
+# See below where TARGET_CELLTYPES is finalized.
 
 CELLTYPE_INDEX <- as.integer(Sys.getenv("CELLTYPE_INDEX", unset = "0"))
-
-if (CELLTYPE_INDEX > 0) {
-  celltype_names <- names(TARGET_CELLTYPES)
-  if (CELLTYPE_INDEX > length(celltype_names)) {
-    stop("CELLTYPE_INDEX ", CELLTYPE_INDEX, " exceeds number of cell types (", length(celltype_names), ")")
-  }
-  selected_ct <- celltype_names[CELLTYPE_INDEX]
-  message("\n>>> Array job mode: Processing only ", selected_ct, " (index ", CELLTYPE_INDEX, ")")
-  TARGET_CELLTYPES <- TARGET_CELLTYPES[selected_ct]
-}
 
 # Positive control genes (for validation)
 POSITIVE_CONTROLS <- c("Csf3", "Il33", "Cxcl12")
@@ -805,11 +787,11 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
 
   ensure_dir(output_dir)
 
-  # Identify target cells (TDLN only)
-  cell_data[, is_target := get(celltype_col) %in% target_types & condition == "TDLN"]
+  # Identify target cells (filtered data — condition already applied)
+  cell_data[, is_target := get(celltype_col) %in% target_types]
   target_data <- cell_data[is_target == TRUE]
 
-  message("  Target cells: ", nrow(target_data), " (TDLN only)")
+  message("  Target cells: ", nrow(target_data))
 
   if (nrow(target_data) < MIN_CELLS_PER_SAMPLE * 2) {
     message("  Insufficient cells for analysis")
@@ -817,12 +799,12 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
   }
 
   # Get unique samples
-  samples <- unique(target_data$sample_id)
+  samples <- unique(target_data[[SAMPLE_COL]])
   message("  Samples: ", length(samples))
 
   # Check each sample has enough cells
-  sample_counts <- target_data[, .N, by = sample_id]
-  valid_samples <- sample_counts[N >= MIN_CELLS_PER_SAMPLE]$sample_id
+  sample_counts <- target_data[, .N, by = c(SAMPLE_COL)]
+  valid_samples <- sample_counts[N >= MIN_CELLS_PER_SAMPLE][[SAMPLE_COL]]
   message("  Valid samples (>= ", MIN_CELLS_PER_SAMPLE, " cells): ", length(valid_samples))
 
   if (length(valid_samples) < 2) {
@@ -834,14 +816,14 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
   }
 
   # Get target cell barcodes
-  target_barcodes <- target_data[sample_id %in% valid_samples]$barcode
+  target_barcodes <- target_data[get(SAMPLE_COL) %in% valid_samples]$barcode
 
   # Get raw counts for target cells
   target_counts <- count_matrix[, target_barcodes, drop = FALSE]
 
   # Filter genes with sufficient expressing cells PER SAMPLE (Two-Tier)
-  target_valid <- target_data[sample_id %in% valid_samples]
-  sample_ids_for_filter <- droplevels(as.factor(target_valid$sample_id))
+  target_valid <- target_data[get(SAMPLE_COL) %in% valid_samples]
+  sample_ids_for_filter <- droplevels(as.factor(target_valid[[SAMPLE_COL]]))
 
   cells_per_sample <- table(sample_ids_for_filter)
   threshold_per_sample <- pmax(ceiling(cells_per_sample * MIN_EXPR_PCT), MIN_EXPR_FLOOR)
@@ -894,7 +876,7 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
     gene_counts <- as.numeric(target_counts[g, target_barcodes])
 
     sample_results <- rbindlist(lapply(valid_samples, function(samp) {
-      samp_idx <- which(target_data[sample_id %in% valid_samples]$sample_id == samp)
+      samp_idx <- which(target_valid[[SAMPLE_COL]] == samp)
       if (length(samp_idx) < MIN_CELLS_PER_SAMPLE) {
         return(data.table(
           gene = g, sample_id = samp,
@@ -905,7 +887,7 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
       }
 
       samp_counts <- gene_counts[samp_idx]
-      samp_dist <- target_data[sample_id %in% valid_samples][samp_idx]$dist_to_query
+      samp_dist <- target_valid[samp_idx]$dist_to_query
       samp_total <- total_counts_all[target_barcodes[samp_idx]]
 
       fit_result <- fit_poisson(samp_counts, samp_dist, samp_total)
@@ -934,7 +916,7 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
     meta_result <- run_meta_analysis(
       coefs = gene_data$coef,
       ses = gene_data$se,
-      sample_ids = gene_data$sample_id
+      sample_ids = gene_data[["sample_id"]]
     )
 
     # Calculate expression statistics from counts
@@ -980,8 +962,8 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
                   length(top_by_effect), length(priority_in_data), length(top_genes_for_perm)))
 
   if (length(top_genes_for_perm) > 0 && N_PERMUTATIONS > 0) {
-    target_valid <- target_data[sample_id %in% valid_samples]
-    coords_target <- as.matrix(target_valid[, .(spatial_x, spatial_y)])
+    target_valid <- target_data[get(SAMPLE_COL) %in% valid_samples]
+    coords_target <- as.matrix(target_valid[, ..coord_cols])
 
     observed_coefs <- setNames(
       meta_results[gene %in% top_genes_for_perm]$combined_coef,
@@ -996,7 +978,7 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
       target_barcodes = target_barcodes,
       coords_target = coords_target,
       coords_all = coords_all,
-      sample_ids_target = target_valid$sample_id,
+      sample_ids_target = target_valid[[SAMPLE_COL]],
       sample_ids_all = sample_ids_all,
       query_per_sample = query_per_sample_valid,
       observed_coefs = observed_coefs,
@@ -1028,13 +1010,13 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
   message("  Significant genes: ", length(sig_genes))
 
   if (length(sig_genes) > 0) {
-    target_valid <- target_data[sample_id %in% valid_samples]
+    target_valid <- target_data[get(SAMPLE_COL) %in% valid_samples]
 
     decay_patterns <- sapply(sig_genes, function(gene) {
       gene_counts <- as.numeric(target_counts[gene, target_barcodes])
 
       per_sample_patterns <- sapply(valid_samples, function(samp) {
-        samp_idx <- which(target_valid$sample_id == samp)
+        samp_idx <- which(target_valid[[SAMPLE_COL]] == samp)
         if (length(samp_idx) < MIN_CELLS_PER_SAMPLE) return(NA_character_)
 
         samp_counts <- gene_counts[samp_idx]
@@ -1093,7 +1075,7 @@ run_celltype_analysis <- function(obj, cell_data, cell_type_name, target_types,
       create_forest_plot(
         coefs = gene_data$coef,
         ses = gene_data$se,
-        sample_ids = gene_data$sample_id,
+        sample_ids = gene_data[["sample_id"]],
         gene = g,
         cell_type = cell_type_name,
         output_path = file.path(forest_dir, sprintf("%s_forest.pdf", g))
@@ -1167,13 +1149,18 @@ count_matrix_full <- GetAssayData(obj, layer = "counts")
 # Extract metadata as data.table
 cell_data <- as.data.table(obj@meta.data, keep.rownames = "barcode")
 
-# Set condition
-if ("group" %in% names(cell_data)) {
+# Resolve condition column
+if (nchar(CONDITION_COL) > 0 && CONDITION_COL %in% names(cell_data)) {
+  cell_data[, condition := get(CONDITION_COL)]
+  message("Using condition column: ", CONDITION_COL)
+} else if ("condition" %in% names(cell_data)) {
+  message("Using existing 'condition' column")
+} else if ("group" %in% names(cell_data)) {
   cell_data[, condition := group]
-  message("Using 'group' column for condition")
-} else if (!"condition" %in% names(cell_data)) {
-  cell_data[, condition := sapply(sample_id, get_condition)]
-  message("WARNING: Inferring condition from sample_id (may be unreliable)")
+  message("Aliasing 'group' -> 'condition'")
+} else {
+  cell_data[, condition := "all"]
+  message("No condition column found; analyzing all samples")
 }
 
 if (!CELLTYPE_COL %in% names(cell_data)) {
@@ -1182,19 +1169,23 @@ if (!CELLTYPE_COL %in% names(cell_data)) {
 
 message("\nData summary (before filtering):")
 message("  Total cells: ", nrow(cell_data))
-message("  Samples: ", length(unique(cell_data$sample_id)))
+message("  Samples: ", length(unique(cell_data[[SAMPLE_COL]])))
 message("  Conditions: ", paste(unique(cell_data$condition), collapse = ", "))
 
 # =============================================================================
-# Filter to TDLN samples only
+# Filter by condition if specified
 # =============================================================================
 
-message("\nFiltering to TDLN samples only...")
-cell_data <- cell_data[condition == "TDLN"]
+if (nchar(CONDITION_VAL) > 0) {
+  message("\nFiltering to condition == '", CONDITION_VAL, "'...")
+  cell_data <- cell_data[condition == CONDITION_VAL]
+} else {
+  message("\nNo condition filter; analyzing all ", uniqueN(cell_data$condition), " conditions")
+}
 
-message("Data summary (TDLN only):")
+message("Data summary (after filtering):")
 message("  Total cells: ", nrow(cell_data))
-message("  Samples: ", length(unique(cell_data$sample_id)))
+message("  Samples: ", length(unique(cell_data[[SAMPLE_COL]])))
 message("  Cell types: ", length(unique(cell_data[[CELLTYPE_COL]])))
 
 # Subset count matrix to TDLN barcodes
@@ -1218,8 +1209,9 @@ message("\n", strrep("=", 70))
 message("Calculating Distances to Query Cells (k=", K_NEIGHBORS, ")")
 message(strrep("=", 70))
 
-coords <- as.matrix(cell_data[, .(spatial_x, spatial_y)])
-sample_ids_all <- cell_data$sample_id
+coord_cols <- get_coord_columns(cell_data)
+coords <- as.matrix(cell_data[, ..coord_cols])
+sample_ids_all <- cell_data[[SAMPLE_COL]]
 
 query_mask <- cell_data[[CELLTYPE_COL]] == QUERY_CELLTYPE
 n_query <- sum(query_mask)
@@ -1230,8 +1222,8 @@ if (n_query < 10) {
 }
 
 # Calculate query cells per sample (for stratified permutation)
-query_per_sample <- cell_data[query_mask == TRUE, .N, by = sample_id]
-query_per_sample <- setNames(query_per_sample$N, query_per_sample$sample_id)
+query_per_sample <- cell_data[query_mask == TRUE, .N, by = c(SAMPLE_COL)]
+query_per_sample <- setNames(query_per_sample$N, query_per_sample[[SAMPLE_COL]])
 message("Query cells per sample:")
 for (samp in names(query_per_sample)) {
   message("  ", samp, ": ", query_per_sample[samp])
@@ -1257,6 +1249,30 @@ message("Distance distribution:")
 message("  Min: ", round(min(cell_data$dist_to_query), 1), " \u00b5m")
 message("  Median: ", round(median(cell_data$dist_to_query), 1), " \u00b5m")
 message("  Max: ", round(max(cell_data$dist_to_query), 1), " \u00b5m")
+
+# =============================================================================
+# Finalize Target Cell Types (auto-detect if not specified)
+# =============================================================================
+
+if (is.null(target_names)) {
+  all_types <- unique(cell_data[[CELLTYPE_COL]])
+  target_names <- setdiff(all_types, c(QUERY_CELLTYPE, NA_character_))
+  target_names <- sort(target_names)  # deterministic order
+  message("Auto-detected ", length(target_names), " target cell types: ",
+          paste(target_names, collapse = ", "))
+}
+# Each cell type is its own target (no aggregation)
+TARGET_CELLTYPES <- as.list(setNames(target_names, target_names))
+
+# Apply CELLTYPE_INDEX selection for array jobs
+if (CELLTYPE_INDEX > 0) {
+  if (CELLTYPE_INDEX > length(target_names)) {
+    stop("CELLTYPE_INDEX=", CELLTYPE_INDEX, " exceeds ", length(target_names), " target cell types")
+  }
+  selected <- target_names[CELLTYPE_INDEX]
+  TARGET_CELLTYPES <- TARGET_CELLTYPES[selected]
+  message("Selected cell type #", CELLTYPE_INDEX, ": ", selected)
+}
 
 # =============================================================================
 # QC Diagnostics
@@ -1291,21 +1307,21 @@ sample_summary <- cell_data[, .(
   median_dist = median(dist_to_query),
   pct_within_50um = mean(dist_to_query <= 50) * 100,
   n_cell_types = uniqueN(get(CELLTYPE_COL))
-), by = .(sample_id, condition)]
-setorder(sample_summary, condition, sample_id)
+), by = c(SAMPLE_COL, "condition")]
+setorder(sample_summary, condition)
 fwrite(sample_summary, file.path(qc_dir, "sample_summary.csv"))
 message("  Saved: qc/sample_summary.csv")
 
 message("\nPer-sample summary:")
 print(sample_summary)
 
-# 3. Cell type counts in TDLN
-tdln_celltype_counts <- cell_data[condition == "TDLN", .N, by = get(CELLTYPE_COL)]
-setnames(tdln_celltype_counts, "get", "cell_type")
-setorder(tdln_celltype_counts, -N)
-fwrite(tdln_celltype_counts, file.path(qc_dir, "tdln_celltype_counts.csv"))
-message("\nTDLN cell type counts (top 10):")
-print(head(tdln_celltype_counts, 10))
+# 3. Cell type counts (filtered data)
+filtered_celltype_counts <- cell_data[, .N, by = c(CELLTYPE_COL)]
+setnames(filtered_celltype_counts, CELLTYPE_COL, "cell_type")
+setorder(filtered_celltype_counts, -N)
+fwrite(filtered_celltype_counts, file.path(qc_dir, "filtered_celltype_counts.csv"))
+message("\nCell type counts (top 10):")
+print(head(filtered_celltype_counts, 10))
 
 # 4. Count matrix summary
 message("\nCount matrix: ", nrow(count_matrix_tdln), " genes x ", ncol(count_matrix_tdln), " cells")

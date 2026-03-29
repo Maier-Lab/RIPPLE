@@ -1,15 +1,53 @@
 #!/usr/bin/env Rscript
 # Quick QC plot: test the binary expression assumption for Xenium 5K
 # Plots nFeature vs nCount per sample -- if slope ~ 1, most genes have 1 count
-# NOTE: Standalone script with hardcoded paths (not part of core RIPPLE pipeline)
 
 library(Seurat)
 library(ggplot2)
 library(patchwork)
 
-# --- Load data ---
-seurat_path <- "N:/lab_maier/Projects/mXenium/results/cell_type_assignment/HyMy_annotation/seurat_xenium_filtered.rds"
-out_dir <- "N:/lab_maier/Projects/mXenium/CMM/results/spatial_analysis/hymy_distance_correlation/qc"
+# Source shared utilities if available (for INPUT_PATH, OUTPUT_ROOT, etc.)
+script_dir <- tryCatch(
+  dirname(normalizePath(sys.frame(1)$ofile, mustWork = FALSE)),
+  error = function(e) {
+    args <- commandArgs(trailingOnly = FALSE)
+    file_arg <- grep("^--file=", args, value = TRUE)
+    if (length(file_arg) > 0) dirname(normalizePath(sub("^--file=", "", file_arg))) else getwd()
+  }
+)
+utils_path <- file.path(script_dir, "utils.R")
+if (file.exists(utils_path)) {
+  source(utils_path)
+  seurat_path <- if (nchar(INPUT_PATH) > 0) INPUT_PATH else SEURAT_PATH
+  ANALYSIS_NAME_QC <- Sys.getenv("ANALYSIS_NAME", unset = "hymy_distance_correlation")
+  out_dir <- file.path(OUTPUT_ROOT, ANALYSIS_NAME_QC, "qc")
+} else {
+  # Fallback: source config.R if available, otherwise resolve from env vars
+  config_path <- file.path(script_dir, "config.R")
+  if (file.exists(config_path)) {
+    source(config_path)
+    seurat_path <- if (nchar(INPUT_PATH) > 0) INPUT_PATH else {
+      file.path(MXENIUM_ROOT, "results", "cell_type_assignment",
+                "HyMy_annotation", "seurat_xenium_filtered.rds")
+    }
+    ANALYSIS_NAME_QC <- Sys.getenv("ANALYSIS_NAME", unset = "hymy_distance_correlation")
+    out_dir <- file.path(OUTPUT_ROOT, ANALYSIS_NAME_QC, "qc")
+  } else {
+    INPUT_PATH <- Sys.getenv("INPUT_PATH", unset = "")
+    if (nchar(INPUT_PATH) > 0) {
+      seurat_path <- INPUT_PATH
+    } else {
+      stop("INPUT_PATH must be set (or utils.R/config.R must be available)")
+    }
+    OUTPUT_DIR_ENV <- Sys.getenv("OUTPUT_DIR", unset = "")
+    if (nchar(OUTPUT_DIR_ENV) > 0) {
+      out_dir <- file.path(OUTPUT_DIR_ENV, "qc")
+    } else {
+      out_dir <- file.path(".", "results", "qc")
+    }
+    SAMPLE_COL <- Sys.getenv("SAMPLE_COLUMN", unset = "sample_id")
+  }
+}
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 message("Loading Seurat object...")
@@ -18,16 +56,20 @@ message("Loaded: ", ncol(obj), " cells x ", nrow(obj), " genes")
 
 # Extract metadata
 meta <- obj@meta.data
-meta$sample <- meta$sample_id  # adjust if different column name
 
-# Check column names
-if (!"sample_id" %in% colnames(meta)) {
+# Use SAMPLE_COL from config (or env var)
+if (!exists("SAMPLE_COL")) SAMPLE_COL <- Sys.getenv("SAMPLE_COLUMN", unset = "sample_id")
+if (SAMPLE_COL %in% colnames(meta)) {
+  meta$sample <- meta[[SAMPLE_COL]]
+} else {
   # Try common alternatives
   sample_col <- intersect(c("sample_id", "sample", "orig.ident", "Sample"), colnames(meta))[1]
-  message("Using '", sample_col, "' as sample column")
-  meta$sample <- meta[[sample_col]]
-} else {
-  meta$sample <- meta$sample_id
+  if (!is.null(sample_col)) {
+    message("Using '", sample_col, "' as sample column")
+    meta$sample <- meta[[sample_col]]
+  } else {
+    meta$sample <- "all"
+  }
 }
 
 message("Samples: ", paste(unique(meta$sample), collapse = ", "))

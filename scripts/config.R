@@ -21,17 +21,39 @@
 #' =============================================================================
 
 # =============================================================================
-# Platform Detection
+# Data Paths (env var resolution)
 # =============================================================================
 
-if (.Platform$OS.type == "windows") {
-  BASE_PATH <- "N:/lab_maier/Projects/mXenium"
-} else {
-  BASE_PATH <- "/nobackup/lab_maier/Projects/mXenium"
-}
+INPUT_PATH  <- Sys.getenv("INPUT_PATH",  unset = "")
+OUTPUT_DIR  <- Sys.getenv("OUTPUT_DIR",  unset = "")
 
-PROJECT_ROOT <- file.path(BASE_PATH, "CMM")
-MXENIUM_ROOT <- BASE_PATH  # Parent project root
+# Column names
+SAMPLE_COL    <- Sys.getenv("SAMPLE_COLUMN",    unset = "sample_id")
+CONDITION_COL <- Sys.getenv("CONDITION_COLUMN",  unset = "")
+CONDITION_VAL <- Sys.getenv("CONDITION_VALUE",   unset = "")
+
+# Coordinate columns (empty = auto-detect)
+X_COL_ENV <- Sys.getenv("X_COLUMN", unset = "")
+Y_COL_ENV <- Sys.getenv("Y_COLUMN", unset = "")
+
+# =============================================================================
+# Platform Detection (legacy — only needed when INPUT_PATH is not set)
+# =============================================================================
+
+if (nchar(INPUT_PATH) == 0) {
+  if (.Platform$OS.type == "windows") {
+    BASE_PATH <- "N:/lab_maier/Projects/mXenium"
+  } else {
+    BASE_PATH <- "/nobackup/lab_maier/Projects/mXenium"
+  }
+  PROJECT_ROOT <- file.path(BASE_PATH, "CMM")
+  MXENIUM_ROOT <- BASE_PATH  # Parent project root
+} else {
+  # External mode: derive PROJECT_ROOT from OUTPUT_DIR or working directory
+  BASE_PATH    <- dirname(INPUT_PATH)
+  MXENIUM_ROOT <- BASE_PATH
+  PROJECT_ROOT <- if (nchar(OUTPUT_DIR) > 0) dirname(OUTPUT_DIR) else getwd()
+}
 
 # =============================================================================
 # Query Cell Type Configuration (3-tier resolution)
@@ -79,4 +101,34 @@ ANALYSIS_NAME <- Sys.getenv("ANALYSIS_NAME", unset = "hymy_distance_correlation_
 # Output Paths
 # =============================================================================
 
-OUTPUT_ROOT <- file.path(PROJECT_ROOT, "results", paste0("spatial_analysis", OUTPUT_SUFFIX))
+if (nchar(OUTPUT_DIR) > 0) {
+  OUTPUT_ROOT <- file.path(OUTPUT_DIR, paste0("spatial_analysis", OUTPUT_SUFFIX))
+} else {
+  OUTPUT_ROOT <- file.path(PROJECT_ROOT, "results", paste0("spatial_analysis", OUTPUT_SUFFIX))
+}
+
+# =============================================================================
+# Configuration Summary
+# =============================================================================
+
+message("--- RIPPLE Configuration ---")
+if (nchar(INPUT_PATH) > 0) {
+  message(sprintf("  INPUT_PATH:       %s", INPUT_PATH))
+} else {
+  message(sprintf("  INPUT_PATH:       (legacy CeMM paths)"))
+}
+message(sprintf("  OUTPUT_ROOT:      %s", OUTPUT_ROOT))
+message(sprintf("  SAMPLE_COL:       %s", SAMPLE_COL))
+if (nchar(CONDITION_COL) > 0) {
+  message(sprintf("  CONDITION_COL:    %s = %s",
+                  CONDITION_COL,
+                  if (nchar(CONDITION_VAL) > 0) CONDITION_VAL else "(all)"))
+}
+if (nchar(X_COL_ENV) > 0 && nchar(Y_COL_ENV) > 0) {
+  message(sprintf("  Coordinates:      %s, %s", X_COL_ENV, Y_COL_ENV))
+} else {
+  message("  Coordinates:      (auto-detect)")
+}
+message(sprintf("  CELLTYPE_COL:     %s", CELLTYPE_COL))
+message(sprintf("  QUERY_CELLTYPE:   %s", QUERY_CELLTYPE))
+message("----------------------------")

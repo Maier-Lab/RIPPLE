@@ -56,14 +56,36 @@ TARGET_TYPE <- Sys.getenv("TARGET_TYPE", unset = "LEC")
 message(sprintf(">>> Target cell type for proximity analysis: %s", TARGET_TYPE))
 
 # Input data paths
-SEURAT_PATH <- file.path(MXENIUM_ROOT, "results", "cell_type_assignment",
-                         "HyMy_annotation", "seurat_xenium_filtered.rds")
-ADATA_PATH <- file.path(MXENIUM_ROOT, "results", "sopa", "adata.h5ad")
-HYMY_ANNOTATION_PATH <- file.path(
-  MXENIUM_ROOT, "results", "cell_type_assignment",
-  "HyMy_annotation", "cell_type_with_HyMy_GMM.csv"
-)
-SPACEL_DIR <- file.path(MXENIUM_ROOT, "results", "spacel")
+if (nchar(INPUT_PATH) > 0) {
+  # External mode: INPUT_PATH points directly to the Seurat .rds
+
+  SEURAT_PATH <- INPUT_PATH
+
+  # ADATA_PATH: check env var first, otherwise look for .h5ad alongside .rds
+  ADATA_PATH_ENV <- Sys.getenv("ADATA_PATH", unset = "")
+  if (nchar(ADATA_PATH_ENV) > 0) {
+    ADATA_PATH <- ADATA_PATH_ENV
+  } else {
+    .h5ad_candidates <- list.files(dirname(INPUT_PATH), pattern = "\\.h5ad$",
+                                   full.names = TRUE)
+    ADATA_PATH <- if (length(.h5ad_candidates) > 0) .h5ad_candidates[1] else ""
+  }
+} else {
+  # Legacy CeMM paths
+  SEURAT_PATH <- file.path(MXENIUM_ROOT, "results", "cell_type_assignment",
+                           "HyMy_annotation", "seurat_xenium_filtered.rds")
+  ADATA_PATH_ENV <- Sys.getenv("ADATA_PATH", unset = "")
+  if (nchar(ADATA_PATH_ENV) > 0) {
+    ADATA_PATH <- ADATA_PATH_ENV
+  } else {
+    ADATA_PATH <- file.path(MXENIUM_ROOT, "results", "sopa", "adata.h5ad")
+  }
+  HYMY_ANNOTATION_PATH <- file.path(
+    MXENIUM_ROOT, "results", "cell_type_assignment",
+    "HyMy_annotation", "cell_type_with_HyMy_GMM.csv"
+  )
+  SPACEL_DIR <- file.path(MXENIUM_ROOT, "results", "spacel")
+}
 
 # Plotting defaults
 theme_set(theme_bw(base_size = 11))
@@ -150,11 +172,11 @@ load_seurat <- function(path = NULL) {
   obj <- readRDS(path)
   message(sprintf("Loaded %s cells x %s genes", ncol(obj), nrow(obj)))
 
-  # Verify expected columns exist
-  expected_cols <- c("cell_type_with_HyMy", "spatial_x", "spatial_y")
-  missing <- setdiff(expected_cols, colnames(obj@meta.data))
-  if (length(missing) > 0) {
-    warning("Missing expected columns: ", paste(missing, collapse = ", "))
+  # Verify cell type column exists
+  if (!CELLTYPE_COL %in% colnames(obj@meta.data)) {
+    # Not a hard error — downstream code (e.g. HyMy merge) may add it
+    message(sprintf("  Note: cell type column '%s' not yet in metadata (may be added later)",
+                    CELLTYPE_COL))
   }
 
   return(obj)
@@ -272,6 +294,48 @@ get_spatial_coords <- function(obj, image = NULL) {
   }
 
   stop("Could not find spatial coordinates in Seurat object")
+}
+
+
+#' Resolve coordinate column names from metadata
+#'
+#' If X_COL_ENV and Y_COL_ENV are set (from config.R), verifies they exist and
+#' returns them.  Otherwise auto-detects by trying common pairs in order.
+#'
+#' @param meta data.table (or data.frame) with metadata columns
+#' @return Character vector of length 2: c(x_col, y_col)
+get_coord_columns <- function(meta) {
+  col_names <- names(meta)
+
+  # Priority 1: user-specified via env vars
+
+  if (nchar(X_COL_ENV) > 0 && nchar(Y_COL_ENV) > 0) {
+    if (!X_COL_ENV %in% col_names)
+      stop(sprintf("X_COLUMN '%s' not found in metadata. Available: %s",
+                    X_COL_ENV, paste(head(col_names, 20), collapse = ", ")))
+    if (!Y_COL_ENV %in% col_names)
+      stop(sprintf("Y_COLUMN '%s' not found in metadata. Available: %s",
+                    Y_COL_ENV, paste(head(col_names, 20), collapse = ", ")))
+    return(c(X_COL_ENV, Y_COL_ENV))
+  }
+
+  # Priority 2: auto-detect common pairs
+  candidates <- list(
+    c("spatial_x", "spatial_y"),
+    c("x", "y"),
+    c("x_centroid", "y_centroid")
+  )
+  for (pair in candidates) {
+    if (all(pair %in% col_names)) {
+      message(sprintf("  Auto-detected coordinate columns: %s, %s", pair[1], pair[2]))
+      return(pair)
+    }
+  }
+
+  stop("Could not find spatial coordinate columns in metadata.\n",
+       "  Tried: spatial_x/spatial_y, x/y, x_centroid/y_centroid\n",
+       "  Set X_COLUMN and Y_COLUMN env vars to specify custom column names.\n",
+       "  Available columns: ", paste(head(col_names, 30), collapse = ", "))
 }
 
 
@@ -837,7 +901,11 @@ save_plot <- function(p, output_dir, filename, width = 8, height = 6,
 }
 
 
-#' Infer condition from sample name
+#' Infer condition from sample name (LEGACY)
+#'
+#' Only used when CONDITION_COL is not set. Assumes CeMM mXenium naming
+#' convention (naive_*, TDLN_*). External users should set CONDITION_COLUMN
+#' and CONDITION_VALUE env vars instead.
 #'
 #' @param sample_name Sample identifier
 #' @return "naive" or "TDLN"
@@ -871,6 +939,8 @@ if (sys.nframe() == 0) {
   message("Testing utility functions...")
   message("\nProject root: ", PROJECT_ROOT)
   message("Seurat path exists: ", file.exists(SEURAT_PATH))
-  message("HyMy annotation exists: ", file.exists(HYMY_ANNOTATION_PATH))
+  if (exists("HYMY_ANNOTATION_PATH")) {
+    message("HyMy annotation exists: ", file.exists(HYMY_ANNOTATION_PATH))
+  }
   message("\n✓ Utility module loaded successfully")
 }

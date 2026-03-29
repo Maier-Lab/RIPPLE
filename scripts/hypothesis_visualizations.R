@@ -36,28 +36,41 @@ VIZ_DIR <- file.path(OUTPUT_ROOT, ANALYSIS_NAME, "hypothesis_figures")
 ensure_dir(VIZ_DIR)
 
 # Cell type mapping (aggregated names -> actual column values)
-# Must match distance correlation TARGET_CELLTYPES
-CELLTYPE_MAP <- list(
-  LEC = "LEC",
-  FRC = "FRC",
-  BEC = "BEC",
-  CD4_T_cells = c("Naive_CD4", "Tfh", "Treg"),
-  CD8_T_cells = c("Naive_CD8", "Activated_CD8", "Cytotoxic_CD8", "Tpex"),
-  gdT_cells = "gdT_cell",
-  Macrophages = "Macrophages",
-  Monocyte = "Monocyte",
-  Fibroblasts_mac = "Fibroblasts_mac",
-  cDC1 = "cDC1",
-  cDC2 = "cDC2",
-  mature_migDC = "mature_migDC",
-  B_cells = c("B_cell", "Follicular_B"),
-  Plasma_cell = "Plasma_cell"
-)
+# Auto-discover from results directories, fall back to legacy mapping
+RESULTS_BASE <- file.path(OUTPUT_ROOT, ANALYSIS_NAME)
+available_celltypes <- basename(list.dirs(
+  file.path(RESULTS_BASE, "per_celltype"), recursive = FALSE
+))
+if (length(available_celltypes) > 0) {
+  # Build identity mapping from discovered cell types
+  CELLTYPE_MAP <- setNames(as.list(available_celltypes), available_celltypes)
+  message("Auto-discovered ", length(available_celltypes), " cell types from results")
+} else if (QUERY_CELLTYPE %in% c("HyMy_GMM", "IL1B_myeloid") && nchar(INPUT_PATH) == 0) {
+  # Legacy HyMy mapping
+  CELLTYPE_MAP <- list(
+    LEC = "LEC",
+    FRC = "FRC",
+    BEC = "BEC",
+    CD4_T_cells = c("Naive_CD4", "Tfh", "Treg"),
+    CD8_T_cells = c("Naive_CD8", "Activated_CD8", "Cytotoxic_CD8", "Tpex"),
+    gdT_cells = "gdT_cell",
+    Macrophages = "Macrophages",
+    Monocyte = "Monocyte",
+    Fibroblasts_mac = "Fibroblasts_mac",
+    cDC1 = "cDC1",
+    cDC2 = "cDC2",
+    mature_migDC = "mature_migDC",
+    B_cells = c("B_cell", "Follicular_B"),
+    Plasma_cell = "Plasma_cell"
+  )
+  message("Using legacy HyMy cell type mapping")
+} else {
+  CELLTYPE_MAP <- list()
+  message("WARNING: No cell type mapping available; will use raw annotation values")
+}
 
-# Color palette
-SAMPLE_COLORS <- c(
-  "m16" = "#E74C3C", "m17" = "#3498DB", "m18" = "#2ECC71", "m19" = "#9B59B6"
-)
+# Color palette — will be populated dynamically after data loading
+SAMPLE_COLORS <- NULL  # Set below after cell_data is available
 INDUCED_COLOR <- "#B2182B"   # red -- negative coefficient (higher near query)
 REPRESSED_COLOR <- "#2166AC" # blue -- positive coefficient (lower near query)
 NICHE_COLOR <- "#95A5A6"     # gray -- niche-driven (control)
@@ -66,179 +79,251 @@ NICHE_COLOR <- "#95A5A6"     # gray -- niche-driven (control)
 # Gene Themes
 # =============================================================================
 
-themes <- list(
-  cd8_exhaustion = list(
-    cell_type = "CD8_T_cells",
-    title = paste0("CD8 T Cell Exhaustion Near ", QUERY_LABEL),
-    bin_width = 10,
-    genes = list(
-      list(gene = "Havcr2", label = "Tim-3", direction = "induced"),
-      list(gene = "Pdcd1", label = "PD-1", direction = "induced"),
-      list(gene = "Entpd1", label = "CD39", direction = "induced"),
-      list(gene = "Tcf7", label = "TCF1 (stem-like)", direction = "repressed"),
-      list(gene = "Sell", label = "CD62L (naive)", direction = "repressed"),
-      list(gene = "Il7r", label = "CD127 (memory)", direction = "repressed")
-    ),
-    ncol = 3
-  ),
+# Check for user-provided themes file
+THEMES_FILE <- Sys.getenv("HYPOTHESIS_THEMES_FILE", unset = "")
+if (nchar(THEMES_FILE) > 0 && file.exists(THEMES_FILE)) {
+  # Load user themes from CSV
+  # Expected columns: gene, cell_type, label, direction, theme_name, theme_title (optional)
+  themes_data <- fread(THEMES_FILE)
+  message("Loading hypothesis themes from: ", THEMES_FILE)
+  required_cols <- c("gene", "cell_type", "label", "direction", "theme_name")
+  missing_cols <- setdiff(required_cols, names(themes_data))
+  if (length(missing_cols) > 0) {
+    stop("Themes file missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+  themes <- list()
+  for (tn in unique(themes_data$theme_name)) {
+    td <- themes_data[theme_name == tn]
+    theme_title <- if ("theme_title" %in% names(td)) td$theme_title[1] else paste0(tn, " Near ", QUERY_LABEL)
+    cts <- unique(td$cell_type)
+    is_multi <- length(cts) > 1
+    gene_list <- lapply(seq_len(nrow(td)), function(i) {
+      g <- list(gene = td$gene[i], label = td$label[i], direction = td$direction[i])
+      if (is_multi) g$cell_type <- td$cell_type[i]
+      g
+    })
+    themes[[tn]] <- list(
+      cell_type = if (is_multi) NULL else cts[1],
+      title = theme_title,
+      genes = gene_list,
+      ncol = min(3, nrow(td))
+    )
+  }
+  message("  Loaded ", length(themes), " themes from file")
 
-  cd4_foxp3 = list(
-    cell_type = "CD4_T_cells",
-    title = paste0("CD4 T Cell Foxp3 Induction Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Foxp3", label = "Foxp3 (Treg)", direction = "induced"),
-      list(gene = "Ctla4", label = "CTLA-4", direction = "induced"),
-      list(gene = "Entpd1", label = "CD39", direction = "induced"),
-      list(gene = "Tnfrsf9", label = "4-1BB", direction = "induced"),
-      list(gene = "Themis", label = "Themis (naive)", direction = "repressed"),
-      list(gene = "Trbc2", label = "TCR-beta (naive)", direction = "repressed")
+} else if (QUERY_CELLTYPE %in% c("HyMy_GMM", "IL1B_myeloid") && nchar(INPUT_PATH) == 0) {
+  # Legacy HyMy themes (curated list)
+  themes <- list(
+    cd8_exhaustion = list(
+      cell_type = "CD8_T_cells",
+      title = paste0("CD8 T Cell Exhaustion Near ", QUERY_LABEL),
+      bin_width = 10,
+      genes = list(
+        list(gene = "Havcr2", label = "Tim-3", direction = "induced"),
+        list(gene = "Pdcd1", label = "PD-1", direction = "induced"),
+        list(gene = "Entpd1", label = "CD39", direction = "induced"),
+        list(gene = "Tcf7", label = "TCF1 (stem-like)", direction = "repressed"),
+        list(gene = "Sell", label = "CD62L (naive)", direction = "repressed"),
+        list(gene = "Il7r", label = "CD127 (memory)", direction = "repressed")
+      ),
+      ncol = 3
     ),
-    ncol = 3
-  ),
 
-  lec_remodeling = list(
-    cell_type = "LEC",
-    title = paste0("LEC Stromal Remodeling Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Spon1", label = "Spondin-1 (ECM)", direction = "induced"),
-      list(gene = "Hspg2", label = "Perlecan (ECM)", direction = "induced"),
-      list(gene = "Il6ra", label = "IL-6Rα", direction = "repressed"),
-      list(gene = "Sesn1", label = "Sestrin-1 (stress)", direction = "repressed"),
-      list(gene = "Ifngr1", label = "IFNγR1", direction = "repressed"),
-      list(gene = "Cd27", label = "CD27", direction = "repressed")
+    cd4_foxp3 = list(
+      cell_type = "CD4_T_cells",
+      title = paste0("CD4 T Cell Foxp3 Induction Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Foxp3", label = "Foxp3 (Treg)", direction = "induced"),
+        list(gene = "Ctla4", label = "CTLA-4", direction = "induced"),
+        list(gene = "Entpd1", label = "CD39", direction = "induced"),
+        list(gene = "Tnfrsf9", label = "4-1BB", direction = "induced"),
+        list(gene = "Themis", label = "Themis (naive)", direction = "repressed"),
+        list(gene = "Trbc2", label = "TCR-beta (naive)", direction = "repressed")
+      ),
+      ncol = 3
     ),
-    ncol = 3
-  ),
 
-  frc_remodeling = list(
-    cell_type = "FRC",
-    title = paste0("FRC Inflammatory Remodeling Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Cxcl5", label = "CXCL5 (query-specific)", direction = "induced"),
-      list(gene = "Cebpb", label = "C/EBPβ (query-specific)", direction = "induced"),
-      list(gene = "Sod2", label = "SOD2 (query-specific)", direction = "induced"),
-      list(gene = "Cxcl10", label = "CXCL10 (query-specific)", direction = "induced"),
-      list(gene = "Col4a1", label = "Col4a1 (niche-driven)", direction = "niche"),
-      list(gene = "Col1a2", label = "Col1a2 (niche-driven)", direction = "niche")
+    lec_remodeling = list(
+      cell_type = "LEC",
+      title = paste0("LEC Stromal Remodeling Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Spon1", label = "Spondin-1 (ECM)", direction = "induced"),
+        list(gene = "Hspg2", label = "Perlecan (ECM)", direction = "induced"),
+        list(gene = "Il6ra", label = "IL-6Rα", direction = "repressed"),
+        list(gene = "Sesn1", label = "Sestrin-1 (stress)", direction = "repressed"),
+        list(gene = "Ifngr1", label = "IFNγR1", direction = "repressed"),
+        list(gene = "Cd27", label = "CD27", direction = "repressed")
+      ),
+      ncol = 3
     ),
-    ncol = 3
-  ),
 
-  # --- Multi-cell-type themes (per-gene cell_type override) ---
-
-  chemokine_recruitment = list(
-    cell_type = NULL,  # multi-cell-type — each gene specifies its own
-    title = paste0("Chemokine & Recruitment Signaling Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Ccr1",   label = "CCR1 (CD8 T)",   direction = "induced", cell_type = "CD8_T_cells"),
-      list(gene = "Ccr5",   label = "CCR5 (CD4 T)",   direction = "induced", cell_type = "CD4_T_cells"),
-      list(gene = "Cxcl10", label = "CXCL10 (FRC)",   direction = "induced", cell_type = "FRC"),
-      list(gene = "Cxcl5",  label = "CXCL5 (FRC)",    direction = "induced", cell_type = "FRC"),
-      list(gene = "Ccl2",   label = "CCL2 (cDC2)",    direction = "induced", cell_type = "cDC2"),
-      list(gene = "Cxcl9",  label = "CXCL9 (CD8 T)",  direction = "induced", cell_type = "CD8_T_cells")
+    frc_remodeling = list(
+      cell_type = "FRC",
+      title = paste0("FRC Inflammatory Remodeling Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Cxcl5", label = "CXCL5 (query-specific)", direction = "induced"),
+        list(gene = "Cebpb", label = "C/EBPβ (query-specific)", direction = "induced"),
+        list(gene = "Sod2", label = "SOD2 (query-specific)", direction = "induced"),
+        list(gene = "Cxcl10", label = "CXCL10 (query-specific)", direction = "induced"),
+        list(gene = "Col4a1", label = "Col4a1 (niche-driven)", direction = "niche"),
+        list(gene = "Col1a2", label = "Col1a2 (niche-driven)", direction = "niche")
+      ),
+      ncol = 3
     ),
-    ncol = 3
-  ),
 
-  inflammation_balance = list(
-    cell_type = NULL,  # multi-cell-type
-    title = paste0("Inflammation & Anti-Inflammation Balance Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Il1b",     label = "IL-1\u03b2 (CD4 T)",   direction = "induced",  cell_type = "CD4_T_cells"),
-      list(gene = "Tnfrsf9",  label = "4-1BB (CD4 T)",        direction = "induced",  cell_type = "CD4_T_cells"),
-      list(gene = "Il1rn",    label = "IL-1RA (Plasma)",       direction = "induced",  cell_type = "Plasma_cell"),
-      list(gene = "Il10",     label = "IL-10 (Plasma)",        direction = "induced",  cell_type = "Plasma_cell"),
-      list(gene = "Tgfbr1",   label = "TGF\u03b2R1 (FRC)",    direction = "induced",  cell_type = "FRC"),
-      list(gene = "Tnfrsf1b", label = "TNFR2 (Mono)",         direction = "repressed", cell_type = "Monocyte")
-    ),
-    ncol = 3
-  ),
+    # --- Multi-cell-type themes (per-gene cell_type override) ---
 
-  bec_vascular_activation = list(
-    cell_type = "BEC",
-    title = paste0("BEC Vascular Activation Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Selp",   label = "P-selectin",       direction = "induced"),
-      list(gene = "Sele",   label = "E-selectin",       direction = "induced"),
-      list(gene = "Tek",    label = "Tie2",             direction = "induced"),
-      list(gene = "Plvap",  label = "PLVAP",            direction = "induced"),
-      list(gene = "Ackr1",  label = "ACKR1/DARC",      direction = "induced"),
-      list(gene = "Pecam1", label = "CD31",             direction = "repressed")
+    chemokine_recruitment = list(
+      cell_type = NULL,  # multi-cell-type — each gene specifies its own
+      title = paste0("Chemokine & Recruitment Signaling Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Ccr1",   label = "CCR1 (CD8 T)",   direction = "induced", cell_type = "CD8_T_cells"),
+        list(gene = "Ccr5",   label = "CCR5 (CD4 T)",   direction = "induced", cell_type = "CD4_T_cells"),
+        list(gene = "Cxcl10", label = "CXCL10 (FRC)",   direction = "induced", cell_type = "FRC"),
+        list(gene = "Cxcl5",  label = "CXCL5 (FRC)",    direction = "induced", cell_type = "FRC"),
+        list(gene = "Ccl2",   label = "CCL2 (cDC2)",    direction = "induced", cell_type = "cDC2"),
+        list(gene = "Cxcl9",  label = "CXCL9 (CD8 T)",  direction = "induced", cell_type = "CD8_T_cells")
+      ),
+      ncol = 3
     ),
-    ncol = 3
-  ),
 
-  csf3_il33_csf1_stromal = list(
-    cell_type = NULL,  # multi-cell-type — FRC and LEC
-    title = paste0("Stromal Ligands (CSF3, IL-33, CSF1) Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Csf3", label = "CSF3 (FRC)",  direction = "induced", cell_type = "FRC"),
-      list(gene = "Csf3", label = "CSF3 (LEC)",  direction = "induced", cell_type = "LEC"),
-      list(gene = "Il33", label = "IL-33 (FRC)",  direction = "induced", cell_type = "FRC"),
-      list(gene = "Il33", label = "IL-33 (LEC)",  direction = "induced", cell_type = "LEC"),
-      list(gene = "Csf1", label = "CSF1 (FRC)",   direction = "induced", cell_type = "FRC"),
-      list(gene = "Csf1", label = "CSF1 (LEC)",   direction = "induced", cell_type = "LEC")
+    inflammation_balance = list(
+      cell_type = NULL,  # multi-cell-type
+      title = paste0("Inflammation & Anti-Inflammation Balance Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Il1b",     label = "IL-1\u03b2 (CD4 T)",   direction = "induced",  cell_type = "CD4_T_cells"),
+        list(gene = "Tnfrsf9",  label = "4-1BB (CD4 T)",        direction = "induced",  cell_type = "CD4_T_cells"),
+        list(gene = "Il1rn",    label = "IL-1RA (Plasma)",       direction = "induced",  cell_type = "Plasma_cell"),
+        list(gene = "Il10",     label = "IL-10 (Plasma)",        direction = "induced",  cell_type = "Plasma_cell"),
+        list(gene = "Tgfbr1",   label = "TGF\u03b2R1 (FRC)",    direction = "induced",  cell_type = "FRC"),
+        list(gene = "Tnfrsf1b", label = "TNFR2 (Mono)",         direction = "repressed", cell_type = "Monocyte")
+      ),
+      ncol = 3
     ),
-    ncol = 3
-  ),
 
-  lec_emt = list(
-    cell_type = "LEC",
-    title = paste0("Epithelial\u2013Mesenchymal Transition (EndMT) in LEC Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Ccn1",     label = "CCN1/CYR61",      direction = "induced"),
-      list(gene = "Cxcl12",   label = "CXCL12/SDF-1",    direction = "induced"),
-      list(gene = "Serpine1",  label = "Serpine1/PAI-1",   direction = "induced"),
-      list(gene = "Thbs1",    label = "Thrombospondin-1", direction = "induced"),
-      list(gene = "Vegfc",    label = "VEGF-C",           direction = "induced"),
-      list(gene = "Spp1",     label = "Osteopontin",      direction = "induced")
+    bec_vascular_activation = list(
+      cell_type = "BEC",
+      title = paste0("BEC Vascular Activation Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Selp",   label = "P-selectin",       direction = "induced"),
+        list(gene = "Sele",   label = "E-selectin",       direction = "induced"),
+        list(gene = "Tek",    label = "Tie2",             direction = "induced"),
+        list(gene = "Plvap",  label = "PLVAP",            direction = "induced"),
+        list(gene = "Ackr1",  label = "ACKR1/DARC",      direction = "induced"),
+        list(gene = "Pecam1", label = "CD31",             direction = "repressed")
+      ),
+      ncol = 3
     ),
-    ncol = 3
-  ),
 
-  lec_il6_jak_stat3 = list(
-    cell_type = "LEC",
-    title = paste0("IL-6/JAK/STAT3 Signaling in LEC Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Socs3",  label = "SOCS3",     direction = "induced"),
-      list(gene = "Pim1",   label = "PIM1",      direction = "induced"),
-      list(gene = "Osmr",   label = "OSMR",      direction = "induced"),
-      list(gene = "Hmox1",  label = "HO-1",      direction = "induced"),
-      list(gene = "Il7",    label = "IL-7",       direction = "induced"),
-      list(gene = "Tlr2",   label = "TLR2",      direction = "induced")
+    csf3_il33_csf1_stromal = list(
+      cell_type = NULL,  # multi-cell-type — FRC and LEC
+      title = paste0("Stromal Ligands (CSF3, IL-33, CSF1) Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Csf3", label = "CSF3 (FRC)",  direction = "induced", cell_type = "FRC"),
+        list(gene = "Csf3", label = "CSF3 (LEC)",  direction = "induced", cell_type = "LEC"),
+        list(gene = "Il33", label = "IL-33 (FRC)",  direction = "induced", cell_type = "FRC"),
+        list(gene = "Il33", label = "IL-33 (LEC)",  direction = "induced", cell_type = "LEC"),
+        list(gene = "Csf1", label = "CSF1 (FRC)",   direction = "induced", cell_type = "FRC"),
+        list(gene = "Csf1", label = "CSF1 (LEC)",   direction = "induced", cell_type = "LEC")
+      ),
+      ncol = 3
     ),
-    ncol = 3
-  ),
 
-  frc_inflammation = list(
-    cell_type = "FRC",
-    title = paste0("FRC Inflammatory Signaling Near ", QUERY_LABEL),
-    genes = list(
-      list(gene = "Cxcl1",    label = "CXCL1",          direction = "induced"),
-      list(gene = "Ccl7",     label = "CCL7",            direction = "induced"),
-      list(gene = "Tnfsf13b", label = "BAFF/BLyS",      direction = "induced"),
-      list(gene = "Il1rap",   label = "IL-1RAcP",        direction = "induced"),
-      list(gene = "Il1rn",    label = "IL-1RA",          direction = "induced"),
-      list(gene = "C1qb",     label = "C1qB (Complement)", direction = "induced")
+    lec_emt = list(
+      cell_type = "LEC",
+      title = paste0("Epithelial\u2013Mesenchymal Transition (EndMT) in LEC Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Ccn1",     label = "CCN1/CYR61",      direction = "induced"),
+        list(gene = "Cxcl12",   label = "CXCL12/SDF-1",    direction = "induced"),
+        list(gene = "Serpine1",  label = "Serpine1/PAI-1",   direction = "induced"),
+        list(gene = "Thbs1",    label = "Thrombospondin-1", direction = "induced"),
+        list(gene = "Vegfc",    label = "VEGF-C",           direction = "induced"),
+        list(gene = "Spp1",     label = "Osteopontin",      direction = "induced")
+      ),
+      ncol = 3
     ),
-    ncol = 3
-  ),
 
-  cd8_proliferation = list(
-    cell_type = "CD8_T_cells",
-    title = paste0("CD8 T Cell Proliferation Near ", QUERY_LABEL),
-    bin_width = 10,
-    genes = list(
-      list(gene = "Mki67",  label = "Ki-67",       direction = "induced"),
-      list(gene = "Top2a",  label = "TOP2A",       direction = "induced"),
-      list(gene = "Cdk1",   label = "CDK1",        direction = "induced"),
-      list(gene = "Ccna2",  label = "Cyclin A2",   direction = "induced"),
-      list(gene = "Foxm1",  label = "FOXM1",       direction = "induced"),
-      list(gene = "Birc5",  label = "Survivin",    direction = "induced")
+    lec_il6_jak_stat3 = list(
+      cell_type = "LEC",
+      title = paste0("IL-6/JAK/STAT3 Signaling in LEC Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Socs3",  label = "SOCS3",     direction = "induced"),
+        list(gene = "Pim1",   label = "PIM1",      direction = "induced"),
+        list(gene = "Osmr",   label = "OSMR",      direction = "induced"),
+        list(gene = "Hmox1",  label = "HO-1",      direction = "induced"),
+        list(gene = "Il7",    label = "IL-7",       direction = "induced"),
+        list(gene = "Tlr2",   label = "TLR2",      direction = "induced")
+      ),
+      ncol = 3
     ),
-    ncol = 3
+
+    frc_inflammation = list(
+      cell_type = "FRC",
+      title = paste0("FRC Inflammatory Signaling Near ", QUERY_LABEL),
+      genes = list(
+        list(gene = "Cxcl1",    label = "CXCL1",          direction = "induced"),
+        list(gene = "Ccl7",     label = "CCL7",            direction = "induced"),
+        list(gene = "Tnfsf13b", label = "BAFF/BLyS",      direction = "induced"),
+        list(gene = "Il1rap",   label = "IL-1RAcP",        direction = "induced"),
+        list(gene = "Il1rn",    label = "IL-1RA",          direction = "induced"),
+        list(gene = "C1qb",     label = "C1qB (Complement)", direction = "induced")
+      ),
+      ncol = 3
+    ),
+
+    cd8_proliferation = list(
+      cell_type = "CD8_T_cells",
+      title = paste0("CD8 T Cell Proliferation Near ", QUERY_LABEL),
+      bin_width = 10,
+      genes = list(
+        list(gene = "Mki67",  label = "Ki-67",       direction = "induced"),
+        list(gene = "Top2a",  label = "TOP2A",       direction = "induced"),
+        list(gene = "Cdk1",   label = "CDK1",        direction = "induced"),
+        list(gene = "Ccna2",  label = "Cyclin A2",   direction = "induced"),
+        list(gene = "Foxm1",  label = "FOXM1",       direction = "induced"),
+        list(gene = "Birc5",  label = "Survivin",    direction = "induced")
+      ),
+      ncol = 3
+    )
   )
-)
+  message("Using legacy HyMy hypothesis themes")
+
+} else {
+  # Auto-generate from results: top 3 induced + 3 repressed per cell type
+  message("Auto-generating hypothesis themes from top genes...")
+  results_path <- file.path(RESULTS_BASE, "summary", "all_genes_results.csv")
+  if (file.exists(results_path)) {
+    auto_results <- fread(results_path)
+    themes <- list()
+    coef_col_auto <- if ("median_coef" %in% names(auto_results)) "median_coef" else "combined_coef"
+    fdr_col_auto <- if ("fisher_fdr" %in% names(auto_results)) "fisher_fdr" else "fdr"
+    sig_auto <- auto_results[get(fdr_col_auto) < 0.05]
+    for (ct in unique(sig_auto$cell_type)) {
+      ct_data <- sig_auto[cell_type == ct]
+      induced <- ct_data[get(coef_col_auto) < 0][order(get(coef_col_auto))][1:min(3, .N)]
+      repressed <- ct_data[get(coef_col_auto) > 0][order(-get(coef_col_auto))][1:min(3, .N)]
+      top_genes <- rbind(induced, repressed)
+      top_genes <- top_genes[!is.na(gene)]
+      if (nrow(top_genes) < 2) next
+      gene_list <- lapply(seq_len(nrow(top_genes)), function(i) {
+        dir <- if (top_genes[[coef_col_auto]][i] < 0) "induced" else "repressed"
+        list(gene = top_genes$gene[i], label = top_genes$gene[i], direction = dir)
+      })
+      theme_name <- gsub("[^a-zA-Z0-9_]", "_", tolower(ct))
+      themes[[theme_name]] <- list(
+        cell_type = ct,
+        title = paste0(ct, " Top Genes Near ", QUERY_LABEL),
+        genes = gene_list,
+        ncol = 3
+      )
+    }
+    message("  Generated ", length(themes), " auto-themes from results")
+  } else {
+    message("WARNING: No meta-analysis results found for auto-theme generation")
+    message("  Expected: ", results_path)
+    themes <- list()
+  }
+}
 
 # =============================================================================
 # Load Data
@@ -258,36 +343,60 @@ CELLTYPE_COL <- CELLTYPE_COLUMN
 # Convert metadata to data.table
 cell_data <- as.data.table(obj@meta.data, keep.rownames = "barcode")
 
-# Add condition from 'group' column
-cell_data[, condition := group]
+# Condition filtering (generalized)
+if (nchar(CONDITION_COL) > 0 && CONDITION_COL %in% names(cell_data)) {
+  cell_data[, condition := get(CONDITION_COL)]
+} else if ("condition" %in% names(cell_data)) {
+  # use existing
+} else if ("group" %in% names(cell_data)) {
+  cell_data[, condition := group]
+} else {
+  cell_data[, condition := "all"]
+}
+
+# Derive condition label for output
+condition_label <- if (nchar(CONDITION_VAL) > 0) CONDITION_VAL else "all conditions"
 
 message("Total cells: ", nrow(cell_data))
-message("TDLN cells: ", sum(cell_data$condition == "TDLN"))
+if (nchar(CONDITION_VAL) > 0) {
+  message(condition_label, " cells: ", sum(cell_data$condition == CONDITION_VAL))
+}
+
+# Dynamic sample colors (populated from data)
+sample_names <- sort(unique(cell_data[[SAMPLE_COL]]))
+SAMPLE_COLORS <- setNames(scales::hue_pal()(length(sample_names)), sample_names)
 
 # =============================================================================
-# Calculate Distances to Query Cell Type (TDLN only)
+# Calculate Distances to Query Cell Type
 # =============================================================================
 
 message("\n", strrep("=", 70))
-message(paste0("Calculating Distances to ", QUERY_LABEL, " (TDLN only)"))
+message(paste0("Calculating Distances to ", QUERY_LABEL))
 message(strrep("=", 70))
 
-# Filter to TDLN
-tdln_data <- cell_data[condition == "TDLN"]
+# Filter by condition if specified
+if (nchar(CONDITION_VAL) > 0) {
+  tdln_data <- cell_data[condition == CONDITION_VAL]
+  message("Filtered to ", CONDITION_VAL, ": ", nrow(tdln_data), " cells")
+} else {
+  tdln_data <- copy(cell_data)
+  message("Using all cells (no condition filter): ", nrow(tdln_data), " cells")
+}
 
-# Get spatial coordinates
-coords_all <- as.matrix(tdln_data[, .(spatial_x, spatial_y)])
+# Get spatial coordinates (dynamic)
+coord_cols <- get_coord_columns(tdln_data)
+coords_all <- as.matrix(tdln_data[, ..coord_cols])
 
 # Get query cell coordinates
 query_mask <- tdln_data[[CELLTYPE_COL]] == QUERY_CELLTYPE
 query_coords <- coords_all[query_mask, , drop = FALSE]
-message("Query cells (", QUERY_CELLTYPE, ") in TDLN: ", sum(query_mask))
+message("Query cells (", QUERY_CELLTYPE, "): ", sum(query_mask))
 
 # Calculate nearest neighbor distances
 nn_result <- nn2(query_coords, coords_all, k = 1)
 tdln_data[, dist_to_query := pmin(as.vector(nn_result$nn.dists), MAX_DISTANCE_UM)]
 
-message("Distance distribution (TDLN):")
+message("Distance distribution:")
 message("  Median: ", round(median(tdln_data$dist_to_query), 1), " µm")
 message("  Mean: ", round(mean(tdln_data$dist_to_query), 1), " µm")
 
@@ -295,7 +404,7 @@ message("  Mean: ", round(mean(tdln_data$dist_to_query), 1), " µm")
 # Load Meta-Analysis Results (for annotation)
 # =============================================================================
 
-results_path <- file.path(OUTPUT_ROOT, ANALYSIS_NAME, "summary",
+results_path <- file.path(RESULTS_BASE, "summary",
                           "all_genes_results.csv")
 if (file.exists(results_path)) {
   all_results <- fread(results_path)
@@ -311,7 +420,7 @@ if (file.exists(results_path)) {
 
 #' Create a single decay plot for one gene in one cell type
 #'
-#' @param tdln_dt data.table of TDLN cells with dist_to_query
+#' @param tdln_dt data.table of filtered cells with dist_to_query
 #' @param obj Seurat object (for expression data)
 #' @param cell_type Cell type to filter (from CELLTYPE_COL)
 #' @param gene Gene name
@@ -352,7 +461,7 @@ make_decay_plot <- function(tdln_dt, obj, ct_name, g_name, label, direction,
   sample_bin_stats <- target_cells[!is.na(dist_mid), .(
     prop_expressing = mean(expressing),
     n_cells = .N
-  ), by = .(sample_id, dist_mid)]
+  ), by = c(SAMPLE_COL, "dist_mid")]
 
   # Filter bins with too few cells
   sample_bin_stats <- sample_bin_stats[n_cells >= MIN_CELLS_PER_BIN]
@@ -377,14 +486,19 @@ make_decay_plot <- function(tdln_dt, obj, ct_name, g_name, label, direction,
                        niche = NICHE_COLOR,
                        INDUCED_COLOR)
 
-  # Short sample labels (extract mouse ID)
-  sample_bin_stats[, sample_short := sub(".*__(m[0-9]+)$", "\\1", sample_id)]
+  # Short sample labels (use SAMPLE_COL; extract short ID if possible)
+  sample_bin_stats[, sample_short := get(SAMPLE_COL)]
+  # Try to extract a short suffix (e.g., m16 from TDLN__m16)
+  short_candidates <- sub(".*[_/]", "", sample_bin_stats$sample_short)
+  if (max(nchar(short_candidates)) <= 10) {
+    sample_bin_stats[, sample_short := short_candidates]
+  }
 
   # Build plot
   p <- ggplot() +
     # Per-sample lines (thin, semi-transparent)
     geom_line(data = sample_bin_stats,
-              aes(x = dist_mid, y = prop_expressing, group = sample_id,
+              aes(x = dist_mid, y = prop_expressing, group = .data[[SAMPLE_COL]],
                   color = sample_short),
               linewidth = 0.4, alpha = 0.5) +
     # Pooled mean with SE ribbon
@@ -488,12 +602,16 @@ for (theme_name in names(themes)) {
     theme(legend.position = "bottom") +
     guides(color = guide_legend(nrow = 1))
 
+  # Dynamic sample count
+  n_samples <- length(unique(tdln_data[[SAMPLE_COL]]))
+
   # Subtitle: show cell type for single-ct themes, generic for multi-ct
   if (is_multi_ct) {
-    subtitle_text <- "Multiple cell types  |  N = 4 TDLN samples  |  Thin lines = per-sample, thick = pooled mean \u00b1 95% CI"
+    subtitle_text <- sprintf("Multiple cell types  |  N = %d samples (%s)  |  Thin lines = per-sample, thick = pooled mean \u00b1 95%% CI",
+                             n_samples, condition_label)
   } else {
-    subtitle_text <- sprintf("%s  |  N = 4 TDLN samples  |  Thin lines = per-sample, thick = pooled mean \u00b1 95%% CI",
-                             theme$cell_type)
+    subtitle_text <- sprintf("%s  |  N = %d samples (%s)  |  Thin lines = per-sample, thick = pooled mean \u00b1 95%% CI",
+                             theme$cell_type, n_samples, condition_label)
   }
 
   # Combine plots
@@ -521,7 +639,12 @@ for (theme_name in names(themes)) {
 # Bonus: Combined Foxp3-Only Highlight Panel
 # =============================================================================
 
-message("\n--- Foxp3 Highlight Panel ---")
+# Foxp3 highlight panel (only for HyMy legacy mode or if Foxp3 is available)
+if (QUERY_CELLTYPE %in% c("HyMy_GMM", "IL1B_myeloid") && nchar(INPUT_PATH) == 0) {
+  message("\n--- Foxp3 Highlight Panel ---")
+} else {
+  message("\n--- Foxp3 Highlight Panel (skipping for non-legacy mode) ---")
+}
 
 foxp3_plot <- make_decay_plot(
   tdln_dt = tdln_data,

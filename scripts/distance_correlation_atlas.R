@@ -59,6 +59,7 @@ source(file.path(script_dir, "utils.R"))
 # =============================================================================
 
 # Inherited from config.R (via utils.R): QUERY_CELLTYPE, CELLTYPE_COL, OUTPUT_SUFFIX, QUERY_LABEL, ANALYSIS_NAME
+CONTROL_CELLTYPE <- Sys.getenv("CONTROL_CELLTYPE", unset = "Monocyte")
 FDR_THRESHOLD <- 0.05
 CONTAMINATION_THRESHOLD <- 4  # Genes significant in >=N cell types flagged as potential contamination
 TOP_PER_CELLTYPE <- 5         # Top genes per cell type in dot plot
@@ -85,7 +86,9 @@ CLASSIFICATION_COLORS <- setNames(
 # Query signature genes for leakage check (E3) — inherited from utils.R
 HYMY_SIGNATURE_GENES <- QUERY_SIGNATURE
 
-# Known ligand-receptor pairs for E1 highlighting
+# Known ligand-receptor pairs for E1 highlighting (optional defaults).
+# These are common mouse L-R pairs; they will be silently skipped if not
+# present in the user's data (e.g., different organism or gene panel).
 LR_PAIRS <- list(
   c("Csf3", "Csf3r"),
   c("Il33", "Il1rl1"),
@@ -125,9 +128,10 @@ message("Cell types: ", paste(unique(all_results$cell_type), collapse = ", "))
 n_ct <- uniqueN(all_results$cell_type)
 
 # Load or compute median_coef per gene × cell type.
-# Rationale: with N=4 mice, the meta-analysis TE.random weights by precision
-# (cell count), which can let one cell-rich mouse dominate the ranking.
-# The median treats each mouse as an equally weighted independent test set.
+# Rationale: with small N (e.g. 4 replicates), the meta-analysis TE.random
+# weights by precision (cell count), which can let one cell-rich sample
+# dominate the ranking. The median treats each sample as an equally weighted
+# independent test set.
 if ("median_coef" %in% names(all_results)) {
   message("median_coef already in meta_analysis_results.csv — using it directly")
 } else {
@@ -754,7 +758,7 @@ if ("i2" %in% names(all_results)) {
       facet_wrap(~ cell_type, scales = "free_y", ncol = 4) +
       labs(
         title = expression(I^2 ~ "Heterogeneity of Significant Spatial Gradients"),
-        subtitle = paste0("Higher I² = inconsistent effects across N=4 TDLN samples | ",
+        subtitle = paste0("Higher I\u00B2 = inconsistent effects across samples | ",
                           "Only FDR < ", FDR_THRESHOLD, " genes shown"),
         x = expression(I^2 ~ "(% variation due to between-sample heterogeneity)"),
         y = "Number of genes"
@@ -807,7 +811,10 @@ if (file.exists(sample_coef_file)) {
     dt
   }), fill = TRUE)
 
-  if (nrow(all_sample_coefs) > 0 && "sample_id" %in% names(all_sample_coefs)) {
+  # Detect sample column in coef_per_sample.csv (may be sample_id or SAMPLE_COL name)
+  SAMPLE_COL_CSV <- if (SAMPLE_COL %in% names(all_sample_coefs)) SAMPLE_COL else if ("sample_id" %in% names(all_sample_coefs)) "sample_id" else NULL
+
+  if (nrow(all_sample_coefs) > 0 && !is.null(SAMPLE_COL_CSV)) {
     # For top specific genes, show coefficient pattern across samples
     top_genes_d2 <- specific_sig[order(-abs(get(COEF_COL)))][1:min(30, .N)]$gene
 
@@ -815,7 +822,7 @@ if (file.exists(sample_coef_file)) {
 
     if (nrow(d2_data) > 10) {
       # Build matrix: genes x samples (for first cell type with most genes)
-      d2_wide <- dcast(d2_data, gene + cell_type ~ sample_id, value.var = "coef", fill = NA)
+      d2_wide <- dcast(d2_data, as.formula(paste("gene + cell_type ~", SAMPLE_COL_CSV)), value.var = "coef", fill = NA)
 
       # Heatmap for each cell type separately
       for (ct in unique(d2_wide$cell_type)[1:min(3, uniqueN(d2_wide$cell_type))]) {
@@ -857,7 +864,7 @@ if (file.exists(sample_coef_file)) {
       message("  [SKIP] Too few data points for sample contribution heatmap")
     }
   } else {
-    message("  [SKIP] Sample coefficient data missing sample_id column")
+    message("  [SKIP] Sample coefficient data missing sample ID column")
   }
 } else {
   message("  [SKIP] Per-sample coefficient files not found")
@@ -949,7 +956,7 @@ hymy_sig_results <- all_results[gene %in% HYMY_SIGNATURE_GENES]
 if (nrow(hymy_sig_results) > 0) {
   # Exclude query cell type itself if present
   # Exclude the query cell type itself (and common myeloid aliases) from leakage check
-  exclude_pattern <- paste(c(QUERY_CELLTYPE, "Monocyte"), collapse = "|")
+  exclude_pattern <- paste(c(QUERY_CELLTYPE, CONTROL_CELLTYPE), collapse = "|")
   hymy_sig_results <- hymy_sig_results[!grepl(exclude_pattern, cell_type, ignore.case = TRUE)]
 
   if (nrow(hymy_sig_results) > 0) {
@@ -1029,7 +1036,7 @@ if (HAS_STAGE2) {
     scale_fill_manual(values = CLASSIFICATION_COLORS, name = "Classification") +
     labs(
       title = paste0("Stage 2: ", QUERY_LABEL, "-Specific vs Niche-Driven Gene Classification"),
-      subtitle = paste0(query_specific_label, " = gradient persists after controlling for Monocyte distance\n",
+      subtitle = paste0(query_specific_label, " = gradient persists after controlling for ", CONTROL_CELLTYPE, " distance\n",
                         "niche_driven = gradient explained by tissue compartment, not ", QUERY_LABEL, " specifically"),
       x = NULL,
       y = "Number of Stage 1 significant genes"
@@ -1066,10 +1073,10 @@ if (HAS_STAGE2) {
       facet_wrap(~ cell_type, ncol = 4) +
       labs(
         title = "Stage 1 vs Stage 2 Coefficients",
-        subtitle = paste0("Diagonal = no change after Monocyte control | ",
+        subtitle = paste0("Diagonal = no change after ", CONTROL_CELLTYPE, " control | ",
                           "Points below diagonal = ", QUERY_LABEL, " effect attenuated"),
         x = paste0("Stage 1 coefficient (univariate: dist_to_", QUERY_LABEL, " only)"),
-        y = paste0("Stage 2 coefficient (bivariate: dist_to_", QUERY_LABEL, " + dist_to_Monocyte)")
+        y = paste0("Stage 2 coefficient (bivariate: dist_to_", QUERY_LABEL, " + dist_to_", CONTROL_CELLTYPE, ")")
       ) +
       theme_bw(base_size = 9) +
       theme(
@@ -1108,7 +1115,7 @@ if (HAS_STAGE2) {
 # Panel P12: Sign Consistency Distribution (v2 diagnostic)
 # =============================================================================
 # Stacked proportional bar per cell type: fraction of significant genes by
-# sign agreement across TDLN samples
+# sign agreement across samples
 
 if ("sign_consistency" %in% names(all_results)) {
   message("\nPanel P12: Sign consistency distribution...")
@@ -1719,10 +1726,9 @@ if (HAS_FGSEA) {
 
       nes_lim <- max(abs(dotplot_custom$NES), na.rm = TRUE)
 
-      # Order cell types: alphabetical but B_cells and Plasma_cell at the end
+      # Order cell types alphabetically
       all_ct <- sort(unique(as.character(dotplot_custom$cell_type)))
-      end_ct <- c("B_cells", "Plasma_cell")
-      ct_order <- c(setdiff(all_ct, end_ct), intersect(end_ct, all_ct))
+      ct_order <- all_ct
       dotplot_custom[, cell_type := factor(cell_type, levels = ct_order)]
 
       p_custom_dot <- ggplot(dotplot_custom[is_sig == TRUE],
@@ -1766,9 +1772,12 @@ if (HAS_FGSEA) {
     }
 
     # --- Panel 10b: Leading Edge Heatmap for Key Cell Types ---
-    # For CD8_T_cells, CD4_T_cells, FRC, LEC, BEC: show leading edge genes
+    # For key cell types: show leading edge genes
     # of significant modules as a heatmap of gradient scores.
-    LEADING_EDGE_CELLTYPES <- c("CD8_T_cells", "CD4_T_cells", "FRC", "LEC", "BEC")
+    # Use top 5 cell types by number of significant modules, or all if fewer
+    le_candidates <- custom_fgsea_all[padj < 0.05, .(n_sig = .N), by = cell_type][order(-n_sig)]
+    LEADING_EDGE_CELLTYPES <- head(le_candidates$cell_type, 5)
+    if (length(LEADING_EDGE_CELLTYPES) == 0) LEADING_EDGE_CELLTYPES <- unique(custom_fgsea_all$cell_type)[1:min(5, uniqueN(custom_fgsea_all$cell_type))]
     message("\nPanel 10b: Leading edge heatmap for key cell types...")
 
     for (ct in LEADING_EDGE_CELLTYPES) {
@@ -1909,7 +1918,7 @@ if (HAS_FGSEA) {
         ) +
         labs(
           title = "Leading Edge Genes Across Key Cell Types",
-          subtitle = paste0("Significant custom modules (padj < 0.05) in CD8, CD4, FRC, LEC, BEC\n",
+          subtitle = paste0("Significant custom modules (padj < 0.05) in top cell types\n",
                             "Red = induced near ", QUERY_LABEL,
                             " | * = gene individually FDR < 0.05"),
           x = NULL, y = NULL
@@ -1963,11 +1972,17 @@ if (HAS_FGSEA) {
 # Summary Panel: Top Genes Dot Plot (key cell types)
 # =============================================================================
 # Shows the top non-contamination, non-query-signature genes for
-# CD8_T_cells, CD4_T_cells, FRC, LEC, and BEC.
+# the cell types with the most specific significant genes.
 
 message("\nSummary panel: Top genes dot plot for key cell types...")
 
-SUMMARY_CELLTYPES <- c("CD8_T_cells", "CD4_T_cells", "FRC", "LEC", "BEC")
+# Use top cell types by number of specific significant genes, or all available
+SUMMARY_CELLTYPES_CANDIDATES <- sig_results[
+  specificity %in% c("specific", "moderate"),
+  .(n_sig = .N), by = cell_type
+][order(-n_sig)]$cell_type
+SUMMARY_CELLTYPES <- head(SUMMARY_CELLTYPES_CANDIDATES, 5)
+if (length(SUMMARY_CELLTYPES) == 0) SUMMARY_CELLTYPES <- head(as.character(ct_order), 5)
 TOP_N_SUMMARY <- 10  # genes per cell type
 
 # Exclude contamination and query signature genes

@@ -1,80 +1,81 @@
 #!/bin/bash
-#SBATCH --job-name=grad_lr
-#SBATCH --output=/nobackup/lab_maier/Projects/mXenium/CMM/results/logs/grad_lr_%A_%a.out
-#SBATCH --error=/nobackup/lab_maier/Projects/mXenium/CMM/results/logs/grad_lr_%A_%a.err
-#SBATCH --partition=tinyq
-#SBATCH --qos=tinyq
+#SBATCH --job-name=ripple_lr
+#SBATCH --output=logs/ripple_lr_%A_%a.out
+#SBATCH --error=logs/ripple_lr_%A_%a.err
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=2:00:00
 #SBATCH --mem=64g
-#SBATCH --array=1-14
-#SBATCH --mail-type=END
-#SBATCH --mail-user=cmangana@cemm.at
+## Set --array via sbatch: sbatch --array=1-N run_gradient_lr_integration.sh
+## Partition/QOS: uncomment and adjust for your cluster
+##SBATCH --partition=tinyq
+##SBATCH --qos=tinyq
+## Mail notifications (uncomment and set your email)
+##SBATCH --mail-type=END
+##SBATCH --mail-user=your@email.com
 
 # ==============================================================================
-# Gradient-to-Ligand-Receptor Integration Analysis
+# RIPPLE Stage 6: Gradient-to-Ligand-Receptor Integration Analysis
 # ==============================================================================
 #
-# SLURM array job: one job per cell type (14 total).
-#
-# Cell type mapping (same as hymy_distance_correlation.R):
-#   1=LEC, 2=FRC, 3=BEC, 4=CD4_T_cells, 5=CD8_T_cells, 6=gdT_cells,
-#   7=Macrophages, 8=Monocyte, 9=Fibroblasts_mac, 10=cDC1, 11=cDC2,
-#   12=mature_migDC, 13=B_cells, 14=Plasma_cell
+# SLURM array job: one job per cell type.
 #
 # Prerequisites:
 #   - Stage 1 distance correlation complete (all_genes_results.csv)
 #   - Stage 2 classification complete (stage2_all_results.csv) [recommended]
 #
 # Usage:
-#   sbatch run_gradient_lr_integration.sh                  # v1 (logistic, default)
-#   GRADIENT_SOURCE=hymy_distance_correlation_v2 sbatch run_gradient_lr_integration.sh  # v2 (Poisson)
-#   ANNOTATION_LEVEL=L1 sbatch run_gradient_lr_integration.sh
-#
-# Test single cell type (e.g., LEC for cross-validation with NicheNet):
-#   sbatch --array=1 run_gradient_lr_integration.sh
-#
-# Author: CMM Project
-# Date: 2026-02
+#   sbatch --array=1-N run_gradient_lr_integration.sh
+#   GRADIENT_SOURCE=hymy_distance_correlation_v2 sbatch --array=1-N ...
+#   sbatch --array=1 run_gradient_lr_integration.sh  # single cell type
 # ==============================================================================
 
 set -e
 
-echo "=============================================="
-echo "Gradient-to-LR Integration Analysis"
-echo "=============================================="
-echo "Start time: $(date)"
-echo "Job ID: ${SLURM_JOB_ID}, Array Task: ${SLURM_ARRAY_TASK_ID}"
-echo "Node: $(hostname)"
-echo ""
+# Auto-detect script directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Environment setup
-source /home/cmangana/miniconda3/etc/profile.d/conda.sh
-conda activate /nobackup/lab_maier/envs/nichenet_env
+# Create logs directory
+mkdir -p logs
 
-# Configuration
-# Query cell type configuration (pass through to R/Python)
-export QUERY_CELLTYPE=${QUERY_CELLTYPE:-}
-export CELLTYPE_COLUMN=${CELLTYPE_COLUMN:-}
-export QUERY_LABEL=${QUERY_LABEL:-}
-export ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
+# Pass through RIPPLE env vars
+export INPUT_PATH="${INPUT_PATH:-}"
+export OUTPUT_DIR="${OUTPUT_DIR:-}"
+export QUERY_CELLTYPE="${QUERY_CELLTYPE:-}"
+export CELLTYPE_COLUMN="${CELLTYPE_COLUMN:-}"
+export SAMPLE_COLUMN="${SAMPLE_COLUMN:-}"
+export CONDITION_COLUMN="${CONDITION_COLUMN:-}"
+export CONDITION_VALUE="${CONDITION_VALUE:-}"
+export X_COLUMN="${X_COLUMN:-}"
+export Y_COLUMN="${Y_COLUMN:-}"
+export TARGET_CELLTYPES="${TARGET_CELLTYPES:-}"
+export CONTROL_CELLTYPE="${CONTROL_CELLTYPE:-}"
+export QUERY_LABEL="${QUERY_LABEL:-}"
+export ANNOTATION_LEVEL="${ANNOTATION_LEVEL:-}"
+export ANALYSIS_NAME="${ANALYSIS_NAME:-}"
+export QUERY_SIGNATURE_GENES="${QUERY_SIGNATURE_GENES:-}"
+export ADATA_PATH="${ADATA_PATH:-}"
+
 export CELLTYPE_INDEX=${SLURM_ARRAY_TASK_ID}
 export GRADIENT_SOURCE=${GRADIENT_SOURCE:-hymy_distance_correlation}
 
-echo "Configuration:"
-echo "  ANNOTATION_LEVEL: ${ANNOTATION_LEVEL}"
-echo "  GRADIENT_SOURCE: ${GRADIENT_SOURCE}"
-echo "  CELLTYPE_INDEX: ${CELLTYPE_INDEX}"
-echo ""
+echo "=============================================="
+echo "RIPPLE Stage 6: Gradient-to-LR Integration"
+echo "Job ID: ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+echo "Cell Type Index: ${CELLTYPE_INDEX}"
+echo "Gradient Source: ${GRADIENT_SOURCE}"
+echo "Date: $(date)"
+echo "=============================================="
 
-# Run analysis
-SCRIPT_DIR="/nobackup/lab_maier/Projects/mXenium/CMM/scripts/workflow/scripts/one_off/spatial_analysis"
-cd "${SCRIPT_DIR}"
+# Conda environment setup (conditional)
+if [ -n "${CONDA_SETUP:-}" ]; then source "$CONDA_SETUP"; fi
+if [ -n "${CONDA_ENV:-}" ]; then conda activate "$CONDA_ENV"; fi
 
 Rscript gradient_lr_integration.R
 
 echo ""
-echo "Completed at: $(date)"
+echo "=============================================="
+echo "Complete: $(date)"
 echo "=============================================="

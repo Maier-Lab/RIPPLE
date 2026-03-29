@@ -90,23 +90,38 @@ EXPR_THRESHOLD_PCT <- 5  # At least 5% of query cells must express
 NICHENET_CACHE <- file.path(PROJECT_ROOT, "resources", "nichenet")
 ensure_dir(NICHENET_CACHE)
 
-# Target cell types (same as distance correlation)
-TARGET_CELLTYPES <- list(
-  LEC = "LEC",
-  FRC = "FRC",
-  BEC = "BEC",
-  CD4_T_cells = c("Naive_CD4", "Tfh", "Treg"),
-  CD8_T_cells = c("Naive_CD8", "Activated_CD8", "Cytotoxic_CD8", "Tpex"),
-  gdT_cells = "gdT_cell",
-  Macrophages = "Macrophages",
-  Monocyte = "Monocyte",
-  Fibroblasts_mac = "Fibroblasts_mac",
-  cDC1 = "cDC1",
-  cDC2 = "cDC2",
-  mature_migDC = "mature_migDC",
-  B_cells = c("B_cell", "Follicular_B"),
-  Plasma_cell = "Plasma_cell"
-)
+# Target cell types: auto-detect from per_celltype directories, or from env var
+TARGET_CELLTYPES_ENV <- Sys.getenv("TARGET_CELLTYPES", unset = "")
+if (nchar(TARGET_CELLTYPES_ENV) > 0) {
+  target_names <- trimws(strsplit(TARGET_CELLTYPES_ENV, ",")[[1]])
+  TARGET_CELLTYPES <- as.list(setNames(target_names, target_names))
+} else {
+  # Auto-detect from gradient results per_celltype directories
+  ct_base <- file.path(GRADIENT_DIR, "per_celltype")
+  if (dir.exists(ct_base)) {
+    target_names <- basename(list.dirs(ct_base, recursive = FALSE))
+    message("Auto-detected ", length(target_names), " target cell types from: ", ct_base)
+    TARGET_CELLTYPES <- as.list(setNames(target_names, target_names))
+  } else {
+    # Legacy fallback (backward compatible)
+    TARGET_CELLTYPES <- list(
+      LEC = "LEC",
+      FRC = "FRC",
+      BEC = "BEC",
+      CD4_T_cells = c("Naive_CD4", "Tfh", "Treg"),
+      CD8_T_cells = c("Naive_CD8", "Activated_CD8", "Cytotoxic_CD8", "Tpex"),
+      gdT_cells = "gdT_cell",
+      Macrophages = "Macrophages",
+      Monocyte = "Monocyte",
+      Fibroblasts_mac = "Fibroblasts_mac",
+      cDC1 = "cDC1",
+      cDC2 = "cDC2",
+      mature_migDC = "mature_migDC",
+      B_cells = c("B_cell", "Follicular_B"),
+      Plasma_cell = "Plasma_cell"
+    )
+  }
+}
 
 # =============================================================================
 # Cell Type Selection (SLURM array job)
@@ -250,14 +265,25 @@ if (ANNOTATION_LEVEL == "HyMy") {
 
 meta <- as.data.table(obj@meta.data, keep.rownames = "barcode")
 
-# Condition column
-if (!"condition" %in% names(meta) && "group" %in% names(meta)) {
+# Condition column resolution (standard pattern)
+if (nchar(CONDITION_COL) > 0 && CONDITION_COL %in% names(meta)) {
+  meta[, condition := get(CONDITION_COL)]
+} else if ("condition" %in% names(meta)) {
+  # already exists
+} else if ("group" %in% names(meta)) {
   meta[, condition := group]
+} else {
+  meta[, condition := "all"]
 }
 
-# Get query cells in TDLN
-query_barcodes <- meta[get(CELLTYPE_COL) == QUERY_CELLTYPE & condition == "TDLN"]$barcode
-message(sprintf("  Query cells (%s, TDLN): %d", QUERY_CELLTYPE, length(query_barcodes)))
+# Get query cells (with optional condition filtering)
+if (nchar(CONDITION_VAL) > 0) {
+  query_barcodes <- meta[get(CELLTYPE_COL) == QUERY_CELLTYPE & condition == CONDITION_VAL]$barcode
+  message(sprintf("  Query cells (%s, %s): %d", QUERY_CELLTYPE, CONDITION_VAL, length(query_barcodes)))
+} else {
+  query_barcodes <- meta[get(CELLTYPE_COL) == QUERY_CELLTYPE]$barcode
+  message(sprintf("  Query cells (%s, all conditions): %d", QUERY_CELLTYPE, length(query_barcodes)))
+}
 
 if (length(query_barcodes) == 0) {
   stop("No query cells found! Check CELLTYPE_COL and QUERY_CELLTYPE.")
@@ -268,11 +294,15 @@ expr_matrix <- GetAssayData(obj, layer = "data")
 rownames(expr_matrix) <- make.names(rownames(expr_matrix))
 
 # --- Per-sample query cell expression profiles ---
-tdln_samples <- unique(meta[condition == "TDLN"]$sample_id)
-message(sprintf("  TDLN samples: %s", paste(tdln_samples, collapse = ", ")))
+if (nchar(CONDITION_VAL) > 0) {
+  analysis_samples <- unique(meta[condition == CONDITION_VAL][[SAMPLE_COL]])
+} else {
+  analysis_samples <- unique(meta[[SAMPLE_COL]])
+}
+message(sprintf("  Analysis samples: %s", paste(analysis_samples, collapse = ", ")))
 
-hymy_per_sample <- rbindlist(lapply(tdln_samples, function(sid) {
-  barcodes <- meta[get(CELLTYPE_COL) == QUERY_CELLTYPE & sample_id == sid]$barcode
+hymy_per_sample <- rbindlist(lapply(analysis_samples, function(sid) {
+  barcodes <- meta[get(CELLTYPE_COL) == QUERY_CELLTYPE & get(SAMPLE_COL) == sid]$barcode
   if (length(barcodes) == 0) return(NULL)
   sample_expr <- expr_matrix[, barcodes, drop = FALSE]
   data.table(
@@ -406,7 +436,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
           n_supporting <- 0L
 
           if (!is.null(coef_per_sample)) {
-            for (sid in tdln_samples) {
+            for (sid in analysis_samples) {
               # Per-sample ligand expression on query cells
               lig_sample <- hymy_per_sample[gene == lig & sample_id == sid]
               # Per-sample receptor gradient coefficient
@@ -432,7 +462,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
             }
           }
 
-          n_total_samples <- length(tdln_samples)
+          n_total_samples <- length(analysis_samples)
           reproducibility <- n_supporting / n_total_samples
 
           # Compute per-mouse-matched direct score
@@ -514,7 +544,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
           n_supporting_b <- 0L
 
           if (!is.null(coef_per_sample)) {
-            for (sid in tdln_samples) {
+            for (sid in analysis_samples) {
               # Per-sample receptor expression on query cells
               rec_sample <- hymy_per_sample[gene == rec & sample_id == sid]
               # Per-sample ligand gradient coefficient
@@ -539,7 +569,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
             }
           }
 
-          n_total_b <- length(tdln_samples)
+          n_total_b <- length(analysis_samples)
           reproducibility_b <- n_supporting_b / n_total_b
 
           if (length(per_sample_scores_b) >= 2) {

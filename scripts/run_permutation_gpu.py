@@ -42,14 +42,36 @@ from pathlib import Path
 # Configuration
 # =============================================================================
 
-# Platform detection
-if sys.platform == "win32":
-    BASE_PATH = Path("N:/lab_maier/Projects/mXenium")
-else:
-    BASE_PATH = Path("/nobackup/lab_maier/Projects/mXenium")
+# Env var resolution (matches config.R)
+INPUT_PATH = os.environ.get("INPUT_PATH", "")
+ADATA_PATH_ENV = os.environ.get("ADATA_PATH", "")
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "")
+SAMPLE_COL = os.environ.get("SAMPLE_COLUMN", "sample_id")
+CONDITION_COL = os.environ.get("CONDITION_COLUMN", "")
+CONDITION_VAL = os.environ.get("CONDITION_VALUE", "")
 
-PROJECT_ROOT = BASE_PATH / "CMM"
-ADATA_PATH = BASE_PATH / "results" / "cell_type_assignment" / "adata_incl_hymy.h5ad"
+# Resolve ADATA_PATH and PROJECT_ROOT
+if ADATA_PATH_ENV:
+    ADATA_PATH = Path(ADATA_PATH_ENV)
+elif INPUT_PATH:
+    # Try to find .h5ad alongside the .rds
+    rds_dir = Path(INPUT_PATH).parent
+    candidates = list(rds_dir.glob("*.h5ad"))
+    ADATA_PATH = candidates[0] if candidates else None
+else:
+    ADATA_PATH = None  # Will be set from legacy paths below
+
+# Platform detection (legacy — only needed when INPUT_PATH is not set)
+if not INPUT_PATH:
+    if sys.platform == "win32":
+        BASE_PATH = Path("N:/lab_maier/Projects/mXenium")
+    else:
+        BASE_PATH = Path("/nobackup/lab_maier/Projects/mXenium")
+    PROJECT_ROOT = BASE_PATH / "CMM"
+    if ADATA_PATH is None:
+        ADATA_PATH = BASE_PATH / "results" / "cell_type_assignment" / "adata_incl_hymy.h5ad"
+else:
+    PROJECT_ROOT = Path(OUTPUT_DIR).parent if OUTPUT_DIR else Path.cwd()
 
 # Statistical parameters (match R script)
 MIN_CELLS_PER_SAMPLE = 30
@@ -469,7 +491,12 @@ def main():
         sys.exit("Must specify --celltype or set CELLTYPE_INDEX env var")
 
     n_perms = args.n_perms
-    adata_path = args.adata_path or str(ADATA_PATH)
+    if args.adata_path:
+        adata_path = args.adata_path
+    elif ADATA_PATH is not None:
+        adata_path = str(ADATA_PATH)
+    else:
+        sys.exit("No h5ad file found. Set ADATA_PATH env var or use --adata-path.")
 
     # Resolve analysis name and model type
     analysis_name = os.environ.get("ANALYSIS_NAME", "hymy_distance_correlation")
@@ -493,7 +520,10 @@ def main():
         celltype_col = "cell_type_with_HyMy_GMM"  # h5ad column name
         suffix = ""
 
-    results_base = PROJECT_ROOT / "results" / f"spatial_analysis{suffix}" / analysis_name
+    if OUTPUT_DIR:
+        results_base = Path(OUTPUT_DIR) / f"spatial_analysis{suffix}" / analysis_name
+    else:
+        results_base = PROJECT_ROOT / "results" / f"spatial_analysis{suffix}" / analysis_name
 
     ct_dir = results_base / "per_celltype" / celltype_name
 
@@ -585,21 +615,60 @@ def main():
         print(f"  Total counts range: {total_counts_all.min():.0f} - {total_counts_all.max():.0f}")
         print(f"  Median total counts: {np.median(total_counts_all):.0f}")
 
-    # Filter to TDLN
-    print("\nFiltering to TDLN...")
-    tdln_mask = adata.obs["group"] == "TDLN"
-    tdln_indices_in_full = np.where(tdln_mask)[0]
-    adata = adata[tdln_mask].copy()
-    print(f"  TDLN cells: {adata.shape[0]}")
+    # Condition filtering
+    if CONDITION_COL and CONDITION_VAL:
+        print(f"\nFiltering to {CONDITION_COL} == {CONDITION_VAL}...")
+        cond_mask = adata.obs[CONDITION_COL] == CONDITION_VAL
+    elif CONDITION_COL:
+        print(f"\nNo CONDITION_VALUE set; using all cells (CONDITION_COLUMN={CONDITION_COL} present but unfiltered)")
+        cond_mask = np.ones(len(adata), dtype=bool)
+    elif "group" in adata.obs.columns and not INPUT_PATH:
+        # Legacy CeMM behavior: filter to TDLN
+        print("\nFiltering to TDLN (legacy)...")
+        cond_mask = adata.obs["group"] == "TDLN"
+    else:
+        print("\nNo condition filtering applied (using all cells)")
+        cond_mask = np.ones(len(adata), dtype=bool)
 
-    # Subset total counts to TDLN
+    cond_indices_in_full = np.where(cond_mask)[0]
+    adata = adata[cond_mask].copy()
+    print(f"  Cells after filtering: {adata.shape[0]}")
+
+    # Subset total counts to filtered cells
     if use_poisson:
-        log_total_counts_tdln = log_total_counts_all[tdln_indices_in_full]
+        log_total_counts_filtered = log_total_counts_all[cond_indices_in_full]
 
-    # Extract data
-    coords = np.array(adata.obsm["spatial"], dtype=np.float32)
+    # Extract data (using configurable column names)
+    # Spatial coordinates: try obsm["spatial"], then obs columns
+    x_col_env = os.environ.get("X_COLUMN", "")
+    y_col_env = os.environ.get("Y_COLUMN", "")
+    if x_col_env and y_col_env:
+        # User-specified coordinate columns
+        coords = np.column_stack([
+            adata.obs[x_col_env].values.astype(np.float32),
+            adata.obs[y_col_env].values.astype(np.float32),
+        ])
+        print(f"  Using coordinate columns: {x_col_env}, {y_col_env}")
+    elif "spatial" in adata.obsm:
+        coords = np.array(adata.obsm["spatial"], dtype=np.float32)
+        print("  Using adata.obsm['spatial'] for coordinates")
+    else:
+        # Auto-detect from obs columns
+        for xc, yc in [("spatial_x", "spatial_y"), ("x", "y"),
+                        ("x_centroid", "y_centroid")]:
+            if xc in adata.obs.columns and yc in adata.obs.columns:
+                coords = np.column_stack([
+                    adata.obs[xc].values.astype(np.float32),
+                    adata.obs[yc].values.astype(np.float32),
+                ])
+                print(f"  Auto-detected coordinate columns: {xc}, {yc}")
+                break
+        else:
+            sys.exit("Could not find spatial coordinates. "
+                     "Set X_COLUMN and Y_COLUMN env vars.")
+
     cell_types = adata.obs[celltype_col].values
-    sample_ids = adata.obs["sample_id"].values
+    sample_ids = adata.obs[SAMPLE_COL].values
 
     # Identify query cells
     query_mask = cell_types == query_celltype
@@ -653,7 +722,7 @@ def main():
 
     # Subset log_total_counts to target cells (for Poisson)
     if use_poisson:
-        log_total_counts_target = log_total_counts_tdln[target_indices]
+        log_total_counts_target = log_total_counts_filtered[target_indices]
         print(f"  Log total counts for target: {log_total_counts_target.shape}")
 
     # Move coordinates to GPU

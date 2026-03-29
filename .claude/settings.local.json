@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(grep -n \"INPUT\\\\|OUTPUT\\\\|READS\\\\|WRITES\\\\|fread\\\\|fwrite\" C:/Users/CMangana/RIPPLE/scripts/*.R)",
+      "Bash(grep -n \"TDLN\\\\|naive\\\\|condition\\\\|group\\\\|spatial_x\\\\|spatial_y\" /c/Users/CMangana/RIPPLE/scripts/*.R)",
+      "Bash(grep:*)",
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//c/Users/CMangana/RIPPLE/**)",
+      "Bash(done)",
+      "Bash(file:*)"
+    ]
+  }
+}

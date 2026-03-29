@@ -94,18 +94,36 @@ pip install torch numpy scipy
 
 ---
 
-## Quick Start
+## Minimal Example
+
+The absolute minimum to run RIPPLE -- three environment variables and one command:
 
 ```bash
-# Set your query cell type and the metadata column containing cell type labels
+export INPUT_PATH="/path/to/my/seurat.rds"
 export QUERY_CELLTYPE="Tumor"
 export CELLTYPE_COLUMN="cell_type"
 
-# Stage 1: Distance correlation (skip permutations for a fast first pass)
-N_PERMUTATIONS=0 Rscript scripts/hymy_distance_correlation_v2.R
+Rscript scripts/hymy_distance_correlation_v2.R
 ```
 
-This will fit per-sample Poisson GLMs for every gene in every non-query cell type, testing whether expression changes as a function of distance to the nearest query cell.
+This will auto-detect spatial coordinates, sample IDs, and all non-query cell types, then fit per-sample Poisson GLMs for every gene in every target cell type.
+
+---
+
+## Quick Start
+
+```bash
+export INPUT_PATH="/path/to/my/seurat.rds"
+export QUERY_CELLTYPE="Tumor"
+export CELLTYPE_COLUMN="cell_type"
+
+# Run core analysis (Stage 1)
+Rscript scripts/hymy_distance_correlation_v2.R
+
+# Merge results (Stage 3)
+Rscript scripts/recompute_meta_summary.R
+Rscript scripts/merge_distance_correlation_results.R
+```
 
 ---
 
@@ -113,24 +131,52 @@ This will fit per-sample Poisson GLMs for every gene in every non-query cell typ
 
 All configuration is via environment variables. Set them before running any script.
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `QUERY_CELLTYPE` | Yes | -- | Cell type label for the source population (e.g., `"Tumor"`, `"HyMy_GMM"`) |
-| `CELLTYPE_COLUMN` | Yes | -- | Metadata column containing cell type annotations |
-| `QUERY_LABEL` | No | Same as `QUERY_CELLTYPE` | Short display name used in plot titles |
-| `QUERY_SIGNATURE_GENES` | No | Empty | Comma-separated marker genes for contamination check |
-| `CELLTYPE_INDEX` | No | -- | 1-based index for SLURM array jobs (run one cell type per job) |
-| `K_NEIGHBORS` | No | `1` | Number of nearest query cells for distance calculation |
-| `N_PERMUTATIONS` | No | `500` | Number of label permutations (set 0 to skip, 1000+ for publication) |
-| `ANALYSIS_NAME` | No | `hymy_distance_correlation_v2` | Analysis subdirectory name for output |
-| `ANNOTATION_LEVEL` | No | -- | Legacy shorthand: `"HyMy"` or `"L1"` (sets query type and column automatically) |
-| `GRADIENT_SOURCE` | No | `hymy_distance_correlation` | Which Stage 1 results to use for downstream stages |
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `INPUT_PATH` | Path to a Seurat object (`.rds`) with raw counts |
+| `QUERY_CELLTYPE` | Cell type label for the source population (e.g., `"Tumor"`) |
+| `CELLTYPE_COLUMN` | Metadata column containing cell type annotations |
+
+### Data Configuration (Optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OUTPUT_DIR` | `./results` | Output directory for all results |
+| `SAMPLE_COLUMN` | `sample_id` | Metadata column containing sample/replicate IDs |
+| `CONDITION_COLUMN` | -- | Metadata column for condition/group filtering (e.g., `"treatment"`) |
+| `CONDITION_VALUE` | -- | Which condition to analyze (e.g., `"treated"`). If unset, all samples are used |
+| `X_COLUMN` | auto-detect | Metadata column for X spatial coordinates |
+| `Y_COLUMN` | auto-detect | Metadata column for Y spatial coordinates |
+| `TARGET_CELLTYPES` | auto-detect all | Comma-separated list of target cell types to analyze (e.g., `"CD8_T,Macrophage"`) |
+| `ADATA_PATH` | -- | Path to AnnData `.h5ad` file for GPU permutation (Stage 2) |
+
+### Analysis Configuration (Optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QUERY_LABEL` | Same as `QUERY_CELLTYPE` | Display name for the query cell type in plot titles |
+| `QUERY_SIGNATURE_GENES` | -- | Comma-separated marker genes for contamination check (e.g., `"CD274,PDCD1"`) |
+| `CONTROL_CELLTYPE` | -- | Control cell type for Stage 4 confounder analysis |
+| `ANALYSIS_NAME` | `hymy_distance_correlation_v2` | Subdirectory name for output organization |
+| `K_NEIGHBORS` | `1` | Number of nearest query cells for distance calculation |
+| `N_PERMUTATIONS` | `0` | Number of label permutations (0 = skip; use GPU Stage 2 instead for production) |
+
+### HPC / SLURM (Optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CONDA_SETUP` | -- | Path to conda setup script (e.g., `/path/to/conda.sh`) |
+| `CONDA_ENV` | -- | Conda environment name for R dependencies |
+| `CUDA_MODULE` | -- | CUDA module to load for GPU permutation (e.g., `"cuda/12.2"`) |
+| `CELLTYPE_INDEX` | -- | 1-based index for SLURM array jobs (run one target cell type per job) |
 
 ---
 
 ## Pipeline Stages
 
-### Stage 1: Distance Correlation
+### Stage 1 (Core): Distance Correlation
 
 **Script:** `hymy_distance_correlation_v2.R`
 
@@ -146,23 +192,23 @@ glm(counts ~ distance_to_query + offset(log(total_counts)), family = poisson)
 
 Per-sample coefficients are combined via Fisher's combined p-value. A sign consistency gate requires all replicates to agree on the direction of the effect.
 
-### Stage 2: GPU Permutation Testing
+### Stage 2 (Optional): GPU Permutation Testing
 
 **Script:** `run_permutation_gpu.py`
 
 GPU-accelerated null distribution via label permutation. Validates that the observed distance-expression relationship is specific to the query cell type and not a spatial artifact. Shuffles query cell labels across all cells and re-fits the GLM to build a null distribution.
 
-### Stage 3: Merge and Summarize
+### Stage 3 (Core): Merge and Summarize
 
 **Scripts:** `merge_permutation_pvals.R`, `recompute_meta_summary.R`, `merge_distance_correlation_results.R`
 
 Integrates GPU permutation p-values into the R results, recomputes Fisher's combined p-values, and merges per-cell-type results into summary tables.
 
-### Stage 4: Confounder Control
+### Stage 4 (Optional): Confounder Control
 
 **Script:** `hymy_distance_correlation_stage2.R`
 
-Bivariate GLM adding distance to a control cell type as a covariate. Isolates query-specific effects from shared spatial niche effects. Classifies genes as:
+Requires `CONTROL_CELLTYPE` to be set. Bivariate GLM adding distance to a control cell type as a covariate. Isolates query-specific effects from shared spatial niche effects. Classifies genes as:
 
 | Classification | Criteria |
 |----------------|----------|
@@ -171,15 +217,15 @@ Bivariate GLM adding distance to a control cell type as a covariate. Isolates qu
 | `niche_driven` | Not significant and coefficient attenuated >50% |
 | `underpowered` | Not significant but coefficient preserved (>=50%) |
 
-### Stage 5: Visualization
+### Stage 5 (Optional): Visualization
 
-**Scripts:** `distance_correlation_atlas.R`, `hypothesis_visualizations.R`
+**Scripts:** `distance_correlation_atlas.R`, `hypothesis_visualizations.R`, `plot_decay_curves.R`
 
 Produces publication-quality figures: multi-panel volcanos, dotplots of cell-type-specific genes, heatmaps, contamination flagging, fGSEA pathway enrichment (Hallmark gene sets), per-sample decay curves with reproducibility ribbons, and diagnostic panels.
 
-### Stage 6: Ligand-Receptor Integration
+### Stage 6 (Optional): Ligand-Receptor Integration
 
-**Scripts:** `gradient_lr_integration.R`, `gradient_lr_atlas.R`
+**Scripts:** `gradient_lr_integration.R`, `gradient_lr_atlas.R`, `gradient_lr_biology_figure.R`
 
 Matches gradient genes to ligand-receptor pairs using NicheNet. Runs three analyses per cell type: (1) direct L-R mapping of gradient receptors to query-expressed ligands, (2) NicheNet ligand activity prediction, and (3) Fisher's exact enrichment of NicheNet target predictions among gradient genes. Includes a 4-tier artifact classification system.
 
@@ -188,47 +234,175 @@ Matches gradient genes to ligand-receptor pairs using NicheNet. Runs three analy
 ## Full Pipeline Example
 
 ```bash
+# --- Required ---
+export INPUT_PATH="/path/to/my/seurat.rds"
 export QUERY_CELLTYPE="Tumor"
 export CELLTYPE_COLUMN="cell_type"
+
+# --- Optional data configuration ---
+export OUTPUT_DIR="./results"
+export SAMPLE_COLUMN="patient_id"
 export QUERY_LABEL="Tumor"
+export QUERY_SIGNATURE_GENES="EPCAM,KRT8,KRT18"
 
-# Stage 1: Run distance correlation (skip permutations for speed)
-N_PERMUTATIONS=0 Rscript scripts/hymy_distance_correlation_v2.R
+# Stage 1 (Core): Distance correlation
+Rscript scripts/hymy_distance_correlation_v2.R
 
-# Stage 2: GPU permutation testing
+# Stage 2 (Optional): GPU permutation testing
+export ADATA_PATH="/path/to/adata.h5ad"
 python scripts/run_permutation_gpu.py
 
-# Stage 3: Merge results
+# Stage 3 (Core): Merge results
 Rscript scripts/merge_permutation_pvals.R
 Rscript scripts/recompute_meta_summary.R
 Rscript scripts/merge_distance_correlation_results.R
 
-# Stage 4: Confounder control (optional -- requires a suitable control cell type)
+# Stage 4 (Optional): Confounder control -- requires a suitable control cell type
+export CONTROL_CELLTYPE="CAF"
 Rscript scripts/hymy_distance_correlation_stage2.R
 
-# Stage 5: Visualization
+# Stage 5 (Optional): Visualization
 Rscript scripts/distance_correlation_atlas.R
+Rscript scripts/hypothesis_visualizations.R
+Rscript scripts/plot_decay_curves.R
 
-# Stage 6: L-R integration (requires NicheNet)
+# Stage 6 (Optional): L-R integration -- requires NicheNet
 Rscript scripts/gradient_lr_integration.R
 Rscript scripts/gradient_lr_atlas.R
+Rscript scripts/gradient_lr_biology_figure.R
+```
+
+---
+
+## SLURM Cluster Usage
+
+Stage 1 can be parallelized across target cell types using SLURM array jobs. The target cell types are auto-detected at runtime (or set via `TARGET_CELLTYPES`). Each array task processes one cell type.
+
+```bash
+# Set environment variables in your SLURM script or export them before submission
+export INPUT_PATH="/path/to/seurat.rds"
+export QUERY_CELLTYPE="Tumor"
+export CELLTYPE_COLUMN="cell_type"
+
+# Submit array job -- set the range to match the number of target cell types
+# (e.g., if you have 12 non-query cell types, use --array=1-12)
+sbatch --array=1-12 scripts/run_hymy_distance_correlation_v2.sh
+```
+
+Inside the SLURM script, `CELLTYPE_INDEX` is set from `$SLURM_ARRAY_TASK_ID` so each job processes a different target cell type.
+
+For GPU permutation (Stage 2), submit with a GPU partition:
+
+```bash
+sbatch scripts/run_permutation_gpu.sh
+```
+
+Configure HPC-specific settings via environment variables:
+
+```bash
+export CONDA_SETUP="/path/to/conda.sh"
+export CONDA_ENV="my_R_env"
+export CUDA_MODULE="cuda/12.2"
+```
+
+---
+
+## Advanced Examples
+
+### Condition filtering
+
+Analyze only samples from a specific condition:
+
+```bash
+export INPUT_PATH="/path/to/seurat.rds"
+export QUERY_CELLTYPE="Tumor"
+export CELLTYPE_COLUMN="cell_type"
+export CONDITION_COLUMN="treatment"
+export CONDITION_VALUE="treated"
+
+Rscript scripts/hymy_distance_correlation_v2.R
+```
+
+### Custom target cell types
+
+Restrict analysis to specific target cell types instead of auto-detecting all:
+
+```bash
+export INPUT_PATH="/path/to/seurat.rds"
+export QUERY_CELLTYPE="Tumor"
+export CELLTYPE_COLUMN="cell_type"
+export TARGET_CELLTYPES="CD8_T,Macrophage,CAF,Endothelial"
+
+Rscript scripts/hymy_distance_correlation_v2.R
+```
+
+### Stage 4 with custom control
+
+Isolate tumor-specific effects from shared niche effects driven by CAFs:
+
+```bash
+export INPUT_PATH="/path/to/seurat.rds"
+export QUERY_CELLTYPE="Tumor"
+export CELLTYPE_COLUMN="cell_type"
+export CONTROL_CELLTYPE="CAF"
+
+Rscript scripts/hymy_distance_correlation_stage2.R
+```
+
+### Full publication pipeline
+
+End-to-end analysis with all stages, permutation testing, confounder control, and visualization:
+
+```bash
+export INPUT_PATH="/path/to/seurat.rds"
+export QUERY_CELLTYPE="Tumor"
+export CELLTYPE_COLUMN="cell_type"
+export SAMPLE_COLUMN="patient_id"
+export OUTPUT_DIR="./results"
+export QUERY_LABEL="Tumor"
+export QUERY_SIGNATURE_GENES="EPCAM,KRT8,KRT18"
+export CONTROL_CELLTYPE="CAF"
+export ADATA_PATH="/path/to/adata.h5ad"
+export ANALYSIS_NAME="tumor_gradient_analysis"
+
+# Stage 1
+Rscript scripts/hymy_distance_correlation_v2.R
+
+# Stage 2
+python scripts/run_permutation_gpu.py
+
+# Stage 3
+Rscript scripts/merge_permutation_pvals.R
+Rscript scripts/recompute_meta_summary.R
+Rscript scripts/merge_distance_correlation_results.R
+
+# Stage 4
+Rscript scripts/hymy_distance_correlation_stage2.R
+
+# Stage 5
+Rscript scripts/distance_correlation_atlas.R
+Rscript scripts/hypothesis_visualizations.R
+Rscript scripts/plot_decay_curves.R
+
+# Stage 6
+Rscript scripts/gradient_lr_integration.R
+Rscript scripts/gradient_lr_atlas.R
+Rscript scripts/gradient_lr_biology_figure.R
 ```
 
 ---
 
 ## Input Data Format
 
-RIPPLE expects a Seurat object (`.rds`) with the following structure:
+RIPPLE expects a Seurat object (`.rds`) specified by `INPUT_PATH` with the following structure:
 
 | Component | Description |
 |-----------|-------------|
-| **Counts** | Raw (unnormalized) counts in the `RNA` assay, `counts` layer |
-| **Spatial coordinates** | `spatial_x` and `spatial_y` (or `x` and `y`) columns in cell metadata |
-| **Cell type annotations** | A metadata column matching the value of `CELLTYPE_COLUMN` |
-| **Sample/replicate ID** | `sample_id` column in metadata |
-| **Condition/group** | `condition` or `group` column in metadata (optional, for condition-specific analyses) |
-
-Raw counts are essential -- the Poisson GLM with cell-size offset handles normalization internally. Using pre-normalized data will produce incorrect results.
+| **Raw counts** | Unnormalized counts in the `RNA` assay, `counts` slot. Essential -- the Poisson GLM with cell-size offset handles normalization internally. Using pre-normalized data will produce incorrect results. |
+| **Spatial coordinates** | X and Y coordinate columns in cell metadata. Column names are auto-detected (common names like `x_centroid`/`y_centroid`, `spatial_x`/`spatial_y`, `x`/`y` are recognized). Override with `X_COLUMN` and `Y_COLUMN` if needed. |
+| **Cell type annotations** | A metadata column whose name matches `CELLTYPE_COLUMN`. |
+| **Sample/replicate ID** | A metadata column for biological replicate identity. Defaults to `sample_id`; override with `SAMPLE_COLUMN`. |
+| **Condition/group** | Optional. A metadata column for filtering to a subset of samples. Set `CONDITION_COLUMN` and `CONDITION_VALUE` to use. |
 
 ---
 
@@ -237,7 +411,7 @@ Raw counts are essential -- the Poisson GLM with cell-size offset handles normal
 Results are organized under the analysis output directory:
 
 ```
-results/spatial_analysis/{ANALYSIS_NAME}/
+{OUTPUT_DIR}/spatial_analysis/{ANALYSIS_NAME}/
   per_celltype/
     {CellType}/
       meta_analysis_results.csv    # Per-gene summary with coefficients, p-values, FDR

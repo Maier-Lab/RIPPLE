@@ -54,25 +54,38 @@ HYMY_SIGNATURE_GENES <- QUERY_SIGNATURE
 # Tex signature genes
 TEX_SIGNATURE <- c("Havcr2", "Lag3", "Entpd1", "Cd38", "Cd244a")
 
-# Cell types of interest
-KEY_CELLTYPES <- c("CD8_T_cells", "CD4_T_cells", "FRC", "LEC", "BEC")
-
-# Mapping from aggregated cell type names (used in results) to actual annotation
-# values in the Seurat object. Some "cell types" are pooled from subtypes.
-CELLTYPE_MAPPING <- list(
-  LEC = "LEC",
-  FRC = "FRC",
-  BEC = "BEC",
-  CD4_T_cells = c("Naive_CD4", "Tfh", "Treg"),
-  CD8_T_cells = c("Naive_CD8", "Activated_CD8", "Cytotoxic_CD8", "Tpex"),
-  gdT_cells = "gdT_cell",
-  Macrophages = "Macrophages",
-  Monocyte = "Monocyte",
-  Fibroblasts_mac = "Fibroblasts_mac",
-  cDC1 = "cDC1",
-  cDC2 = "cDC2",
-  mature_migDC = "mature_migDC"
-)
+# Auto-discover cell types from results directories
+available_celltypes <- basename(list.dirs(
+  file.path(RESULTS_BASE, "per_celltype"), recursive = FALSE
+))
+if (length(available_celltypes) > 0) {
+  KEY_CELLTYPES <- available_celltypes
+  # Build identity mapping from discovered cell types
+  CELLTYPE_MAPPING <- setNames(as.list(available_celltypes), available_celltypes)
+  message("Auto-discovered ", length(available_celltypes), " cell types from results")
+} else if (QUERY_CELLTYPE %in% c("HyMy_GMM", "IL1B_myeloid") && nchar(INPUT_PATH) == 0) {
+  # Legacy HyMy cell types and mapping
+  KEY_CELLTYPES <- c("CD8_T_cells", "CD4_T_cells", "FRC", "LEC", "BEC")
+  CELLTYPE_MAPPING <- list(
+    LEC = "LEC",
+    FRC = "FRC",
+    BEC = "BEC",
+    CD4_T_cells = c("Naive_CD4", "Tfh", "Treg"),
+    CD8_T_cells = c("Naive_CD8", "Activated_CD8", "Cytotoxic_CD8", "Tpex"),
+    gdT_cells = "gdT_cell",
+    Macrophages = "Macrophages",
+    Monocyte = "Monocyte",
+    Fibroblasts_mac = "Fibroblasts_mac",
+    cDC1 = "cDC1",
+    cDC2 = "cDC2",
+    mature_migDC = "mature_migDC"
+  )
+  message("Using legacy HyMy cell type mapping")
+} else {
+  KEY_CELLTYPES <- c()
+  CELLTYPE_MAPPING <- list()
+  message("WARNING: No cell types discovered; will attempt from results files")
+}
 
 message(strrep("=", 70))
 message("Decay Curve Plots")
@@ -132,26 +145,37 @@ for (ct in KEY_CELLTYPES) {
 message("\nLoading Seurat object...")
 obj <- load_seurat()
 
-if (ANNOTATION_LEVEL == "HyMy") {
+if (USE_HYMY_ANNOTATION) {
   message("Merging HyMy annotations...")
   obj <- merge_hymy_annotations(obj)
 }
 
 cell_data <- as.data.table(obj@meta.data, keep.rownames = "barcode")
 
-# Set condition
-if ("group" %in% names(cell_data)) {
+# Set condition (generalized)
+if (nchar(CONDITION_COL) > 0 && CONDITION_COL %in% names(cell_data)) {
+  cell_data[, condition := get(CONDITION_COL)]
+} else if ("condition" %in% names(cell_data)) {
+  # use existing
+} else if ("group" %in% names(cell_data)) {
   cell_data[, condition := group]
 } else {
-  cell_data[, condition := sapply(sample_id, get_condition)]
+  cell_data[, condition := "all"]
 }
 
-# Filter to TDLN
-cell_data <- cell_data[condition == "TDLN"]
-message("TDLN cells: ", nrow(cell_data))
+condition_label <- if (nchar(CONDITION_VAL) > 0) CONDITION_VAL else "all conditions"
 
-# Get coordinates
-coords <- as.matrix(cell_data[, .(spatial_x, spatial_y)])
+# Filter by condition if specified
+if (nchar(CONDITION_VAL) > 0) {
+  cell_data <- cell_data[condition == CONDITION_VAL]
+  message(condition_label, " cells: ", nrow(cell_data))
+} else {
+  message("All cells (no condition filter): ", nrow(cell_data))
+}
+
+# Get coordinates (dynamic)
+coord_cols <- get_coord_columns(cell_data)
+coords <- as.matrix(cell_data[, ..coord_cols])
 
 # Identify query cells and compute distances
 query_mask <- cell_data[[CELLTYPE_COL]] == QUERY_CELLTYPE
@@ -163,9 +187,9 @@ cell_data[, dist_to_query := pmin(as.vector(nn_result$nn.dists), MAX_DISTANCE_UM
 
 # Get expression matrix (we'll subset per gene)
 expr_matrix <- GetAssayData(obj, layer = "data")
-# Subset to TDLN barcodes
-tdln_barcodes <- cell_data$barcode
-expr_matrix <- expr_matrix[, tdln_barcodes, drop = FALSE]
+# Subset to filtered barcodes
+filtered_barcodes <- cell_data$barcode
+expr_matrix <- expr_matrix[, filtered_barcodes, drop = FALSE]
 
 message("Expression matrix: ", nrow(expr_matrix), " genes x ", ncol(expr_matrix), " cells")
 
@@ -306,7 +330,7 @@ for (ct in KEY_CELLTYPES) {
 # =============================================================================
 # Tex signature: dedicated panel with per-sample overlay
 # =============================================================================
-# A more detailed view: show each TDLN sample as a separate line for the
+# A more detailed view: show each sample as a separate line for the
 # Tex signature genes, to visualize inter-sample consistency.
 
 message("\n--- Tex Signature Decay (per-sample) ---")
@@ -327,7 +351,7 @@ if (length(tex_genes_available) > 0) {
     df <- data.table(
       distance = cd8_data$dist_to_query,
       expressing = as.integer(expr_vec > 0),
-      sample_id = cd8_data$sample_id
+      sample_id = cd8_data[[SAMPLE_COL]]
     )
 
     df[, dist_bin := cut(distance, breaks = seq(0, MAX_DISTANCE_UM, by = BIN_WIDTH),

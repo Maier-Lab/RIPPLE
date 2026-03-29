@@ -87,42 +87,33 @@ MIN_CONTROL_CELLS <- 30     # Minimum control cells per sample for reliable nn2(
 MAX_DISTANCE_UM <- 200
 
 # Control cell type for distance covariate
-# For Monocyte target analysis, use Macrophages as alternative control
-CONTROL_CELLTYPE <- "Monocyte"
+CONTROL_CELLTYPE <- Sys.getenv("CONTROL_CELLTYPE", unset = "")
+if (nchar(CONTROL_CELLTYPE) == 0) {
+  message("No CONTROL_CELLTYPE specified; Stage 2 requires a control cell type")
+  message("Set CONTROL_CELLTYPE env var (e.g., CONTROL_CELLTYPE=Monocyte)")
+  # For legacy mode, default to Monocyte
+  if (nchar(INPUT_PATH) == 0) {
+    CONTROL_CELLTYPE <- "Monocyte"
+    message("Legacy mode: defaulting to Monocyte")
+  } else {
+    stop("CONTROL_CELLTYPE is required for Stage 2 confounder control")
+  }
+}
 
-# Target cell types (same as Stage 1)
-TARGET_CELLTYPES <- list(
-  LEC = "LEC",
-  FRC = "FRC",
-  BEC = "BEC",
-  CD4_T_cells = c("Naive_CD4", "Tfh", "Treg"),
-  CD8_T_cells = c("Naive_CD8", "Activated_CD8", "Cytotoxic_CD8", "Tpex"),
-  gdT_cells = "gdT_cell",
-  Macrophages = "Macrophages",
-  Monocyte = "Monocyte",
-  Fibroblasts_mac = "Fibroblasts_mac",
-  cDC1 = "cDC1",
-  cDC2 = "cDC2",
-  mature_migDC = "mature_migDC",
-  B_cells = c("B_cell", "Follicular_B"),
-  Plasma_cell = "Plasma_cell"
-)
+# Target cell types: user-specified or auto-detect (populated after data load)
+TARGET_CELLTYPES_ENV <- Sys.getenv("TARGET_CELLTYPES", unset = "")
+if (nchar(TARGET_CELLTYPES_ENV) > 0) {
+  target_names <- trimws(strsplit(TARGET_CELLTYPES_ENV, ",")[[1]])
+} else {
+  target_names <- NULL  # Will be populated after data load
+}
 
 # =============================================================================
 # Cell Type Selection (for SLURM array job parallelization)
 # =============================================================================
+# Note: CELLTYPE_INDEX selection is applied AFTER data load and auto-detection.
 
 CELLTYPE_INDEX <- as.integer(Sys.getenv("CELLTYPE_INDEX", unset = "0"))
-
-if (CELLTYPE_INDEX > 0) {
-  celltype_names <- names(TARGET_CELLTYPES)
-  if (CELLTYPE_INDEX > length(celltype_names)) {
-    stop("CELLTYPE_INDEX ", CELLTYPE_INDEX, " exceeds number of cell types (", length(celltype_names), ")")
-  }
-  selected_ct <- celltype_names[CELLTYPE_INDEX]
-  message("\n>>> Array job mode: Processing only ", selected_ct, " (index ", CELLTYPE_INDEX, ")")
-  TARGET_CELLTYPES <- TARGET_CELLTYPES[selected_ct]
-}
 
 message(strrep("=", 70))
 message(paste0(QUERY_LABEL, " Distance Correlation Stage 2: Monocyte Distance Control (Poisson)"))
@@ -288,25 +279,35 @@ if (ANNOTATION_LEVEL == "HyMy") {
 # Extract metadata
 cell_data <- as.data.table(obj@meta.data, keep.rownames = "barcode")
 
-if ("group" %in% names(cell_data)) {
+# Resolve condition column
+if (nchar(CONDITION_COL) > 0 && CONDITION_COL %in% names(cell_data)) {
+  cell_data[, condition := get(CONDITION_COL)]
+  message("Using condition column: ", CONDITION_COL)
+} else if ("condition" %in% names(cell_data)) {
+  message("Using existing 'condition' column")
+} else if ("group" %in% names(cell_data)) {
   cell_data[, condition := group]
-  message("Using 'group' column for condition")
-} else if (!"condition" %in% names(cell_data)) {
-  cell_data[, condition := sapply(sample_id, get_condition)]
-  message("WARNING: Inferring condition from sample_id")
+  message("Aliasing 'group' -> 'condition'")
+} else {
+  cell_data[, condition := "all"]
+  message("No condition column found; analyzing all samples")
 }
 
 if (!CELLTYPE_COL %in% names(cell_data)) {
   stop("Cell type column not found: ", CELLTYPE_COL)
 }
 
-# Filter to TDLN (same as Stage 1)
-message("\nFiltering to TDLN samples only...")
-cell_data <- cell_data[condition == "TDLN"]
+# Filter by condition if specified
+if (nchar(CONDITION_VAL) > 0) {
+  message("\nFiltering to condition == '", CONDITION_VAL, "'...")
+  cell_data <- cell_data[condition == CONDITION_VAL]
+} else {
+  message("\nNo condition filter; analyzing all ", uniqueN(cell_data$condition), " conditions")
+}
 
-message("Data summary (TDLN only):")
+message("Data summary (after filtering):")
 message("  Total cells: ", nrow(cell_data))
-message("  Samples: ", length(unique(cell_data$sample_id)))
+message("  Samples: ", length(unique(cell_data[[SAMPLE_COL]])))
 
 # =============================================================================
 # Calculate Distances to Query Cells
@@ -316,7 +317,8 @@ message("\n", strrep("=", 70))
 message("Calculating Distances")
 message(strrep("=", 70))
 
-coords <- as.matrix(cell_data[, .(spatial_x, spatial_y)])
+coord_cols <- get_coord_columns(cell_data)
+coords <- as.matrix(cell_data[, ..coord_cols])
 
 # Distance to query cell type
 query_mask <- cell_data[[CELLTYPE_COL]] == QUERY_CELLTYPE
@@ -447,8 +449,12 @@ for (ct_name in names(TARGET_CELLTYPES)) {
   sig_genes <- ct_stage1$gene
   message("  Stage 1 significant genes: ", length(sig_genes))
 
-  # Identify target cells (TDLN only)
-  cell_data[, is_target := get(CELLTYPE_COL) %in% ct_types & condition == "TDLN"]
+  # Identify target cells (filtered by condition if specified)
+  if (nchar(CONDITION_VAL) > 0) {
+    cell_data[, is_target := get(CELLTYPE_COL) %in% ct_types & condition == CONDITION_VAL]
+  } else {
+    cell_data[, is_target := get(CELLTYPE_COL) %in% ct_types]
+  }
   target_data <- cell_data[is_target == TRUE]
   message("  Target cells: ", nrow(target_data))
 

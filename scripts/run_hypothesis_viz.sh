@@ -1,54 +1,64 @@
 #!/bin/bash
-#SBATCH --job-name=hymy_viz
-#SBATCH --output=/nobackup/lab_maier/Projects/mXenium/CMM/results/logs/hymy_viz_%j.out
-#SBATCH --error=/nobackup/lab_maier/Projects/mXenium/CMM/results/logs/hymy_viz_%j.err
-#SBATCH --partition=tinyq
-#SBATCH --qos=tinyq
+#SBATCH --job-name=ripple_viz
+#SBATCH --output=logs/ripple_viz_%j.out
+#SBATCH --error=logs/ripple_viz_%j.err
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=01:00:00
 #SBATCH --mem=32g
-#SBATCH --mail-type=END
-#SBATCH --mail-user=cmangana@cemm.at
+## Partition/QOS: uncomment and adjust for your cluster
+##SBATCH --partition=tinyq
+##SBATCH --qos=tinyq
+## Mail notifications (uncomment and set your email)
+##SBATCH --mail-type=END
+##SBATCH --mail-user=your@email.com
 
 # =============================================================================
-# Hypothesis Visualizations — Decay Plots
+# RIPPLE Stage 5: Hypothesis Visualizations -- Decay Plots
 # =============================================================================
-# Generates publication-quality decay curves for key biological themes:
-#   1. CD8 exhaustion vs stem-like
-#   2. CD4 Foxp3 (Treg enrichment)
-#   3. LEC remodeling
-#   4. FRC inflammatory remodeling
+# Generates publication-quality decay curves for biological themes.
 #
 # Usage:
 #   sbatch run_hypothesis_viz.sh
-#   ANNOTATION_LEVEL=L1 sbatch run_hypothesis_viz.sh
 # =============================================================================
 
 set -e
 
-# Query cell type configuration (pass through to R/Python)
-export QUERY_CELLTYPE=${QUERY_CELLTYPE:-}
-export CELLTYPE_COLUMN=${CELLTYPE_COLUMN:-}
-export QUERY_LABEL=${QUERY_LABEL:-}
-export ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
+# Auto-detect script directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Create logs directory
+mkdir -p logs
+
+# Pass through RIPPLE env vars
+export INPUT_PATH="${INPUT_PATH:-}"
+export OUTPUT_DIR="${OUTPUT_DIR:-}"
+export QUERY_CELLTYPE="${QUERY_CELLTYPE:-}"
+export CELLTYPE_COLUMN="${CELLTYPE_COLUMN:-}"
+export SAMPLE_COLUMN="${SAMPLE_COLUMN:-}"
+export CONDITION_COLUMN="${CONDITION_COLUMN:-}"
+export CONDITION_VALUE="${CONDITION_VALUE:-}"
+export X_COLUMN="${X_COLUMN:-}"
+export Y_COLUMN="${Y_COLUMN:-}"
+export TARGET_CELLTYPES="${TARGET_CELLTYPES:-}"
+export CONTROL_CELLTYPE="${CONTROL_CELLTYPE:-}"
+export QUERY_LABEL="${QUERY_LABEL:-}"
+export ANNOTATION_LEVEL="${ANNOTATION_LEVEL:-}"
+export ANALYSIS_NAME="${ANALYSIS_NAME:-}"
+export QUERY_SIGNATURE_GENES="${QUERY_SIGNATURE_GENES:-}"
+export ADATA_PATH="${ADATA_PATH:-}"
 
 echo "=============================================="
-echo "Hypothesis Visualizations"
+echo "RIPPLE Stage 5: Hypothesis Visualizations"
 echo "Job ID: ${SLURM_JOB_ID}"
-echo "Annotation Level: ${ANNOTATION_LEVEL}"
 echo "Date: $(date)"
 echo "=============================================="
 
-cd /nobackup/lab_maier/Projects/mXenium/CMM/scripts/workflow/scripts/one_off/spatial_analysis
-
-mkdir -p /nobackup/lab_maier/Projects/mXenium/CMM/results/logs
-
-source /home/cmangana/miniconda3/etc/profile.d/conda.sh
-conda activate R_IMC_2024
-
-export ANNOTATION_LEVEL
+# Conda environment setup (conditional)
+if [ -n "${CONDA_SETUP:-}" ]; then source "$CONDA_SETUP"; fi
+if [ -n "${CONDA_ENV:-}" ]; then conda activate "$CONDA_ENV"; fi
 
 Rscript hypothesis_visualizations.R
 
