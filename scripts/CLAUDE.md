@@ -1,0 +1,333 @@
+# RIPPLE — Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation
+
+## Overview
+
+RIPPLE detects distance-dependent gene expression gradients from any **query cell type** in spatial transcriptomics data (Xenium, MERFISH, CosMx, seqFISH, CODEX, Visium with deconvolution).
+
+**Core question:** *"Which genes in cell type B change expression as a function of physical distance from cell type A?"*
+
+**Origin:** Developed for HyMy (Hyperinflammatory Myeloid) cells in mouse lymph node Xenium data (CMM/mXenium project). This repo generalizes that methodology into a reusable package.
+
+---
+
+## Pipeline Stages
+
+| Stage | Script(s) | Description |
+|-------|-----------|-------------|
+| **1. Distance Correlation** | `hymy_distance_correlation_v2.R` | Per-sample Poisson GLM: gene expression ~ distance to query, with cell-size offset |
+| **2. GPU Permutation** | `run_permutation_gpu.py` | GPU-accelerated null distribution (label permutation) — validates query specificity |
+| **3. Merge & Summarize** | `merge_permutation_pvals.R`, `recompute_meta_summary.R`, `merge_distance_correlation_results.R` | Integrate permutation p-values, compute Fisher's combined p-value, merge across cell types |
+| **4. Confounder Control** | `hymy_distance_correlation_stage2.R` | Bivariate GLM adding distance-to-control-cell-type — isolates query-specific effects from shared niche |
+| **5. Visualization** | `distance_correlation_atlas.R`, `hypothesis_visualizations.R` | Volcanos, decay curves, heatmaps, dotplots, fGSEA pathway enrichment |
+| **6. L-R Integration** | `gradient_lr_integration.R`, `gradient_lr_atlas.R`, `gradient_lr_biology_figure.R` | Match gradient genes to ligand-receptor pairs via NicheNet, artifact classification, curated biology figures |
+
+---
+
+## Core Statistical Model
+
+For each gene in each target cell type, per biological replicate:
+
+```r
+glm(counts ~ distance_to_query + offset(log(total_counts)), family = poisson)
+```
+
+- **`distance_to_query`**: Euclidean distance (um) to nearest query cell (k=1 NN)
+- **`offset(log(total_counts))`**: cell-size correction — converts to rates, controls for ambient RNA / segmentation differences
+- **Coefficient (beta)**: log-rate change per um. Negative = expression increases near query cells (induced). Positive = decreases (repressed).
+
+Per-sample coefficients are combined via **Fisher's combined p-value** with sign consistency gate (all replicates must agree on direction). `fisher_fdr` is the **primary significance metric** for all downstream analyses.
+
+### Why This Design
+
+- **Raw counts + Poisson**: Xenium data is integer counts; the offset handles normalization internally
+- **Per-sample fitting**: Avoids pseudoreplication (true N = mice/patients, not cells)
+- **Fisher's + sign gate**: Equal weight per replicate; requires reproducibility across all biological replicates
+- **Cell-size offset**: Critical — without it, cells near query may appear to express more of everything due to ambient RNA or segmentation artifacts
+
+---
+
+## What Needs Generalization
+
+The scripts are currently hardcoded for the HyMy/mXenium use case. To make RIPPLE a general-purpose tool:
+
+| Element | Current (Hardcoded) | Target (Parameterized) |
+|---------|---------------------|------------------------|
+| Query cell type | `HyMy_GMM` / `IL1B_myeloid` | User-specified `QUERY_TYPE` |
+| Control cell type (Stage 4) | `Monocyte` (or `Macrophages` for Monocyte target) | User-specified `CONTROL_TYPE` |
+| Target cell types | 14 hardcoded (LEC, FRC, BEC, T cells, ...) | Auto-detected from annotation or user list |
+| Cell type column | `cell_type_with_HyMy` | User-specified metadata column |
+| Input data | Seurat RDS at fixed path | User-provided Seurat/AnnData |
+| Priority genes | ~200 curated chemokines/cytokines/receptors | Optional user list or omit |
+| Positive controls | CSF3, IL33, CXCL12 | Optional user list or omit |
+| Contamination gene list | HyMy signature genes | Auto-derived from query cell markers, or user-provided |
+| Base paths | `N:/lab_maier/Projects/mXenium` / `/nobackup/...` | Working directory or user-specified |
+| SPACEL domains | 6-cluster LN domains | Optional user-provided spatial domain annotation |
+| Condition column | `group` with "naive"/"TDLN" | User-specified condition column + levels |
+| Annotation level routing | `ANNOTATION_LEVEL` env var | Single `QUERY_TYPE` parameter |
+| Artifact classification rules | HyMy signature + myeloid lineage rules | Generic: user provides query markers + lineage info |
+| fGSEA gene sets | Hallmark (msigdbr) | User-configurable gene set collections |
+| NicheNet L-R database | Built-in mouse | Support mouse + human, user-provided custom L-R DBs |
+| SLURM config | CeMM cluster-specific | Portable SLURM templates or local execution |
+
+---
+
+## Script Inventory
+
+### Core Pipeline (to generalize)
+
+| Script | Stage | Role |
+|--------|-------|------|
+| `hymy_distance_correlation_v2.R` | 1 | Poisson GLM distance correlation (main analysis) |
+| `run_permutation_gpu.py` | 2 | GPU-accelerated permutation testing |
+| `run_permutation_gpu.sh` | 2 | SLURM wrapper for GPU permutation |
+| `merge_permutation_pvals.R` | 3 | Integrate GPU permutation p-values into R results |
+| `recompute_meta_summary.R` | 3 | Fisher's combined p-value + sign consistency gate |
+| `merge_distance_correlation_results.R` | 3 | Merge per-celltype results into summary CSVs |
+| `hymy_distance_correlation_stage2.R` | 4 | Bivariate GLM with confounder control |
+| `distance_correlation_atlas.R` | 5 | Volcanos, dotplots, heatmaps, contamination flagging, fGSEA |
+| `hypothesis_visualizations.R` | 5 | Per-sample decay curves for biological themes |
+| `gradient_lr_integration.R` | 6 | L-R pair matching: direct mapping + NicheNet activity + enrichment |
+| `gradient_lr_atlas.R` | 6 | L-R summary figures + 4-tier artifact classification |
+| `gradient_lr_biology_figure.R` | 6 | Curated bidirectional L-R biology figure |
+| `utils.R` | All | Shared utilities: data loading, spatial helpers, platform detection |
+| `load_data.R` | All | Data loading functions |
+
+### Supporting Scripts (reference implementations, not core pipeline)
+
+| Script | Analysis |
+|--------|----------|
+| `hymy_distance_correlation.R` | v1 logistic regression (superseded by v2) |
+| `hymy_effect_analysis.R` | Binary proximity DE (superseded by distance correlation) |
+| `hymy_neighbor_composition.R` | kNN neighbor composition |
+| `hymy_microenvironment.R` | Niche gene expression profiling (30um radius) |
+| `hymy_spatial_atlas.R` | Publication atlas figure |
+| `lymph_node_polarity.R` | Tissue polarity analysis |
+| `csf3_stromal_niche_analysis.R` | CSF3 niche analysis |
+| `spatial_nichenet_atlas.R` | Spatial NicheNet (Differential NicheNet with spatial DE) |
+| `prepare_spatial_celltypes.R` | Spatial cell type labeling (proximal/distal) |
+| Others | Various HyMy-specific analyses |
+
+---
+
+## Key Parameters
+
+| Parameter | Default | Description | When to Change |
+|-----------|---------|-------------|----------------|
+| `QUERY_TYPE` | *required* | Cell type label for the source population | Always set |
+| `MAX_DISTANCE_UM` | 200 | Maximum distance (um) to consider | Reduce for contact-dependent (~50); increase for morphogens (~500) |
+| `K_NEIGHBORS` | 1 | Number of nearest query cells for distance | Set 3-5 if query cells are very sparse |
+| `MIN_EXPR_CELLS` | 25 | Minimum non-zero cells per sample per gene | Lower for rare cell types |
+| `MIN_EXPR_PCT` | 0.01 | Minimum fraction expressing (actual threshold = `max(pct * n_cells, MIN_EXPR_CELLS)`) | |
+| `N_PERM` | 500 | Permutations for null distribution | 1000+ for publication-quality p-values |
+| `FDR_THRESHOLD` | 0.05 | Fisher FDR cutoff | 0.1 for discovery; 0.01 for high-confidence |
+| `SIGN_CONSISTENCY_THRESHOLD` | 1.0 | Required fraction of samples agreeing on beta direction | Relax to 0.75 with N>=6 samples |
+
+---
+
+## Downstream Analysis Details
+
+### Atlas Visualization (Stage 5)
+
+`distance_correlation_atlas.R` produces:
+
+| Panel | Output | Description |
+|-------|--------|-------------|
+| P1 | `gene_counts_by_celltype.pdf` | Stacked bar: induced vs repressed, by specificity |
+| P2 | `dotplot_specific_genes.pdf` | Top 5 cell-type-specific genes per cell type |
+| P3 | `multi_volcano.pdf` | Multi-panel volcano with contamination flagging |
+| P5 | `specificity_distribution.pdf` | Gene specificity breakdown |
+| P6 | `specific_genes_heatmap.pdf` | Heatmap of top cell-type-specific genes |
+| P7 | `contamination_candidates.csv` | Genes significant in >=4 cell types (suspect artifacts) |
+| P8-9 | `fgsea_hallmark_*.pdf` | fGSEA pathway enrichment (Hallmark gene sets via msigdbr) |
+| D2 | `sample_contribution_heatmap.pdf` | Per-sample coefficient patterns |
+| E1 | `ligand_receptor_pairs.pdf` | Known L-R pairs in spatial gradients |
+| E3 | `query_signature_leakage_check.pdf` | Query cell markers detected in other cell types (contamination) |
+| P10 | `stage2_classification_breakdown.pdf` | Query-specific vs niche-driven by cell type |
+
+### Decay Curves (Stage 5)
+
+`hypothesis_visualizations.R` creates per-sample reproducibility plots:
+- Thin lines = individual replicates
+- Thick line + 95% CI ribbon = pooled mean
+- Red = induced near query, Blue = repressed, Gray = niche-driven
+- Meta-analysis coefficient + FDR annotated per panel
+
+### L-R Integration (Stage 6)
+
+`gradient_lr_integration.R` runs three analyses per cell type:
+
+| Part | Method | Question |
+|------|--------|----------|
+| 1: Direct L-R Mapping | Match gradient receptors to query-expressed ligands (per-replicate) | Which L-R pairs have gradient + expression support? |
+| 2: NicheNet Activity | `predict_ligand_activities()` on query-induced genes | Which query ligands best predict the gradient pattern? |
+| 3: Enrichment | Fisher's exact on NicheNet target predictions | Are predicted targets enriched in gradient genes? |
+
+**Directions:**
+- **A (Query -> Target)**: Full pipeline (Parts 1-3 + combined scoring)
+- **B (Target -> Query)**: Direct L-R mapping only
+
+**Artifact Classification** (`gradient_lr_atlas.R`): 4-tier system (artifact / suspect / low_confidence / clean) based on query signature leakage, contamination candidates, lineage-mismatched markers, and expression thresholds. All downstream figures filter to `clean` only.
+
+**Biology Figure** (`gradient_lr_biology_figure.R`): Curated side-by-side Direction A + B layout with dotplot, gradient lollipop, and reproducibility panels.
+
+---
+
+## Spatial Statistics (CRITICAL)
+
+### N = Samples, Not Cells!
+
+**True N = number of biological replicates**, not number of cells.
+
+```r
+# WRONG - pseudoreplication
+wilcox.test(data[condition == "naive"]$entropy,
+            data[condition == "TDLN"]$entropy)
+
+# RIGHT - sample-level aggregation
+sample_stats <- data[, .(median_entropy = median(entropy)),
+                     by = .(sample_id, condition)]
+wilcox.test(sample_stats[condition == "naive"]$median_entropy,
+            sample_stats[condition == "TDLN"]$median_entropy,
+            exact = FALSE)
+```
+
+### Statistical Testing Summary
+
+| Analysis Type | Unit | Test |
+|--------------|------|------|
+| Condition comparison | Sample median | Wilcoxon rank-sum |
+| Paired comparison | Per-sample difference | Wilcoxon signed-rank |
+| Spatial enrichment | Per-sample log2 enrichment | One-sample Wilcoxon (H0: 0) |
+| Permutation test | Stratify by sample | Within-sample shuffling |
+
+### Always:
+1. Set `set.seed()` for reproducibility
+2. Aggregate to sample-level before testing
+3. Use Wilcoxon (not t-test) for small N
+4. Apply FDR correction across tests
+5. Report effect sizes (mean +/- SD, fold change)
+6. Be explicit about N in reports
+
+### Condition-Specific Cell Types
+
+Query cell types may be rare in one condition but abundant in another. Test on the condition where the query is abundant for meaningful stats:
+
+```r
+condition_enrichments <- sample_enrichments[condition == "TDLN"]
+if (nrow(condition_enrichments) >= 3) {
+  wilcox.test(condition_enrichments$log2_enrichment, mu = 0, exact = FALSE)
+}
+```
+
+### Expression Filtering (Two-Tier)
+
+- **Tier 1 (strict, regular genes):** >= max(1% of cells, 25) expressing in ALL valid samples
+- **Tier 2 (lenient, priority genes):** floor threshold (25 cells), pass in >= 2 samples. Rescues biologically important but sparse genes.
+
+### Confounder Control (Stage 4)
+
+Choose a control cell type that (1) co-localizes with query cells and (2) is biologically distinct:
+- Query = inflammatory myeloid -> Control = monocytes (shared niche, different function)
+- Query = tumor cells -> Control = CAFs (both in tumor core)
+- Query = Tregs -> Control = CD4 T cells (shared T cell zones)
+
+If no obvious confounder exists, skip Stage 4 and rely on permutation testing.
+
+**Gene classification after Stage 4:**
+
+| Classification | Criteria |
+|---------------|----------|
+| `query_specific` | Fisher FDR < 0.05 in Stage 4, same sign as Stage 1 |
+| `enhanced` | query_specific + abs(stage4_coef) > abs(stage1_coef) x 1.1 |
+| `niche_driven` | FDR >= 0.05 AND coefficient attenuated >50% |
+| `underpowered` | FDR >= 0.05 AND coefficient preserved >=50% |
+
+### Spatial Confounding
+
+A positive proximity result could mean:
+- Biological interaction, OR
+- Both cell types independently localize to the same region
+
+**Solutions:**
+1. Compare within same spatial domain
+2. Use control cell types (Stage 4)
+3. Permutation testing (Stage 2)
+
+---
+
+## Dependencies
+
+### R Packages
+
+```r
+# Core (required)
+library(Seurat)       # or alternative spatial object
+library(data.table)
+library(ggplot2)
+library(patchwork)
+library(RANN)         # Fast kNN
+library(meta)         # Random-effects meta-analysis
+library(ggrepel)      # Volcano label placement
+
+# Visualization (Stage 5)
+library(pheatmap)     # Heatmaps
+library(fgsea)        # Pathway enrichment
+library(msigdbr)      # Gene set collections
+
+# L-R Integration (Stage 6)
+library(nichenetr)    # Ligand-receptor database + activity prediction
+```
+
+### Python (GPU Permutation, Stage 2)
+
+- PyTorch with CUDA support
+- NumPy 1.x (not 2.x — incompatible with PyTorch 2.1)
+
+---
+
+## Current Data Paths (to be replaced)
+
+```r
+# Platform detection in utils.R
+if (.Platform$OS.type == "windows") {
+  BASE_PATH <- "N:/lab_maier/Projects/mXenium"
+} else {
+  BASE_PATH <- "/nobackup/lab_maier/Projects/mXenium"
+}
+```
+
+**Input:** `{BASE_PATH}/results/cell_type_assignment/HyMy_annotation/seurat_xenium_filtered.rds`
+**Output:** `{BASE_PATH}/CMM/results/spatial_analysis/`
+
+These will be replaced with user-configurable paths.
+
+---
+
+## Implementation Notes
+
+### Seurat Metadata
+- Use `keep.rownames = "barcode"` when converting to data.table (avoids duplicate `cell_id` column errors)
+- `cell_id` column is truncated — use full barcode for merging
+
+### Spatial Visualization
+- Use `coord_fixed()` for spatial data
+- Use individual plots + `wrap_plots()` instead of `facet_wrap(scales="free")` + `coord_fixed()` (ggplot2 bug)
+
+### Contamination Check
+If top "induced" genes in a target cell type are known markers of the query cell type, suspect ambient RNA / segmentation artifacts. Build a contamination gene list from query markers and flag/exclude.
+
+### Overdispersion
+Median dispersion 0.3-0.6 across cell types confirms Poisson is appropriate. If consistently >2, consider quasi-Poisson or negative binomial.
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| DOS line endings on HPC | `sed -i 's/\r$//' *.sh *.R` |
+| Duplicate column error (`cell_id`) | Use `keep.rownames = "barcode"` |
+| facet_wrap + coord_fixed error | Use `plot_spatial_by_sample()` from `utils.R` |
+| GPU OOM in permutation | Reduce `batch_size` in `run_permutation_gpu.py` |
+| Missing query cells in some samples | Script handles gracefully; samples with <30 query cells excluded |
+| rbindlist column mismatch | Use `rbindlist(results, fill = TRUE)` |

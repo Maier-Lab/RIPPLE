@@ -1,0 +1,173 @@
+#' =============================================================================
+#' Load data for HyMy spatial analysis
+#'
+#' Uses the existing Seurat object created by annotate_HyMy_with_UCell.R
+#' No Python preparation step needed!
+#'
+#' Usage:
+#'   source("scripts/spatial_analysis/load_data.R")
+#'   obj <- load_seurat()
+#'   data <- load_metadata_only()  # Fast: just coords + cell types
+#' =============================================================================
+
+# Load utilities - get script directory (works with Rscript and source())
+get_script_dir <- function() {
+  # Try commandArgs for Rscript
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- grep("^--file=", args, value = TRUE)
+  if (length(file_arg) > 0) {
+    return(dirname(normalizePath(sub("^--file=", "", file_arg))))
+  }
+  # Try sys.frame for source()
+  for (i in seq_len(sys.nframe())) {
+    ofile <- sys.frame(i)$ofile
+    if (!is.null(ofile)) return(dirname(normalizePath(ofile)))
+  }
+  # Fallback (platform-aware)
+  if (.Platform$OS.type == "windows") {
+    return("N:/lab_maier/Projects/mXenium/CMM/scripts/workflow/scripts/one_off/spatial_analysis")
+  } else {
+    return("/nobackup/lab_maier/Projects/mXenium/CMM/scripts/workflow/scripts/one_off/spatial_analysis")
+  }
+}
+script_dir <- get_script_dir()
+source(file.path(script_dir, "utils.R"))
+
+# =============================================================================
+# Loading Functions
+# =============================================================================
+
+#' Load just metadata and coordinates (fast, for spatial-only analysis)
+#'
+#' Extracts cell_id, cell types, x, y, and key metadata from the Seurat object.
+#' Uses CELLTYPE_COLUMN from utils.R to determine which annotation to use.
+#' For HyMy annotation: merges from CSV. For L1: uses existing column.
+#'
+#' @param path Path to Seurat RDS file (optional)
+#' @return data.table with cell metadata and coordinates
+load_metadata_only <- function(path = NULL) {
+  message("Loading metadata from Seurat object...")
+  message(sprintf("  Annotation level: %s (column: %s)", ANNOTATION_LEVEL, CELLTYPE_COLUMN))
+
+  obj <- load_seurat(path)
+
+  # Extract metadata - use "barcode" for rownames (cell_id column may already exist)
+  meta <- as.data.table(obj@meta.data, keep.rownames = "barcode")
+
+  # Create cell_id from barcode if not present (for backward compatibility)
+  if (!"cell_id" %in% names(meta)) {
+    meta[, cell_id := barcode]
+  }
+
+  # Ensure we have coordinates as x, y columns
+  if (!"x" %in% names(meta) && "spatial_x" %in% names(meta)) {
+    meta[, x := spatial_x]
+    meta[, y := spatial_y]
+  }
+
+  # Handle cell type annotation based on annotation level
+  if (USE_HYMY_ANNOTATION) {
+    # HyMy annotation: Merge from CSV (has HyMy_GMM and IL1B_myeloid)
+    if (!"cell_type_with_HyMy" %in% names(meta) ||
+        !any(meta$cell_type_with_HyMy == "HyMy_GMM", na.rm = TRUE)) {
+      message("\nMerging HyMy annotations from CSV...")
+      hymy <- load_hymy_annotations()
+      # Rename cell_id to barcode for merge
+      setnames(hymy, "cell_id", "barcode")
+      meta <- merge(meta, hymy[, .(barcode, cell_type_with_HyMy)],
+                    by = "barcode", all.x = TRUE)
+    }
+  } else {
+    # L1 annotation: Use cell_type_assignment_L1 directly
+    # Create cell_type_with_HyMy as alias for compatibility with existing scripts
+    if (CELLTYPE_COLUMN %in% names(meta)) {
+      meta[, cell_type_with_HyMy := get(CELLTYPE_COLUMN)]
+      message(sprintf("\nUsing %s column for cell types", CELLTYPE_COLUMN))
+    } else {
+      stop(sprintf("Column '%s' not found in Seurat metadata", CELLTYPE_COLUMN))
+    }
+  }
+
+  message(sprintf("\nLoaded metadata for %s cells", nrow(meta)))
+
+  # Print summary using the appropriate column
+  message(sprintf("\nCell type summary (using %s):", CELLTYPE_COLUMN))
+  ct_summary <- meta[, .N, by = cell_type_with_HyMy][order(-N)]
+  print(ct_summary[1:min(15, nrow(ct_summary))])
+
+  # Print query cell type count
+  query_count <- sum(meta$cell_type_with_HyMy == QUERY_CELLTYPE, na.rm = TRUE)
+  message(sprintf("\n  Query cell type (%s): %d cells", QUERY_CELLTYPE, query_count))
+
+  # Clean up Seurat object to free memory
+  rm(obj)
+  gc(verbose = FALSE)
+
+  return(meta)
+}
+
+
+#' Load full Seurat object (for expression-based analyses)
+#'
+#' This is just an alias for load_seurat() from utils.R
+#' Use this when you need gene expression data.
+#'
+#' @param path Path to Seurat RDS file (optional)
+#' @return Seurat object
+load_full_data <- function(path = NULL) {
+  load_seurat(path)
+}
+
+
+#' Quick check that data exists and print summary
+check_data <- function(path = NULL) {
+  path <- if (is.null(path)) SEURAT_PATH else path
+
+  message("Checking Seurat object at: ", path)
+  message("")
+
+  if (!file.exists(path)) {
+    message("  ✗ File NOT FOUND")
+    message("")
+    message("To create the Seurat object, run:")
+    message("  Rscript scripts/annotate_HyMy_with_UCell.R")
+    return(invisible(FALSE))
+  }
+
+  size_mb <- file.info(path)$size / (1024 * 1024)
+  message(sprintf("  ✓ Found (%.1f MB)", size_mb))
+
+  # Quick load to check contents
+  message("  Loading to check contents...")
+  obj <- readRDS(path)
+
+  message(sprintf("  Cells: %s", format(ncol(obj), big.mark = ",")))
+  message(sprintf("  Genes: %s", format(nrow(obj), big.mark = ",")))
+  message("")
+
+  message("  Metadata columns:")
+  key_cols <- c("cell_type_with_HyMy", "spatial_x", "spatial_y",
+                "sample_id", "group", "experiment", "HyMy_UCell")
+  for (col in key_cols) {
+    if (col %in% colnames(obj@meta.data)) {
+      message(sprintf("    ✓ %s", col))
+    } else {
+      message(sprintf("    ✗ %s (missing)", col))
+    }
+  }
+
+  rm(obj)
+  gc(verbose = FALSE)
+
+  return(invisible(TRUE))
+}
+
+
+# =============================================================================
+# Run check if sourced directly
+# =============================================================================
+
+if (sys.nframe() == 0) {
+  message("Checking data availability...\n")
+  check_data()
+}
