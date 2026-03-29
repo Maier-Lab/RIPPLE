@@ -1,15 +1,18 @@
 #!/usr/bin/env Rscript
 # ==============================================================================
-# Curated Biological L-R Pairs Figure — Direction A + B Side-by-Side
+# RIPPLE Stage 6: Curated Biological L-R Pairs Figure
 # ==============================================================================
 # Creates a publication-quality figure highlighting biologically informative
 # ligand-receptor pairs, grouped by functional theme.
 #
-# Direction A: HyMy → Target (HyMy ligands acting on gradient receptors)
-# Direction B: Target → HyMy (target ligands induced near HyMy, acting on HyMy)
+# Direction A: Query -> Target (query ligands acting on gradient receptors)
+# Direction B: Target -> Query (target ligands induced near query, acting on query)
+#
+# Usage:
+#   Rscript gradient_lr_biology_figure.R
+#   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript gradient_lr_biology_figure.R
 #
 # Author: CMM Project
-# Date: 2026-03
 # ==============================================================================
 
 suppressPackageStartupMessages({
@@ -33,7 +36,7 @@ script_dir <- tryCatch(
 )
 source(file.path(script_dir, "utils.R"))
 
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", "HyMy")
+# Inherited from config.R (via utils.R): QUERY_CELLTYPE, CELLTYPE_COL, OUTPUT_SUFFIX, QUERY_LABEL
 GRADIENT_SOURCE <- Sys.getenv("GRADIENT_SOURCE", unset = "hymy_distance_correlation")
 gradient_suffix <- sub("^hymy_distance_correlation", "", GRADIENT_SOURCE)
 output_name <- if (nchar(gradient_suffix) > 0) {
@@ -42,11 +45,7 @@ output_name <- if (nchar(gradient_suffix) > 0) {
   "gradient_lr_integration"
 }
 
-if (ANNOTATION_LEVEL == "L1") {
-  base_dir <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", output_name)
-} else {
-  base_dir <- file.path(PROJECT_ROOT, "results", "spatial_analysis", output_name)
-}
+base_dir <- file.path(OUTPUT_ROOT, output_name)
 
 out_dir <- file.path(base_dir, "plots")
 ensure_dir(out_dir)
@@ -58,12 +57,12 @@ ensure_dir(out_dir)
 cat("Loading combined L-R results...\n")
 dt_a <- fread(file.path(base_dir, "summary", "all_lr_pairs_combined.csv"))
 clean_a <- dt_a[artifact_flag == "clean"]
-cat("  Direction A (HyMy->Target) clean pairs:", nrow(clean_a), "\n")
+cat(paste0("  Direction A (", QUERY_LABEL, "->Target) clean pairs: ", nrow(clean_a), "\n"))
 
 dt_b <- fread(file.path(base_dir, "summary", "all_target_to_hymy_pairs.csv"))
 # Direction B has no artifact_flag — filter by negative ligand_gradient_coef (induced)
 clean_b <- dt_b[ligand_gradient_coef < 0]
-cat("  Direction B (Target->HyMy) induced pairs:", nrow(clean_b), "\n")
+cat(paste0("  Direction B (Target->", QUERY_LABEL, ") induced pairs: ", nrow(clean_b), "\n"))
 
 # ==============================================================================
 # Define curated biologically informative pairs — Direction A (20 pairs)
@@ -290,7 +289,7 @@ p_dot_a <- ggplot(merged_a, aes(x = cell_type, y = pair_label)) +
   scale_fill_manual(values = theme_colors_a, name = "Theme") +
   scale_x_discrete(labels = ct_labels) +
   labs(x = NULL, y = NULL,
-       title = "A: HyMy \u2192 Target",
+       title = paste0("A: ", QUERY_LABEL, " \u2192 Target"),
        subtitle = "Bubble size = combined score") +
   theme_minimal(base_size = 13) +
   theme(
@@ -390,13 +389,13 @@ make_repro_panel <- function(merged, theme_colors) {
 
 # --- Build panels ---
 p_a_dot  <- make_dotplot(merged_a, theme_colors_a, "combined_score",
-                          "Combined\nscore", "A: HyMy \u2192 Target")
+                          "Combined\nscore", paste0("A: ", QUERY_LABEL, " \u2192 Target"))
 p_a_grad <- make_gradient_panel(merged_a, "receptor_gradient_coef",
                                  theme_colors_a, "Receptor\ngradient")
 p_a_rep  <- make_repro_panel(merged_a, theme_colors_a)
 
 p_b_dot  <- make_dotplot(merged_b, theme_colors_b, "direct_score",
-                          "Direct\nscore", "B: Target \u2192 HyMy")
+                          "Direct\nscore", paste0("B: Target \u2192 ", QUERY_LABEL))
 p_b_grad <- make_gradient_panel(merged_b, "ligand_gradient_coef",
                                  theme_colors_b, "Ligand\ngradient")
 p_b_rep  <- make_repro_panel(merged_b, theme_colors_b)
@@ -460,12 +459,12 @@ best_a <- merge(best_a, ct_positions, by = "cell_type")
 best_b <- merge(best_b, ct_positions, by = "cell_type")
 
 p_network <- ggplot() +
-  # Direction A: solid arrows outward (HyMy → Target)
+  # Direction A: solid arrows outward (Query → Target)
   geom_segment(data = best_a,
                aes(x = 0, y = 0, xend = x * 0.7, yend = y * 0.7),
                arrow = arrow(length = unit(0.12, "inches"), type = "closed"),
                linewidth = 0.7, color = "#457B9D") +
-  # Direction B: dashed arrows inward (Target → HyMy)
+  # Direction B: dashed arrows inward (Target → Query)
   geom_segment(data = best_b,
                aes(x = x * 0.7, y = y * 0.7, xend = 0, yend = 0),
                arrow = arrow(length = unit(0.12, "inches"), type = "closed"),
@@ -488,14 +487,14 @@ p_network <- ggplot() +
                  label = paste0(ligand, "\u2192", receptor)),
              size = 2.2, fill = "#FCEAEA", label.size = 0.15,
              label.padding = unit(0.12, "lines"), color = "#D62828") +
-  # HyMy center
+  # Query cell type center
   annotate("point", x = 0, y = 0, size = 18, shape = 21,
            fill = "#FC8D62", color = "gray30", stroke = 1.5) +
-  annotate("text", x = 0, y = 0, label = "HyMy", size = 4.5, fontface = "bold") +
+  annotate("text", x = 0, y = 0, label = QUERY_LABEL, size = 4.5, fontface = "bold") +
   coord_fixed(xlim = c(-5, 5), ylim = c(-5, 5)) +
-  labs(title = "HyMy Bidirectional Communication Network",
-       subtitle = paste0("Solid blue = HyMy\u2192Target (Dir A) | ",
-                         "Dashed red = Target\u2192HyMy (Dir B)")) +
+  labs(title = paste0(QUERY_LABEL, " Bidirectional Communication Network"),
+       subtitle = paste0("Solid blue = ", QUERY_LABEL, "\u2192Target (Dir A) | ",
+                         "Dashed red = Target\u2192", QUERY_LABEL, " (Dir B)")) +
   theme_void(base_size = 11) +
   theme(
     plot.title = element_text(size = 13, face = "bold", hjust = 0.5),
@@ -514,7 +513,7 @@ cat("  Saved: curated_biology_network.pdf/png\n")
 
 # Direction A table
 table_a <- merged_a[order(theme, -combined_score), .(
-  Direction = "A: HyMy->Target",
+  Direction = paste0("A: ", QUERY_LABEL, "->Target"),
   Theme = theme,
   Ligand = ligand,
   Receptor = receptor,
@@ -522,7 +521,7 @@ table_a <- merged_a[order(theme, -combined_score), .(
   `Combined score` = round(combined_score, 3),
   `Gradient coef` = round(receptor_gradient_coef, 5),
   `NicheNet AUPR` = round(nichenet_activity, 4),
-  `Ligand % HyMy` = round(ligand_pct_hymy, 1),
+  `Ligand % query` = round(ligand_pct_hymy, 1),
   `Receptor % target` = round(receptor_pct_target * 100, 1),
   `Mice (of 4)` = n_samples_supporting,
   `Stage 2` = stage2_classification,
@@ -531,7 +530,7 @@ table_a <- merged_a[order(theme, -combined_score), .(
 
 # Direction B table
 table_b <- merged_b[order(theme, -direct_score), .(
-  Direction = "B: Target->HyMy",
+  Direction = paste0("B: Target->", QUERY_LABEL),
   Theme = theme,
   Ligand = ligand,
   Receptor = receptor,
@@ -539,7 +538,7 @@ table_b <- merged_b[order(theme, -direct_score), .(
   `Direct score` = round(direct_score, 5),
   `Gradient coef` = round(ligand_gradient_coef, 5),
   `Ligand % target` = round(ligand_pct_target * 100, 1),
-  `Receptor % HyMy` = round(receptor_pct_hymy, 1),
+  `Receptor % query` = round(receptor_pct_hymy, 1),
   `Mice (of 4)` = n_samples_supporting
 )]
 
@@ -556,13 +555,13 @@ cat("  Saved: curated_biology_table*.csv\n")
 # ==============================================================================
 
 cat("\n=== CURATED PAIRS SUMMARY ===\n")
-cat("Direction A (HyMy->Target):\n")
+cat(paste0("Direction A (", QUERY_LABEL, "->Target):\n"))
 cat("  Total pairs:", nrow(merged_a), "\n")
 cat("  Themes:", length(unique(merged_a$theme)), "\n")
 cat("  Cell types:", length(unique(merged_a$cell_type)), "\n")
 cat("  All 4 mice:", n_mice_a, "/", n_a, "\n")
 
-cat("Direction B (Target->HyMy):\n")
+cat(paste0("Direction B (Target->", QUERY_LABEL, "):\n"))
 cat("  Total pairs:", nrow(merged_b), "\n")
 cat("  Themes:", length(unique(merged_b$theme)), "\n")
 cat("  Cell types:", length(unique(merged_b$cell_type)), "\n")

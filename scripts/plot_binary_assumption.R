@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 # Quick QC plot: test the binary expression assumption for Xenium 5K
-# Plots nFeature vs nCount per sample — if slope ≈ 1, most genes have 1 count
+# Plots nFeature vs nCount per sample -- if slope ~ 1, most genes have 1 count
+# NOTE: Standalone script with hardcoded paths (not part of core RIPPLE pipeline)
 
 library(Seurat)
 library(ggplot2)

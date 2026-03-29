@@ -1,23 +1,14 @@
 # =============================================================================
-# Hypothesis Visualizations — Decay Plots for Key Biological Themes
+# RIPPLE Stage 5: Hypothesis Visualizations — Decay Plots
 # =============================================================================
 #
 # Creates publication-quality decay plots showing proportion of cells expressing
-# a gene as a function of distance to HyMy. Per-sample curves demonstrate
-# consistency across biological replicates (N=4 TDLN).
-#
-# Themes:
-#   1. CD8 T cell exhaustion vs stem-like phenotype
-#   2. CD4 Foxp3 (Treg enrichment near HyMy)
-#   3. LEC stromal remodeling
-#   4. FRC inflammatory remodeling (HyMy-specific vs niche-driven)
-#   5. Chemokine recruitment (multi-cell-type)
-#   6. Inflammation & anti-inflammation balance (multi-cell-type)
-#   7. BEC vascular activation
+# a gene as a function of distance to the query cell type. Per-sample curves
+# demonstrate consistency across biological replicates.
 #
 # Usage:
 #   Rscript hypothesis_visualizations.R
-#   ANNOTATION_LEVEL=L1 Rscript hypothesis_visualizations.R
+#   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript hypothesis_visualizations.R
 #
 # =============================================================================
 
@@ -44,8 +35,8 @@ ANALYSIS_NAME <- Sys.getenv("ANALYSIS_NAME", unset = "hymy_distance_correlation"
 VIZ_DIR <- file.path(OUTPUT_ROOT, ANALYSIS_NAME, "hypothesis_figures")
 ensure_dir(VIZ_DIR)
 
-# Cell type mapping (aggregated names → actual column values)
-# Must match hymy_distance_correlation.R TARGET_CELLTYPES
+# Cell type mapping (aggregated names -> actual column values)
+# Must match distance correlation TARGET_CELLTYPES
 CELLTYPE_MAP <- list(
   LEC = "LEC",
   FRC = "FRC",
@@ -67,9 +58,9 @@ CELLTYPE_MAP <- list(
 SAMPLE_COLORS <- c(
   "m16" = "#E74C3C", "m17" = "#3498DB", "m18" = "#2ECC71", "m19" = "#9B59B6"
 )
-INDUCED_COLOR <- "#B2182B"   # red — negative coefficient (higher near HyMy)
-REPRESSED_COLOR <- "#2166AC" # blue — positive coefficient (lower near HyMy)
-NICHE_COLOR <- "#95A5A6"     # gray — niche-driven (control)
+INDUCED_COLOR <- "#B2182B"   # red -- negative coefficient (higher near query)
+REPRESSED_COLOR <- "#2166AC" # blue -- positive coefficient (lower near query)
+NICHE_COLOR <- "#95A5A6"     # gray -- niche-driven (control)
 
 # =============================================================================
 # Gene Themes
@@ -78,7 +69,7 @@ NICHE_COLOR <- "#95A5A6"     # gray — niche-driven (control)
 themes <- list(
   cd8_exhaustion = list(
     cell_type = "CD8_T_cells",
-    title = "CD8 T Cell Exhaustion Near HyMy",
+    title = paste0("CD8 T Cell Exhaustion Near ", QUERY_LABEL),
     bin_width = 10,
     genes = list(
       list(gene = "Havcr2", label = "Tim-3", direction = "induced"),
@@ -93,7 +84,7 @@ themes <- list(
 
   cd4_foxp3 = list(
     cell_type = "CD4_T_cells",
-    title = "CD4 T Cell Foxp3 Induction Near HyMy",
+    title = paste0("CD4 T Cell Foxp3 Induction Near ", QUERY_LABEL),
     genes = list(
       list(gene = "Foxp3", label = "Foxp3 (Treg)", direction = "induced"),
       list(gene = "Ctla4", label = "CTLA-4", direction = "induced"),
@@ -107,7 +98,7 @@ themes <- list(
 
   lec_remodeling = list(
     cell_type = "LEC",
-    title = "LEC Stromal Remodeling Near HyMy",
+    title = paste0("LEC Stromal Remodeling Near ", QUERY_LABEL),
     genes = list(
       list(gene = "Spon1", label = "Spondin-1 (ECM)", direction = "induced"),
       list(gene = "Hspg2", label = "Perlecan (ECM)", direction = "induced"),
@@ -121,12 +112,12 @@ themes <- list(
 
   frc_remodeling = list(
     cell_type = "FRC",
-    title = "FRC Inflammatory Remodeling Near HyMy",
+    title = paste0("FRC Inflammatory Remodeling Near ", QUERY_LABEL),
     genes = list(
-      list(gene = "Cxcl5", label = "CXCL5 (HyMy-specific)", direction = "induced"),
-      list(gene = "Cebpb", label = "C/EBPβ (HyMy-specific)", direction = "induced"),
-      list(gene = "Sod2", label = "SOD2 (HyMy-specific)", direction = "induced"),
-      list(gene = "Cxcl10", label = "CXCL10 (HyMy-specific)", direction = "induced"),
+      list(gene = "Cxcl5", label = "CXCL5 (query-specific)", direction = "induced"),
+      list(gene = "Cebpb", label = "C/EBPβ (query-specific)", direction = "induced"),
+      list(gene = "Sod2", label = "SOD2 (query-specific)", direction = "induced"),
+      list(gene = "Cxcl10", label = "CXCL10 (query-specific)", direction = "induced"),
       list(gene = "Col4a1", label = "Col4a1 (niche-driven)", direction = "niche"),
       list(gene = "Col1a2", label = "Col1a2 (niche-driven)", direction = "niche")
     ),
@@ -137,7 +128,7 @@ themes <- list(
 
   chemokine_recruitment = list(
     cell_type = NULL,  # multi-cell-type — each gene specifies its own
-    title = "Chemokine & Recruitment Signaling Near HyMy",
+    title = paste0("Chemokine & Recruitment Signaling Near ", QUERY_LABEL),
     genes = list(
       list(gene = "Ccr1",   label = "CCR1 (CD8 T)",   direction = "induced", cell_type = "CD8_T_cells"),
       list(gene = "Ccr5",   label = "CCR5 (CD4 T)",   direction = "induced", cell_type = "CD4_T_cells"),
@@ -151,7 +142,7 @@ themes <- list(
 
   inflammation_balance = list(
     cell_type = NULL,  # multi-cell-type
-    title = "Inflammation & Anti-Inflammation Balance Near HyMy",
+    title = paste0("Inflammation & Anti-Inflammation Balance Near ", QUERY_LABEL),
     genes = list(
       list(gene = "Il1b",     label = "IL-1\u03b2 (CD4 T)",   direction = "induced",  cell_type = "CD4_T_cells"),
       list(gene = "Tnfrsf9",  label = "4-1BB (CD4 T)",        direction = "induced",  cell_type = "CD4_T_cells"),
@@ -165,7 +156,7 @@ themes <- list(
 
   bec_vascular_activation = list(
     cell_type = "BEC",
-    title = "BEC Vascular Activation Near HyMy",
+    title = paste0("BEC Vascular Activation Near ", QUERY_LABEL),
     genes = list(
       list(gene = "Selp",   label = "P-selectin",       direction = "induced"),
       list(gene = "Sele",   label = "E-selectin",       direction = "induced"),
@@ -179,7 +170,7 @@ themes <- list(
 
   csf3_il33_csf1_stromal = list(
     cell_type = NULL,  # multi-cell-type — FRC and LEC
-    title = "Stromal Ligands (CSF3, IL-33, CSF1) Near HyMy",
+    title = paste0("Stromal Ligands (CSF3, IL-33, CSF1) Near ", QUERY_LABEL),
     genes = list(
       list(gene = "Csf3", label = "CSF3 (FRC)",  direction = "induced", cell_type = "FRC"),
       list(gene = "Csf3", label = "CSF3 (LEC)",  direction = "induced", cell_type = "LEC"),
@@ -193,7 +184,7 @@ themes <- list(
 
   lec_emt = list(
     cell_type = "LEC",
-    title = "Epithelial\u2013Mesenchymal Transition (EndMT) in LEC Near HyMy",
+    title = paste0("Epithelial\u2013Mesenchymal Transition (EndMT) in LEC Near ", QUERY_LABEL),
     genes = list(
       list(gene = "Ccn1",     label = "CCN1/CYR61",      direction = "induced"),
       list(gene = "Cxcl12",   label = "CXCL12/SDF-1",    direction = "induced"),
@@ -207,7 +198,7 @@ themes <- list(
 
   lec_il6_jak_stat3 = list(
     cell_type = "LEC",
-    title = "IL-6/JAK/STAT3 Signaling in LEC Near HyMy",
+    title = paste0("IL-6/JAK/STAT3 Signaling in LEC Near ", QUERY_LABEL),
     genes = list(
       list(gene = "Socs3",  label = "SOCS3",     direction = "induced"),
       list(gene = "Pim1",   label = "PIM1",      direction = "induced"),
@@ -221,7 +212,7 @@ themes <- list(
 
   frc_inflammation = list(
     cell_type = "FRC",
-    title = "FRC Inflammatory Signaling Near HyMy",
+    title = paste0("FRC Inflammatory Signaling Near ", QUERY_LABEL),
     genes = list(
       list(gene = "Cxcl1",    label = "CXCL1",          direction = "induced"),
       list(gene = "Ccl7",     label = "CCL7",            direction = "induced"),
@@ -235,7 +226,7 @@ themes <- list(
 
   cd8_proliferation = list(
     cell_type = "CD8_T_cells",
-    title = "CD8 T Cell Proliferation Near HyMy",
+    title = paste0("CD8 T Cell Proliferation Near ", QUERY_LABEL),
     bin_width = 10,
     genes = list(
       list(gene = "Mki67",  label = "Ki-67",       direction = "induced"),
@@ -274,11 +265,11 @@ message("Total cells: ", nrow(cell_data))
 message("TDLN cells: ", sum(cell_data$condition == "TDLN"))
 
 # =============================================================================
-# Calculate Distances to HyMy (TDLN only)
+# Calculate Distances to Query Cell Type (TDLN only)
 # =============================================================================
 
 message("\n", strrep("=", 70))
-message("Calculating Distances to HyMy (TDLN only)")
+message(paste0("Calculating Distances to ", QUERY_LABEL, " (TDLN only)"))
 message(strrep("=", 70))
 
 # Filter to TDLN
@@ -409,7 +400,7 @@ make_decay_plot <- function(tdln_dt, obj, ct_name, g_name, label, direction,
     ylim(0, NA) +
     labs(
       title = label,
-      x = "Distance to HyMy (µm)",
+      x = paste0("Distance to ", QUERY_LABEL, " (um)"),
       y = "P(expressing)"
     ) +
     theme_bw(base_size = 10) +
@@ -537,7 +528,7 @@ foxp3_plot <- make_decay_plot(
   obj = obj,
   ct_name = "CD4_T_cells",
   g_name = "Foxp3",
-  label = "Foxp3 — Treg Enrichment Near HyMy",
+  label = paste0("Foxp3 — Treg Enrichment Near ", QUERY_LABEL),
   direction = "induced",
   results_dt = all_results
 )

@@ -44,7 +44,12 @@
 
 set -e
 
-ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
+# Query cell type configuration (pass through to R/Python)
+export QUERY_CELLTYPE=${QUERY_CELLTYPE:-}
+export CELLTYPE_COLUMN=${CELLTYPE_COLUMN:-}
+export QUERY_LABEL=${QUERY_LABEL:-}
+export ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
+
 CELLTYPE_INDEX=${SLURM_ARRAY_TASK_ID}
 
 # Map index to name for logging

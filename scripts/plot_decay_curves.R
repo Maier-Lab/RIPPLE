@@ -1,25 +1,19 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# Decay Curve Plots for Selected Genes
+# RIPPLE: Decay Curve Plots for Selected Genes
 # =============================================================================
 #
-# Generates proportion-expressing vs distance-to-HyMy decay plots for:
+# Generates proportion-expressing vs distance-to-query decay plots for:
 #   1. Top summary figure genes (top 10 per cell type for CD8, CD4, FRC, LEC, BEC)
 #   2. Tex signature genes in CD8 T cells
 #
 # These plots show how the probability of expression changes as a function
-# of distance from the nearest HyMy cell — the raw data behind the logistic
-# regression coefficients.
+# of distance from the nearest query cell.
 #
 # Usage:
 #   Rscript plot_decay_curves.R
-#   ANNOTATION_LEVEL=L1 Rscript plot_decay_curves.R
+#   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript plot_decay_curves.R
 #
-# Prerequisites:
-#   - Atlas must have been run (reads top_genes_key_celltypes.pdf gene list)
-#   - OR: runs standalone using built-in gene lists
-#
-# Output: results/spatial_analysis/hymy_distance_correlation/plots/decay_curves/
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -42,32 +36,20 @@ source(file.path(script_dir, "utils.R"))
 # Configuration
 # =============================================================================
 
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
+# Inherited from config.R (via utils.R): QUERY_CELLTYPE, CELLTYPE_COL, OUTPUT_SUFFIX, QUERY_LABEL
 MAX_DISTANCE_UM <- 200
 BIN_WIDTH <- 10  # um per bin
 FDR_THRESHOLD <- 0.05
 TOP_N_PER_CT <- 10
 CONTAMINATION_THRESHOLD <- 4
 
-if (ANNOTATION_LEVEL == "L1") {
-  QUERY_CELLTYPE <- "IL1B_myeloid"
-  CELLTYPE_COL <- "cell_type_assignment_L1"
-  RESULTS_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", "hymy_distance_correlation")
-  QUERY_LABEL <- "IL1B_myeloid"
-} else {
-  QUERY_CELLTYPE <- "HyMy_GMM"
-  CELLTYPE_COL <- "cell_type_with_HyMy"
-  RESULTS_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis", "hymy_distance_correlation")
-  QUERY_LABEL <- "HyMy"
-}
+RESULTS_BASE <- file.path(OUTPUT_ROOT, "hymy_distance_correlation")
 
 OUTPUT_DIR <- file.path(RESULTS_BASE, "plots", "decay_curves")
 ensure_dir(OUTPUT_DIR)
 
-# HyMy signature genes to exclude
-HYMY_SIGNATURE_GENES <- c("Il1b", "S100a9", "S100a8", "Cxcl2", "C5ar1", "Ccr1",
-                           "Csf3r", "Trem1", "Il1r2", "Tnfaip2", "Ptgs2", "Nlrp3",
-                           "Cd14", "Itgam", "Acod1", "Pilra")
+# Query signature genes to exclude (from utils.R: QUERY_SIGNATURE / HYMY_SIGNATURE)
+HYMY_SIGNATURE_GENES <- QUERY_SIGNATURE
 
 # Tex signature genes
 TEX_SIGNATURE <- c("Havcr2", "Lag3", "Entpd1", "Cd38", "Cd244a")

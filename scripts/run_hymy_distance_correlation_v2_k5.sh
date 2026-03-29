@@ -27,7 +27,12 @@
 
 set -e
 
-ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
+# Query cell type configuration (pass through to R/Python)
+export QUERY_CELLTYPE=${QUERY_CELLTYPE:-}
+export CELLTYPE_COLUMN=${CELLTYPE_COLUMN:-}
+export QUERY_LABEL=${QUERY_LABEL:-}
+export ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
+
 CELLTYPE_INDEX=${SLURM_ARRAY_TASK_ID}
 
 CELLTYPE_NAMES=("" "LEC" "FRC" "BEC" "CD4_T_cells" "CD8_T_cells" "gdT_cells" "Macrophages" "Monocyte" "Fibroblasts_mac" "cDC1" "cDC2" "mature_migDC" "B_cells" "Plasma_cell")

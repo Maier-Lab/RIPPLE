@@ -55,6 +55,10 @@ source /home/cmangana/miniconda3/etc/profile.d/conda.sh
 conda activate /nobackup/lab_maier/envs/nichenet_env
 
 # Configuration
+# Query cell type configuration (pass through to R/Python)
+export QUERY_CELLTYPE=${QUERY_CELLTYPE:-}
+export CELLTYPE_COLUMN=${CELLTYPE_COLUMN:-}
+export QUERY_LABEL=${QUERY_LABEL:-}
 export ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
 export CELLTYPE_INDEX=${SLURM_ARRAY_TASK_ID}
 export GRADIENT_SOURCE=${GRADIENT_SOURCE:-hymy_distance_correlation}

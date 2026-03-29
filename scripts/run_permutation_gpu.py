@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-GPU-Accelerated Permutation Testing for HyMy Distance Correlation
-=================================================================
+RIPPLE Stage 2: GPU-Accelerated Permutation Testing
+====================================================
 
-Replaces the CPU-bound permutation step of hymy_distance_correlation.R / v2
+Replaces the CPU-bound permutation step of the distance correlation R scripts
 with GPU-accelerated kNN using PyTorch CUDA tensors.
 
 Supports both v1 (logistic) and v2 (Poisson GLM with cell size offset).
@@ -22,7 +22,7 @@ Usage:
   python run_permutation_gpu.py --celltype LEC
   python run_permutation_gpu.py --celltype CD8_T_cells --annotation-level L1
   CELLTYPE_INDEX=5 python run_permutation_gpu.py  # Array job mode
-  ANALYSIS_NAME=hymy_distance_correlation_v2 python run_permutation_gpu.py  # v2 Poisson
+  QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col python run_permutation_gpu.py
 
 Requirements: PyTorch with CUDA, anndata, numpy, pandas, scipy
 Environment: harpy (/nobackup/lab_maier/envs/harpy)
@@ -476,14 +476,22 @@ def main():
     use_poisson = "v2" in analysis_name
     k_neighbors = int(os.environ.get("K_NEIGHBORS", "1"))
 
-    # Configure paths
-    suffix = "_L1" if annotation_level == "L1" else ""
-    if annotation_level == "L1":
+    # Configure paths — 3-tier env var resolution (matches utils.R)
+    query_celltype_env = os.environ.get("QUERY_CELLTYPE", "")
+    celltype_col_env = os.environ.get("CELLTYPE_COLUMN", "")
+
+    if query_celltype_env and celltype_col_env:
+        query_celltype = query_celltype_env
+        celltype_col = celltype_col_env
+        suffix = f"_{query_celltype}"
+    elif annotation_level == "L1":
         query_celltype = "IL1B_myeloid"
         celltype_col = "cell_type_assignment_L1"
+        suffix = "_L1"
     else:
         query_celltype = "HyMy_GMM"
         celltype_col = "cell_type_with_HyMy_GMM"  # h5ad column name
+        suffix = ""
 
     results_base = PROJECT_ROOT / "results" / f"spatial_analysis{suffix}" / analysis_name
 

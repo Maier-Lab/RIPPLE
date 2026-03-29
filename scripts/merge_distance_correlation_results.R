@@ -1,15 +1,13 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# Merge Distance Correlation Results from Array Jobs (Logistic Regression)
+# Merge Distance Correlation Results from Array Jobs
 # =============================================================================
 # Run after all array jobs complete to create combined summary files.
-#
-# Uses logistic regression: P(expressing) ~ distance to HyMy
-# Gradient score = log-odds coefficient (negative = HyMy-induced)
 #
 # Usage:
 #   Rscript merge_distance_correlation_results.R
 #   ANNOTATION_LEVEL=L1 Rscript merge_distance_correlation_results.R
+#   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript merge_distance_correlation_results.R
 #
 # This script:
 #   1. Reads per-celltype meta_analysis_results.csv files
@@ -23,25 +21,26 @@ suppressPackageStartupMessages({
 })
 
 # =============================================================================
-# Configuration
+# Configuration (sourced from config.R — single source of truth)
 # =============================================================================
 
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
-ANALYSIS_NAME <- Sys.getenv("ANALYSIS_NAME", unset = "hymy_distance_correlation_v2")
+get_script_dir <- function() {
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- grep("^--file=", args, value = TRUE)
+  if (length(file_arg) > 0) {
+    return(dirname(normalizePath(sub("^--file=", "", file_arg))))
+  }
+  for (i in seq_len(sys.nframe())) {
+    ofile <- sys.frame(i)$ofile
+    if (!is.null(ofile)) return(dirname(normalizePath(ofile)))
+  }
+  return(getwd())
+}
+source(file.path(get_script_dir(), "config.R"))
+
 FDR_THRESHOLD <- 0.05
 
-# Set output base path based on annotation level
-if (.Platform$OS.type == "windows") {
-  BASE_PATH <- "N:/lab_maier/Projects/mXenium"
-} else {
-  BASE_PATH <- "/nobackup/lab_maier/Projects/mXenium"
-}
-
-if (ANNOTATION_LEVEL == "HyMy") {
-  OUTPUT_BASE <- file.path(BASE_PATH, "CMM/results/spatial_analysis", ANALYSIS_NAME)
-} else {
-  OUTPUT_BASE <- file.path(BASE_PATH, "CMM/results/spatial_analysis_L1", ANALYSIS_NAME)
-}
+OUTPUT_BASE <- file.path(OUTPUT_ROOT, ANALYSIS_NAME)
 
 message(strrep("=", 70))
 message("Merge Distance Correlation Results")

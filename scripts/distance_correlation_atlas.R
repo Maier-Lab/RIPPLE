@@ -1,15 +1,15 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# Distance Correlation Atlas — Cross-Cell-Type Summary Figures (v2)
+# RIPPLE Stage 5: Distance Correlation Atlas — Summary Figures
 # =============================================================================
 #
 # Creates publication-quality summary figures from the merged distance
 # correlation results across all cell types.
 #
 # IMPORTANT: Genes significant in many cell types are MORE likely to be
-# segmentation artifacts (HyMy transcripts leaking into neighbors) than
+# segmentation artifacts (query transcripts leaking into neighbors) than
 # genuine paracrine effects. This script therefore focuses on CELL-TYPE-
-# SPECIFIC genes (significant in ≤2 cell types) as the biologically
+# SPECIFIC genes (significant in <=2 cell types) as the biologically
 # interesting hits.
 #
 # Prerequisites:
@@ -19,29 +19,7 @@
 #
 # Usage:
 #   Rscript distance_correlation_atlas.R
-#   ANNOTATION_LEVEL=L1 Rscript distance_correlation_atlas.R
-#
-# Output: results/spatial_analysis/hymy_distance_correlation/plots/
-#
-# Panels:
-#   P1: Gene counts bar chart (with specificity breakdown)
-#   P2: Dot plot — cell-type-specific genes
-#   P3: Multi-panel volcano
-#   P4: Permutation validation scatter
-#   P5: Specificity distribution
-#   P6: Specific genes heatmap
-#   P7: Contamination candidates (CSV)
-#   P8-9: fgsea Hallmark enrichment
-#   --- New in v2 ---
-#   P10: Stage 2 classification breakdown (if available)
-#   P11: Stage 1 vs Stage 2 scatter (HyMy-specific vs niche-driven)
-#   P12: Sign consistency distribution (v2 diagnostic)
-#   P13: Overdispersion QC (v2 diagnostic)
-#   D1: I² heterogeneity distribution
-#   D2: Sample contribution heatmap
-#   B2: Induced vs repressed pathway split
-#   E1: Ligand-receptor highlighting
-#   E3: HyMy signature leakage check
+#   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript distance_correlation_atlas.R
 #
 # =============================================================================
 
@@ -80,37 +58,32 @@ source(file.path(script_dir, "utils.R"))
 # Configuration
 # =============================================================================
 
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
-ANALYSIS_NAME <- Sys.getenv("ANALYSIS_NAME", unset = "hymy_distance_correlation")
+# Inherited from config.R (via utils.R): QUERY_CELLTYPE, CELLTYPE_COL, OUTPUT_SUFFIX, QUERY_LABEL, ANALYSIS_NAME
 FDR_THRESHOLD <- 0.05
-CONTAMINATION_THRESHOLD <- 4  # Genes significant in ≥N cell types flagged as potential contamination
+CONTAMINATION_THRESHOLD <- 4  # Genes significant in >=N cell types flagged as potential contamination
 TOP_PER_CELLTYPE <- 5         # Top genes per cell type in dot plot
 TOP_N_DOTPLOT <- 50           # Max genes in dot plot
 
-if (ANNOTATION_LEVEL == "L1") {
-  RESULTS_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", ANALYSIS_NAME)
-  QUERY_LABEL <- "IL1B_myeloid"
-} else {
-  RESULTS_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis", ANALYSIS_NAME)
-  QUERY_LABEL <- "HyMy"
-}
+RESULTS_BASE <- file.path(OUTPUT_ROOT, ANALYSIS_NAME)
 
 OUTPUT_DIR <- file.path(RESULTS_BASE, "plots")
 ensure_dir(OUTPUT_DIR)
 
 # Color palettes
-DIRECTION_COLORS <- c("HyMy-induced" = "#B2182B", "HyMy-repressed" = "#2166AC")
+induced_label <- paste0(QUERY_LABEL, "-induced")
+repressed_label <- paste0(QUERY_LABEL, "-repressed")
+DIRECTION_COLORS <- setNames(c("#B2182B", "#2166AC"), c(induced_label, repressed_label))
 DIVERGING_PALETTE <- colorRampPalette(c("#B2182B", "white", "#2166AC"))
 SPECIFICITY_COLORS <- c("specific" = "#2166AC", "moderate" = "#92C5DE",
                          "ubiquitous" = "#F4A582", "contamination" = "#B2182B")
-CLASSIFICATION_COLORS <- c("HyMy_specific" = "#1B9E77", "enhanced" = "#66A61E",
-                            "niche_driven" = "#E7298A", "underpowered" = "#E6AB02",
-                            "reversed" = "#7570B3", "not_tested" = "grey70")
+query_specific_label <- paste0(QUERY_LABEL, "_specific")
+CLASSIFICATION_COLORS <- setNames(
+  c("#1B9E77", "#66A61E", "#E7298A", "#E6AB02", "#7570B3", "grey70"),
+  c(query_specific_label, "enhanced", "niche_driven", "underpowered", "reversed", "not_tested")
+)
 
-# HyMy signature genes for leakage check (E3)
-HYMY_SIGNATURE_GENES <- c("Il1b", "S100a9", "S100a8", "Cxcl2", "C5ar1", "Ccr1",
-                           "Csf3r", "Trem1", "Il1r2", "Tnfaip2", "Ptgs2", "Nlrp3",
-                           "Cd14", "Itgam", "Acod1", "Pilra")
+# Query signature genes for leakage check (E3) — inherited from utils.R
+HYMY_SIGNATURE_GENES <- QUERY_SIGNATURE
 
 # Known ligand-receptor pairs for E1 highlighting
 LR_PAIRS <- list(
@@ -189,8 +162,8 @@ message("Primary coefficient column: ", COEF_COL)
 
 # Classify direction for significant genes (using primary sig/coef columns)
 all_results[, direction := fifelse(
-  get(SIG_COL) < FDR_THRESHOLD & get(COEF_COL) < 0, "HyMy-induced",
-  fifelse(get(SIG_COL) < FDR_THRESHOLD & get(COEF_COL) > 0, "HyMy-repressed", "ns")
+  get(SIG_COL) < FDR_THRESHOLD & get(COEF_COL) < 0, induced_label,
+  fifelse(get(SIG_COL) < FDR_THRESHOLD & get(COEF_COL) > 0, repressed_label, "ns")
 )]
 
 sig_results <- all_results[get(SIG_COL) < FDR_THRESHOLD]
@@ -200,7 +173,7 @@ message("Significant genes (", SIG_COL, " < ", FDR_THRESHOLD, "): ", nrow(sig_re
 # Specificity Classification
 # =============================================================================
 # Genes significant in many cell types are likely segmentation artifacts
-# (HyMy transcripts leaking into neighbors). Flag them accordingly.
+# (query transcripts leaking into neighbors). Flag them accordingly.
 
 gene_ct_counts <- sig_results[, .(
   n_celltypes = uniqueN(cell_type),
@@ -307,17 +280,20 @@ count_long <- melt(count_by_dir,
 p1 <- ggplot(count_long, aes(x = cell_type, y = count, fill = interaction(type, direction))) +
   geom_col(position = "stack", width = 0.7) +
   scale_fill_manual(
-    values = c(
-      "specific.HyMy-induced" = "#D95F02",
-      "contamination.HyMy-induced" = "#FDAE6B",
-      "specific.HyMy-repressed" = "#1B9E77",
-      "contamination.HyMy-repressed" = "#A1D99B"
+    values = setNames(
+      c("#D95F02", "#FDAE6B", "#1B9E77", "#A1D99B"),
+      c(paste0("specific.", induced_label),
+        paste0("contamination.", induced_label),
+        paste0("specific.", repressed_label),
+        paste0("contamination.", repressed_label))
     ),
-    labels = c(
-      "specific.HyMy-induced" = "Induced (specific)",
-      "contamination.HyMy-induced" = "Induced (ubiquitous)",
-      "specific.HyMy-repressed" = "Repressed (specific)",
-      "contamination.HyMy-repressed" = "Repressed (ubiquitous)"
+    labels = setNames(
+      c("Induced (specific)", "Induced (ubiquitous)",
+        "Repressed (specific)", "Repressed (ubiquitous)"),
+      c(paste0("specific.", induced_label),
+        paste0("contamination.", induced_label),
+        paste0("specific.", repressed_label),
+        paste0("contamination.", repressed_label))
     ),
     name = NULL
   ) +
@@ -868,7 +844,7 @@ if (file.exists(sample_coef_file)) {
           na_col = "grey90",
           cluster_rows = nrow(ct_mat) >= 2,
           cluster_cols = ncol(ct_mat) >= 2,
-          main = paste0(ct, ": Per-Sample Coefficients (red = HyMy-induced)"),
+          main = paste0(ct, ": Per-Sample Coefficients (red = ", QUERY_LABEL, "-induced)"),
           fontsize_row = 8,
           fontsize_col = 10,
           angle_col = 45
@@ -961,21 +937,23 @@ if (nrow(lr_results) > 0) {
 }
 
 # =============================================================================
-# Panel E3: HyMy Signature Gene Leakage Check
+# Panel E3: Query Signature Gene Leakage Check
 # =============================================================================
-# If HyMy signature genes show gradients in OTHER cell types, this suggests
+# If query signature genes show gradients in OTHER cell types, this suggests
 # segmentation artifacts (transcript leakage) rather than true expression.
 
-message("Panel E3: HyMy signature leakage check...")
+message("Panel E3: Query signature leakage check...")
 
 hymy_sig_results <- all_results[gene %in% HYMY_SIGNATURE_GENES]
 
 if (nrow(hymy_sig_results) > 0) {
-  # Exclude HyMy itself if present
-  hymy_sig_results <- hymy_sig_results[!grepl("HyMy|IL1B_myeloid|Monocyte", cell_type, ignore.case = TRUE)]
+  # Exclude query cell type itself if present
+  # Exclude the query cell type itself (and common myeloid aliases) from leakage check
+  exclude_pattern <- paste(c(QUERY_CELLTYPE, "Monocyte"), collapse = "|")
+  hymy_sig_results <- hymy_sig_results[!grepl(exclude_pattern, cell_type, ignore.case = TRUE)]
 
   if (nrow(hymy_sig_results) > 0) {
-    # Heatmap of HyMy signature genes in non-HyMy cell types
+    # Heatmap of query signature genes in non-query cell types
     e3_wide <- dcast(hymy_sig_results, gene ~ cell_type, value.var = COEF_COL, fill = 0)
     e3_mat <- as.matrix(e3_wide[, -1])
     rownames(e3_mat) <- e3_wide$gene
@@ -1001,7 +979,7 @@ if (nrow(hymy_sig_results) > 0) {
         display_numbers = e3_stars,
         fontsize_number = 10,
         cluster_rows = TRUE, cluster_cols = TRUE,
-        main = paste0("HyMy Signature Genes in OTHER Cell Types\n",
+        main = paste0(QUERY_LABEL, " Signature Genes in OTHER Cell Types\n",
                       "(Red = detected near ", QUERY_LABEL, " = potential leakage)"),
         fontsize_row = 10,
         fontsize_col = 10,
@@ -1014,21 +992,21 @@ if (nrow(hymy_sig_results) > 0) {
       # Count how many signature genes show leakage
       sig_leakage <- hymy_sig_results[get(SIG_COL) < FDR_THRESHOLD & get(COEF_COL) < 0]
       if (nrow(sig_leakage) > 0) {
-        message("  WARNING: ", uniqueN(sig_leakage$gene), " HyMy signature genes ",
-                "show HyMy-induced gradients in other cell types:")
+        message("  WARNING: ", uniqueN(sig_leakage$gene), " query signature genes ",
+                "show ", QUERY_LABEL, "-induced gradients in other cell types:")
         for (g in unique(sig_leakage$gene)) {
           cts <- paste(sig_leakage[gene == g]$cell_type, collapse = ", ")
           message("    ", g, ": ", cts)
         }
       } else {
-        message("  OK: No significant HyMy signature leakage detected")
+        message("  OK: No significant query signature leakage detected")
       }
     }
   } else {
     message("  [SKIP] No non-myeloid cell types to check for leakage")
   }
 } else {
-  message("  [SKIP] No HyMy signature genes found in results")
+  message("  [SKIP] No query signature genes found in results")
 }
 
 # =============================================================================
@@ -1050,9 +1028,9 @@ if (HAS_STAGE2) {
     geom_col(position = "stack", width = 0.7) +
     scale_fill_manual(values = CLASSIFICATION_COLORS, name = "Classification") +
     labs(
-      title = "Stage 2: HyMy-Specific vs Niche-Driven Gene Classification",
-      subtitle = paste0("HyMy_specific = gradient persists after controlling for Monocyte distance\n",
-                        "niche_driven = gradient explained by tissue compartment, not HyMy specifically"),
+      title = paste0("Stage 2: ", QUERY_LABEL, "-Specific vs Niche-Driven Gene Classification"),
+      subtitle = paste0(query_specific_label, " = gradient persists after controlling for Monocyte distance\n",
+                        "niche_driven = gradient explained by tissue compartment, not ", QUERY_LABEL, " specifically"),
       x = NULL,
       y = "Number of Stage 1 significant genes"
     ) +
@@ -1089,9 +1067,9 @@ if (HAS_STAGE2) {
       labs(
         title = "Stage 1 vs Stage 2 Coefficients",
         subtitle = paste0("Diagonal = no change after Monocyte control | ",
-                          "Points below diagonal = HyMy effect attenuated"),
-        x = "Stage 1 coefficient (univariate: dist_to_HyMy only)",
-        y = "Stage 2 coefficient (bivariate: dist_to_HyMy + dist_to_Monocyte)"
+                          "Points below diagonal = ", QUERY_LABEL, " effect attenuated"),
+        x = paste0("Stage 1 coefficient (univariate: dist_to_", QUERY_LABEL, " only)"),
+        y = paste0("Stage 2 coefficient (bivariate: dist_to_", QUERY_LABEL, " + dist_to_Monocyte)")
       ) +
       theme_bw(base_size = 9) +
       theme(
@@ -1107,9 +1085,9 @@ if (HAS_STAGE2) {
   }
 
   # -------------------------------------------------------------------------
-  # Stage 2: HyMy-Specific Genes Summary Table
+  # Stage 2: Query-Specific Genes Summary Table
   # -------------------------------------------------------------------------
-  hymy_specific_genes <- stage2_results[classification == "HyMy_specific"][
+  hymy_specific_genes <- stage2_results[classification == query_specific_label][
     order(cell_type, stage2_fdr)]
   if (nrow(hymy_specific_genes) > 0) {
     fwrite(hymy_specific_genes, file.path(OUTPUT_DIR, "stage2_hymy_specific_genes.csv"))
@@ -1278,8 +1256,8 @@ if (HAS_FGSEA) {
   }
 
   universe <- unique(all_results$gene)
-  enrich_induced <- run_enrichment(induced_genes, universe, pathways, "HyMy-induced")
-  enrich_repressed <- run_enrichment(repressed_genes, universe, pathways, "HyMy-repressed")
+  enrich_induced <- run_enrichment(induced_genes, universe, pathways, induced_label)
+  enrich_repressed <- run_enrichment(repressed_genes, universe, pathways, repressed_label)
 
   enrich_both <- rbind(enrich_induced, enrich_repressed)
 
@@ -1303,7 +1281,7 @@ if (HAS_FGSEA) {
         scale_fill_manual(values = DIRECTION_COLORS, name = NULL) +
         facet_wrap(~ direction, scales = "free", ncol = 2) +
         labs(
-          title = "Pathway Enrichment: HyMy-Induced vs HyMy-Repressed Genes",
+          title = paste0("Pathway Enrichment: ", QUERY_LABEL, "-Induced vs ", QUERY_LABEL, "-Repressed Genes"),
           subtitle = "Fisher's exact test | Numbers = overlapping genes",
           x = expression(-log[10](p-value)),
           y = NULL
@@ -1336,8 +1314,8 @@ if (HAS_FGSEA) {
 # Both rankings (median_coef and combined_coef) are run for comparison.
 # Primary plots and tables use median_coef; comparison table saved separately.
 #
-# NES < 0 → pathway genes enriched among HyMy-induced genes (higher near HyMy)
-# NES > 0 → pathway genes enriched among HyMy-repressed genes (lower near HyMy)
+# NES < 0 → pathway genes enriched among query-induced genes (higher near query)
+# NES > 0 → pathway genes enriched among query-repressed genes (lower near query)
 #
 # NOTE: The Xenium panel covers ~5K genes, not the full transcriptome. GSEA
 # results should be interpreted cautiously — pathway coverage varies.
@@ -1483,7 +1461,7 @@ if (HAS_FGSEA) {
     dotplot_data[, neg_log10_padj := -log10(pmax(padj, 1e-20))]
     dotplot_data[, is_sig := padj < 0.05]
 
-    # Order pathways by mean NES (induced-near-HyMy at bottom)
+    # Order pathways by mean NES (induced-near-query at bottom)
     pw_order <- dotplot_data[, .(mean_nes = mean(NES, na.rm = TRUE)),
                               by = pathway_clean][order(mean_nes)]$pathway_clean
     dotplot_data[, pathway_clean := factor(pathway_clean, levels = pw_order)]
@@ -1551,7 +1529,7 @@ if (HAS_FGSEA) {
 # =============================================================================
 # Panels 8b-9b: Custom Gene Module Enrichment
 # =============================================================================
-# Curated gene modules relevant to HyMy biology. Unlike Hallmark pathways,
+# Curated gene modules relevant to spatial gradient biology. Unlike Hallmark pathways,
 # these are small (5-18 genes), focused, and have known panel coverage.
 # Uses the same fgsea machinery but with custom gene sets.
 
@@ -1605,8 +1583,8 @@ if (HAS_FGSEA) {
     # --- Metabolic ---
     glycolysis = c("Hk1","Hk2","Pfkfb3","Pkm","Ldha","Slc2a1","Eno1","Gapdh","Pgk1","Aldoa")
 
-    # NOTE: hymy_signature module deliberately excluded — it reflects segmentation
-    # leakage (HyMy transcripts in neighbors), not biology. See Panel E3 instead.
+    # NOTE: query_signature module deliberately excluded -- it reflects segmentation
+    # leakage (query transcripts in neighbors), not biology. See Panel E3 instead.
   )
 
   # Filter modules to only include genes present in the results
@@ -1984,7 +1962,7 @@ if (HAS_FGSEA) {
 # =============================================================================
 # Summary Panel: Top Genes Dot Plot (key cell types)
 # =============================================================================
-# Shows the top non-contamination, non-HyMy-signature genes for
+# Shows the top non-contamination, non-query-signature genes for
 # CD8_T_cells, CD4_T_cells, FRC, LEC, and BEC.
 
 message("\nSummary panel: Top genes dot plot for key cell types...")
@@ -1992,7 +1970,7 @@ message("\nSummary panel: Top genes dot plot for key cell types...")
 SUMMARY_CELLTYPES <- c("CD8_T_cells", "CD4_T_cells", "FRC", "LEC", "BEC")
 TOP_N_SUMMARY <- 10  # genes per cell type
 
-# Exclude contamination and HyMy signature genes
+# Exclude contamination and query signature genes
 top_genes_summary <- sig_results[
   cell_type %in% SUMMARY_CELLTYPES &
   !gene %in% contamination_genes &
@@ -2076,7 +2054,7 @@ if (nrow(top_genes_summary) > 0) {
 # =============================================================================
 # Focused dot plot of exhaustion/effector genes in CD8_T_cells.
 # Combines exhaustion markers, effector molecules, and Tpex/Tex signatures
-# to show how HyMy proximity shapes the CD8 T cell state.
+# to show how query cell proximity shapes the CD8 T cell state.
 
 message("\nCD8 exhaustion dot plot...")
 
@@ -2241,7 +2219,7 @@ if (length(all_rows) > 0) {
 
   combined <- wrap_plots(all_rows, ncol = 1, heights = row_heights) +
     plot_annotation(
-      title = paste0("HyMy Distance Correlation Analysis (",
+      title = paste0(QUERY_LABEL, " Distance Correlation Analysis (",
                      ANNOTATION_LEVEL, " annotation)"),
       subtitle = paste0(nrow(sig_results), " significant gene-celltype pairs across ",
                         n_ct, " cell types | ",

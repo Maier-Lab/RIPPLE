@@ -21,7 +21,7 @@
 # Usage:
 #   Rscript recompute_meta_summary.R
 #   ANALYSIS_NAME=hymy_distance_correlation_v2 Rscript recompute_meta_summary.R
-#   ANNOTATION_LEVEL=L1 ANALYSIS_NAME=hymy_distance_correlation_v2 Rscript recompute_meta_summary.R
+#   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript recompute_meta_summary.R
 #
 # =============================================================================
 
@@ -30,25 +30,26 @@ suppressPackageStartupMessages({
 })
 
 # =============================================================================
-# Configuration
+# Configuration (sourced from config.R — single source of truth)
 # =============================================================================
 
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
-ANALYSIS_NAME <- Sys.getenv("ANALYSIS_NAME", unset = "hymy_distance_correlation_v2")
+get_script_dir <- function() {
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- grep("^--file=", args, value = TRUE)
+  if (length(file_arg) > 0) {
+    return(dirname(normalizePath(sub("^--file=", "", file_arg))))
+  }
+  for (i in seq_len(sys.nframe())) {
+    ofile <- sys.frame(i)$ofile
+    if (!is.null(ofile)) return(dirname(normalizePath(ofile)))
+  }
+  return(getwd())
+}
+source(file.path(get_script_dir(), "config.R"))
+
 SIGN_CONSISTENCY_THRESHOLD <- 1.0  # All mice must agree on direction (4/4)
 
-# Set base path
-if (.Platform$OS.type == "windows") {
-  BASE_PATH <- "N:/lab_maier/Projects/mXenium"
-} else {
-  BASE_PATH <- "/nobackup/lab_maier/Projects/mXenium"
-}
-
-if (ANNOTATION_LEVEL == "L1") {
-  OUTPUT_BASE <- file.path(BASE_PATH, "CMM/results/spatial_analysis_L1", ANALYSIS_NAME)
-} else {
-  OUTPUT_BASE <- file.path(BASE_PATH, "CMM/results/spatial_analysis", ANALYSIS_NAME)
-}
+OUTPUT_BASE <- file.path(OUTPUT_ROOT, ANALYSIS_NAME)
 
 message(strrep("=", 70))
 message("Recompute Meta-Analysis Summary (Fisher's + Sign Consistency)")

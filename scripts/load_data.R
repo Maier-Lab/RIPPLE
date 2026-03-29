@@ -1,11 +1,11 @@
 #' =============================================================================
-#' Load data for HyMy spatial analysis
+#' Load data for RIPPLE spatial analysis
 #'
-#' Uses the existing Seurat object created by annotate_HyMy_with_UCell.R
-#' No Python preparation step needed!
+#' Loads Seurat objects and extracts metadata for the pipeline.
+#' Sources utils.R (which sources config.R) for shared configuration.
 #'
 #' Usage:
-#'   source("scripts/spatial_analysis/load_data.R")
+#'   source("scripts/load_data.R")
 #'   obj <- load_seurat()
 #'   data <- load_metadata_only()  # Fast: just coords + cell types
 #' =============================================================================
@@ -47,7 +47,7 @@ source(file.path(script_dir, "utils.R"))
 #' @return data.table with cell metadata and coordinates
 load_metadata_only <- function(path = NULL) {
   message("Loading metadata from Seurat object...")
-  message(sprintf("  Annotation level: %s (column: %s)", ANNOTATION_LEVEL, CELLTYPE_COLUMN))
+  message(sprintf("  Query cell type: %s (column: %s)", QUERY_CELLTYPE, CELLTYPE_COLUMN))
 
   obj <- load_seurat(path)
 
@@ -65,7 +65,7 @@ load_metadata_only <- function(path = NULL) {
     meta[, y := spatial_y]
   }
 
-  # Handle cell type annotation based on annotation level
+  # Handle cell type annotation based on configuration
   if (USE_HYMY_ANNOTATION) {
     # HyMy annotation: Merge from CSV (has HyMy_GMM and IL1B_myeloid)
     if (!"cell_type_with_HyMy" %in% names(meta) ||
@@ -77,7 +77,7 @@ load_metadata_only <- function(path = NULL) {
       meta <- merge(meta, hymy[, .(barcode, cell_type_with_HyMy)],
                     by = "barcode", all.x = TRUE)
     }
-  } else {
+  } else if (ANNOTATION_LEVEL == "L1") {
     # L1 annotation: Use cell_type_assignment_L1 directly
     # Create cell_type_with_HyMy as alias for compatibility with existing scripts
     if (CELLTYPE_COLUMN %in% names(meta)) {
@@ -86,17 +86,26 @@ load_metadata_only <- function(path = NULL) {
     } else {
       stop(sprintf("Column '%s' not found in Seurat metadata", CELLTYPE_COLUMN))
     }
+  } else {
+    # User-specified cell type column: verify it exists, no alias needed
+    if (CELLTYPE_COLUMN %in% names(meta)) {
+      message(sprintf("\nUsing %s column for cell types", CELLTYPE_COLUMN))
+    } else {
+      stop(sprintf("Column '%s' not found in Seurat metadata.\n  Available columns: %s",
+                    CELLTYPE_COLUMN,
+                    paste(head(names(meta), 20), collapse = ", ")))
+    }
   }
 
   message(sprintf("\nLoaded metadata for %s cells", nrow(meta)))
 
   # Print summary using the appropriate column
   message(sprintf("\nCell type summary (using %s):", CELLTYPE_COLUMN))
-  ct_summary <- meta[, .N, by = cell_type_with_HyMy][order(-N)]
+  ct_summary <- meta[, .N, by = c(CELLTYPE_COLUMN)][order(-N)]
   print(ct_summary[1:min(15, nrow(ct_summary))])
 
   # Print query cell type count
-  query_count <- sum(meta$cell_type_with_HyMy == QUERY_CELLTYPE, na.rm = TRUE)
+  query_count <- sum(meta[[CELLTYPE_COLUMN]] == QUERY_CELLTYPE, na.rm = TRUE)
   message(sprintf("\n  Query cell type (%s): %d cells", QUERY_CELLTYPE, query_count))
 
   # Clean up Seurat object to free memory
@@ -146,7 +155,7 @@ check_data <- function(path = NULL) {
   message("")
 
   message("  Metadata columns:")
-  key_cols <- c("cell_type_with_HyMy", "spatial_x", "spatial_y",
+  key_cols <- c(CELLTYPE_COLUMN, "spatial_x", "spatial_y",
                 "sample_id", "group", "experiment", "HyMy_UCell")
   for (col in key_cols) {
     if (col %in% colnames(obj@meta.data)) {

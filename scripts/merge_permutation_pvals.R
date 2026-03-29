@@ -1,20 +1,14 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# Merge GPU Permutation P-values into Meta-Analysis Results
+# RIPPLE Stage 3: Merge GPU Permutation P-values into Meta-Analysis Results
 # =============================================================================
 #
 # Reads the GPU-produced permutation_pvals.csv and merges it into the
 # R-produced meta_analysis_results.csv (from N_PERMUTATIONS=0 run).
 #
-# For each cell type directory, this script:
-#   1. Reads meta_analysis_results.csv (with perm_pval = NA)
-#   2. Reads permutation_pvals.csv (from GPU script)
-#   3. Updates the perm_pval column
-#   4. Saves the updated meta_analysis_results.csv
-#
 # Usage:
 #   Rscript merge_permutation_pvals.R
-#   ANNOTATION_LEVEL=L1 Rscript merge_permutation_pvals.R
+#   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript merge_permutation_pvals.R
 #   ANALYSIS_NAME=hymy_distance_correlation_v2 Rscript merge_permutation_pvals.R
 #
 # =============================================================================
@@ -23,20 +17,22 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
-# Source shared utilities
-script_dir <- if (interactive()) {
-  dirname(rstudioapi::getSourceEditorContext()$path)
-} else {
-  dirname(sub("--file=", "", grep("--file=", commandArgs(trailingOnly = FALSE), value = TRUE)))
+# Source lightweight config (no heavy package loads needed)
+get_script_dir <- function() {
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- grep("^--file=", args, value = TRUE)
+  if (length(file_arg) > 0) {
+    return(dirname(normalizePath(sub("^--file=", "", file_arg))))
+  }
+  for (i in seq_len(sys.nframe())) {
+    ofile <- sys.frame(i)$ofile
+    if (!is.null(ofile)) return(dirname(normalizePath(ofile)))
+  }
+  return(getwd())
 }
-source(file.path(script_dir, "utils.R"))
+source(file.path(get_script_dir(), "config.R"))
 
-# Configuration
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
-ANALYSIS_NAME <- Sys.getenv("ANALYSIS_NAME", unset = "hymy_distance_correlation")
-
-suffix <- if (ANNOTATION_LEVEL == "L1") "spatial_analysis_L1" else "spatial_analysis"
-results_base <- file.path(PROJECT_ROOT, "results", suffix, ANALYSIS_NAME)
+results_base <- file.path(OUTPUT_ROOT, ANALYSIS_NAME)
 
 cat("==============================================\n")
 cat("Merge GPU Permutation P-values\n")

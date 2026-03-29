@@ -1,25 +1,27 @@
 #!/usr/bin/env Rscript
 #' =============================================================================
-#' Gradient-to-Ligand-Receptor Integration Analysis
+#' RIPPLE Stage 6: Gradient-to-Ligand-Receptor Integration Analysis
 #' =============================================================================
 #'
-#' Connects HyMy distance correlation gradient results to specific L-R
-#' mechanisms. Answers: "Which L-R pairs between HyMy and target cells explain
-#' the observed distance-dependent expression gradients?"
+#' Connects distance correlation gradient results to specific L-R mechanisms.
+#' Answers: "Which L-R pairs between query and target cells explain the
+#' observed distance-dependent expression gradients?"
 #'
-#' Three complementary approaches (Direction A: HyMy -> Target):
-#'   Part 1: Direct L-R mapping — gradient genes that are known receptors,
-#'           matched to HyMy-expressed ligands (+ lightweight reverse for B)
-#'   Part 2: NicheNet ligand activity — which HyMy ligands best predict each
+#' Three complementary approaches (Direction A: Query -> Target):
+#'   Part 1: Direct L-R mapping -- gradient genes that are known receptors,
+#'           matched to query-expressed ligands (+ lightweight reverse for B)
+#'   Part 2: NicheNet ligand activity -- which query ligands best predict each
 #'           cell type's gradient pattern
-#'   Part 3: Downstream target enrichment — Fisher's exact test validating that
+#'   Part 3: Downstream target enrichment -- Fisher's exact test validating that
 #'           predicted L-R downstream targets overlap with gradient genes
 #'
 #' Runs as SLURM array job (CELLTYPE_INDEX 1-14).
-#' Requires nichenet_env conda environment.
+#'
+#' Usage:
+#'   Rscript gradient_lr_integration.R
+#'   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript gradient_lr_integration.R
 #'
 #' Author: CMM Project
-#' Date: 2026-02
 #' =============================================================================
 
 # =============================================================================
@@ -58,9 +60,6 @@ source(file.path(script_dir, "utils.R"))
 ANALYSIS_NAME <- "gradient_lr_integration"
 organism <- "mouse"
 
-# Annotation level (from env var, default HyMy)
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
-
 # Gradient source: which distance correlation results to use
 # Default: "hymy_distance_correlation" (v1, logistic)
 # For v2 (Poisson GLM): GRADIENT_SOURCE=hymy_distance_correlation_v2
@@ -74,27 +73,18 @@ output_name <- if (nchar(gradient_suffix) > 0) {
   ANALYSIS_NAME
 }
 
-if (ANNOTATION_LEVEL == "L1") {
-  QUERY_CELLTYPE <- "IL1B_myeloid"
-  CELLTYPE_COL <- "cell_type_assignment_L1"
-  GRADIENT_DIR <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", GRADIENT_SOURCE)
-  STAGE2_DIR <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", paste0(GRADIENT_SOURCE, "_stage2"))
-  OUTPUT_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", output_name)
-} else {
-  QUERY_CELLTYPE <- "HyMy_GMM"
-  CELLTYPE_COL <- "cell_type_with_HyMy"
-  GRADIENT_DIR <- file.path(PROJECT_ROOT, "results", "spatial_analysis", GRADIENT_SOURCE)
-  STAGE2_DIR <- file.path(PROJECT_ROOT, "results", "spatial_analysis", paste0(GRADIENT_SOURCE, "_stage2"))
-  OUTPUT_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis", output_name)
-}
+# Inherited from config.R (via utils.R): QUERY_CELLTYPE, CELLTYPE_COL, OUTPUT_SUFFIX, QUERY_LABEL
+GRADIENT_DIR <- file.path(OUTPUT_ROOT, GRADIENT_SOURCE)
+STAGE2_DIR <- file.path(OUTPUT_ROOT, paste0(GRADIENT_SOURCE, "_stage2"))
+OUTPUT_BASE <- file.path(OUTPUT_ROOT, output_name)
 
 ensure_dir(OUTPUT_BASE)
 ensure_dir(file.path(OUTPUT_BASE, "per_celltype"))
 ensure_dir(file.path(OUTPUT_BASE, "summary"))
 ensure_dir(file.path(OUTPUT_BASE, "plots"))
 
-# Expression threshold for HyMy ligand/receptor filtering
-EXPR_THRESHOLD_PCT <- 5  # At least 5% of HyMy cells must express
+# Expression threshold for query cell ligand/receptor filtering
+EXPR_THRESHOLD_PCT <- 5  # At least 5% of query cells must express
 
 # NicheNet database cache
 NICHENET_CACHE <- file.path(PROJECT_ROOT, "resources", "nichenet")
@@ -246,11 +236,11 @@ message(sprintf("  Ligand-target matrix: %d targets x %d ligands",
                 nrow(ligand_target_matrix), ncol(ligand_target_matrix)))
 
 # =============================================================================
-# Load Seurat Object & Compute HyMy Expression Profile (Per-Sample + Pooled)
+# Load Seurat Object & Compute Query Cell Expression Profile (Per-Sample + Pooled)
 # =============================================================================
 
 message("\n", strrep("-", 70))
-message("Loading Seurat object and computing HyMy expression profiles...")
+message(paste0("Loading Seurat object and computing ", QUERY_LABEL, " expression profiles..."))
 message(strrep("-", 70), "\n")
 
 obj <- load_seurat()
@@ -265,7 +255,7 @@ if (!"condition" %in% names(meta) && "group" %in% names(meta)) {
   meta[, condition := group]
 }
 
-# Get HyMy/query cells in TDLN
+# Get query cells in TDLN
 query_barcodes <- meta[get(CELLTYPE_COL) == QUERY_CELLTYPE & condition == "TDLN"]$barcode
 message(sprintf("  Query cells (%s, TDLN): %d", QUERY_CELLTYPE, length(query_barcodes)))
 
@@ -273,11 +263,11 @@ if (length(query_barcodes) == 0) {
   stop("No query cells found! Check CELLTYPE_COL and QUERY_CELLTYPE.")
 }
 
-# Compute HyMy expression statistics (sparse — don't as.matrix the whole thing)
+# Compute query cell expression statistics (sparse -- don't as.matrix the whole thing)
 expr_matrix <- GetAssayData(obj, layer = "data")
 rownames(expr_matrix) <- make.names(rownames(expr_matrix))
 
-# --- Per-sample HyMy expression profiles ---
+# --- Per-sample query cell expression profiles ---
 tdln_samples <- unique(meta[condition == "TDLN"]$sample_id)
 message(sprintf("  TDLN samples: %s", paste(tdln_samples, collapse = ", ")))
 
@@ -294,11 +284,11 @@ hymy_per_sample <- rbindlist(lapply(tdln_samples, function(sid) {
   )
 }))
 
-message(sprintf("  Per-sample HyMy profiles: %d samples × %d genes",
+message(sprintf("  Per-sample %s profiles: %d samples x %d genes", QUERY_LABEL,
                 length(unique(hymy_per_sample$sample_id)),
                 length(unique(hymy_per_sample$gene))))
 
-# --- Pooled HyMy expression (used for NicheNet ligand identification) ---
+# --- Pooled query cell expression (used for NicheNet ligand identification) ---
 query_expr <- expr_matrix[, query_barcodes, drop = FALSE]
 hymy_pct <- rowMeans(query_expr > 0) * 100
 hymy_mean <- rowMeans(query_expr)
@@ -309,7 +299,7 @@ hymy_profile <- data.table(
   mean_hymy = as.numeric(hymy_mean)
 )
 
-# HyMy-expressed ligands and receptors (pooled — for NicheNet input)
+# Query-expressed ligands and receptors (pooled -- for NicheNet input)
 available_genes <- rownames(expr_matrix)
 available_ligands <- intersect(lr_network$ligand, available_genes)
 available_receptors <- intersect(lr_network$receptor, available_genes)
@@ -319,10 +309,10 @@ hymy_expressed_ligands <- hymy_profile[gene %in% available_ligands &
 hymy_expressed_receptors <- hymy_profile[gene %in% available_receptors &
                                           pct_hymy >= EXPR_THRESHOLD_PCT]$gene
 
-message(sprintf("  HyMy-expressed ligands (pooled, ≥%d%%): %d",
-                EXPR_THRESHOLD_PCT, length(hymy_expressed_ligands)))
-message(sprintf("  HyMy-expressed receptors (pooled, ≥%d%%): %d",
-                EXPR_THRESHOLD_PCT, length(hymy_expressed_receptors)))
+message(sprintf("  %s-expressed ligands (pooled, >=%d%%): %d",
+                QUERY_LABEL, EXPR_THRESHOLD_PCT, length(hymy_expressed_ligands)))
+message(sprintf("  %s-expressed receptors (pooled, >=%d%%): %d",
+                QUERY_LABEL, EXPR_THRESHOLD_PCT, length(hymy_expressed_receptors)))
 
 # =============================================================================
 # Per Cell Type Analysis
@@ -361,8 +351,8 @@ for (ct_name in names(TARGET_CELLTYPES)) {
 
   # Significant gradient genes (now includes classification column)
   sig_genes <- ct_gradient[get(FDR_COL_GRAD) < 0.05]
-  induced_genes <- sig_genes[get(COEF_COL_GRAD) < 0]$gene_safe   # Higher near HyMy
-  repressed_genes <- sig_genes[get(COEF_COL_GRAD) > 0]$gene_safe  # Lower near HyMy
+  induced_genes <- sig_genes[get(COEF_COL_GRAD) < 0]$gene_safe   # Higher near query
+  repressed_genes <- sig_genes[get(COEF_COL_GRAD) > 0]$gene_safe  # Lower near query
   background_genes <- ct_gradient$gene_safe
 
   message(sprintf("  Total tested genes: %d", nrow(ct_gradient)))
@@ -388,7 +378,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
     coef_per_sample <- NULL
   }
 
-  # ---- Direction A: HyMy ligand -> Target receptor ----
+  # ---- Direction A: Query ligand -> Target receptor ----
 
   # Find significant gradient genes that are known receptors
   sig_receptors <- sig_genes[gene_safe %in% available_receptors]
@@ -402,7 +392,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
       receptor_gene <- sig_receptors$gene_safe[i]
       receptor_info <- sig_receptors[i]
 
-      # Find cognate ligands expressed by HyMy (using pooled threshold for discovery)
+      # Find cognate ligands expressed by query cells (using pooled threshold for discovery)
       cognate_ligands <- lr_network[receptor == receptor_gene &
                                       ligand %in% hymy_expressed_ligands]$ligand
 
@@ -417,7 +407,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
 
           if (!is.null(coef_per_sample)) {
             for (sid in tdln_samples) {
-              # Per-sample ligand expression on HyMy
+              # Per-sample ligand expression on query cells
               lig_sample <- hymy_per_sample[gene == lig & sample_id == sid]
               # Per-sample receptor gradient coefficient
               rec_sample <- coef_per_sample[gene_safe == receptor_gene & sample_id == sid]
@@ -460,7 +450,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
             ligand = lig,
             receptor = receptor_gene,
             cell_type = ct_name,
-            direction = "HyMy_to_Target",
+            direction = paste0(QUERY_LABEL, "_to_Target"),
             ligand_pct_hymy = lig_info_pooled$pct_hymy,
             ligand_mean_hymy = lig_info_pooled$mean_hymy,
             receptor_gradient_coef = receptor_info[[COEF_COL_GRAD]],
@@ -497,7 +487,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
 
   fwrite(direct_a_results, file.path(ct_output_dir, "direct_lr_pairs_hymy_to_target.csv"))
 
-  # ---- Direction B: Target ligand -> HyMy receptor (per-mouse matched) ----
+  # ---- Direction B: Target ligand -> Query receptor (per-mouse matched) ----
 
   sig_ligands <- sig_genes[gene_safe %in% available_ligands]
   message(sprintf("  Direction B: %d gradient genes are known ligands",
@@ -510,7 +500,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
       ligand_gene <- sig_ligands$gene_safe[i]
       ligand_info <- sig_ligands[i]
 
-      # Find cognate receptors expressed by HyMy
+      # Find cognate receptors expressed by query cells
       cognate_receptors <- lr_network[ligand == ligand_gene &
                                         receptor %in% hymy_expressed_receptors]$receptor
 
@@ -525,7 +515,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
 
           if (!is.null(coef_per_sample)) {
             for (sid in tdln_samples) {
-              # Per-sample receptor expression on HyMy
+              # Per-sample receptor expression on query cells
               rec_sample <- hymy_per_sample[gene == rec & sample_id == sid]
               # Per-sample ligand gradient coefficient
               lig_sample <- coef_per_sample[gene_safe == ligand_gene & sample_id == sid]
@@ -565,7 +555,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
             ligand = ligand_gene,
             receptor = rec,
             cell_type = ct_name,
-            direction = "Target_to_HyMy",
+            direction = paste0("Target_to_", QUERY_LABEL),
             ligand_gradient_coef = ligand_info[[COEF_COL_GRAD]],
             ligand_fdr = ligand_info[[FDR_COL_GRAD]],
             coef_column_used = COEF_COL_GRAD,
@@ -604,11 +594,11 @@ for (ct_name in names(TARGET_CELLTYPES)) {
   # Part 2: NicheNet Ligand Activity (Direction A only)
   # =========================================================================
 
-  message("\n  --- Part 2: NicheNet Ligand Activity (HyMy -> Target) ---")
+  message(paste0("\n  --- Part 2: NicheNet Ligand Activity (", QUERY_LABEL, " -> Target) ---"))
 
   activity_results <- data.table()
 
-  # Response = gradient genes INDUCED near HyMy (negative coef)
+  # Response = gradient genes INDUCED near query (negative coef)
   # Fallback: if <10 induced, use ALL significant gradient genes
   response_induced <- intersect(induced_genes, rownames(ligand_target_matrix))
   response_all_sig <- intersect(sig_genes$gene_safe, rownames(ligand_target_matrix))
@@ -633,7 +623,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
                   response_type, length(response_in_matrix)))
   message(sprintf("  Background genes (in matrix): %d / %d",
                   length(bg_in_matrix), length(background_genes)))
-  message(sprintf("  Potential ligands (HyMy-expressed, in matrix): %d",
+  message(sprintf("  Potential ligands (%s-expressed, in matrix): %d", QUERY_LABEL,
                   length(potential_ligands)))
 
   if (length(response_in_matrix) >= 10 && length(potential_ligands) >= 5) {
@@ -651,7 +641,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
     setnames(ligand_activity, "test_ligand", "ligand")
     setnames(ligand_activity, "aupr_corrected", "activity")
 
-    # Add HyMy expression info
+    # Add query cell expression info
     ligand_activity <- merge(ligand_activity, hymy_profile,
                              by.x = "ligand", by.y = "gene", all.x = TRUE)
 
@@ -783,7 +773,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
   fwrite(enrichment_results, file.path(ct_output_dir, "downstream_target_enrichment.csv"))
 
   # =========================================================================
-  # Combined Prioritization (Direction A: HyMy -> Target)
+  # Combined Prioritization (Direction A: Query -> Target)
   # =========================================================================
 
   message("\n  --- Combining results ---")

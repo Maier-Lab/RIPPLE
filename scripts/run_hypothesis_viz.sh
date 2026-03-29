@@ -28,7 +28,11 @@
 
 set -e
 
-ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
+# Query cell type configuration (pass through to R/Python)
+export QUERY_CELLTYPE=${QUERY_CELLTYPE:-}
+export CELLTYPE_COLUMN=${CELLTYPE_COLUMN:-}
+export QUERY_LABEL=${QUERY_LABEL:-}
+export ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
 
 echo "=============================================="
 echo "Hypothesis Visualizations"

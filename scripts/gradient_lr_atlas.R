@@ -1,20 +1,18 @@
 #!/usr/bin/env Rscript
 #' =============================================================================
-#' Gradient-to-LR Integration: Atlas & Summary
+#' RIPPLE Stage 6: Gradient-to-LR Integration Atlas & Summary
 #' =============================================================================
 #'
 #' Merges per-celltype results from gradient_lr_integration.R into summary
-#' tables and publication figures. Cross-references with existing NicheNet
-#' LEC/FRC results.
+#' tables and publication figures.
 #'
-#' Run AFTER all 14 array jobs from gradient_lr_integration.R are complete.
+#' Run AFTER all array jobs from gradient_lr_integration.R are complete.
 #'
 #' Usage:
 #'   Rscript gradient_lr_atlas.R
-#'   ANNOTATION_LEVEL=L1 Rscript gradient_lr_atlas.R
+#'   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript gradient_lr_atlas.R
 #'
 #' Author: CMM Project
-#' Date: 2026-02
 #' =============================================================================
 
 suppressPackageStartupMessages({
@@ -47,7 +45,6 @@ source(file.path(script_dir, "utils.R"))
 # =============================================================================
 
 ANALYSIS_NAME <- "gradient_lr_integration"
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
 
 # Gradient source routing (matches gradient_lr_integration.R)
 GRADIENT_SOURCE <- Sys.getenv("GRADIENT_SOURCE", unset = "hymy_distance_correlation")
@@ -58,12 +55,14 @@ output_name <- if (nchar(gradient_suffix) > 0) {
   ANALYSIS_NAME
 }
 
+# Inherited from config.R (via utils.R): QUERY_CELLTYPE, CELLTYPE_COL, OUTPUT_SUFFIX, QUERY_LABEL
+OUTPUT_BASE <- file.path(OUTPUT_ROOT, output_name)
+
+# NicheNet cross-reference dirs (legacy paths, only meaningful for HyMy/L1)
 if (ANNOTATION_LEVEL == "L1") {
-  OUTPUT_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", output_name)
   NICHENET_LEC_DIR <- file.path(PROJECT_ROOT, "results", "spatial_nichenet_L1")
   NICHENET_FRC_DIR <- file.path(PROJECT_ROOT, "results", "spatial_nichenet_L1_FRC")
 } else {
-  OUTPUT_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis", output_name)
   NICHENET_LEC_DIR <- file.path(PROJECT_ROOT, "results", "spatial_nichenet")
   NICHENET_FRC_DIR <- file.path(PROJECT_ROOT, "results", "spatial_nichenet_FRC")
 }
@@ -129,8 +128,8 @@ all_enrichment <- rbindlist(lapply(ct_dirs, function(d) {
 message(sprintf("  Combined prioritization: %d rows across %d cell types",
                 nrow(all_combined),
                 length(unique(all_combined$cell_type))))
-message(sprintf("  Direction A (HyMy->Target): %d L-R pairs", nrow(all_direct_a)))
-message(sprintf("  Direction B (Target->HyMy): %d L-R pairs", nrow(all_direct_b)))
+message(sprintf("  Direction A (%s->Target): %d L-R pairs", QUERY_LABEL, nrow(all_direct_a)))
+message(sprintf("  Direction B (Target->%s): %d L-R pairs", QUERY_LABEL, nrow(all_direct_b)))
 message(sprintf("  Ligand activity scores: %d", nrow(all_activity)))
 message(sprintf("  Enrichment tests: %d", nrow(all_enrichment)))
 
@@ -143,10 +142,8 @@ message("Classifying potential segmentation artifacts...")
 message(strrep("-", 70), "\n")
 
 if (nrow(all_combined) > 0) {
-  # HyMy signature genes — receptors matching these on non-myeloid cells are artifacts
-  HYMY_SIGNATURE <- make.names(c("Il1b", "S100a9", "S100a8", "Cxcl2", "C5ar1", "Ccr1",
-                                  "Csf3r", "Trem1", "Il1r2", "Tnfaip2", "Ptgs2", "Nlrp3",
-                                  "Cd14", "Itgam", "Acod1", "Pilra"))
+  # Query signature genes — receptors matching these on non-myeloid cells are artifacts
+  HYMY_SIGNATURE <- make.names(QUERY_SIGNATURE)
 
   # Genes significant in >=4 cell types (likely leakage from distance correlation)
   CONTAMINATION_CANDIDATES <- make.names(c("Bub1b", "C1qa", "C1qb", "Cd52", "Cebpb",
@@ -165,7 +162,7 @@ if (nrow(all_combined) > 0) {
   # Initialize all as clean
   all_combined[, artifact_flag := "clean"]
 
-  # Rule 1: Receptor is HyMy signature gene on non-myeloid cell type
+  # Rule 1: Receptor is query signature gene on non-myeloid cell type
   all_combined[receptor %in% HYMY_SIGNATURE &
                !(cell_type %in% MYELOID_CELLTYPES),
                artifact_flag := "artifact"]
@@ -377,8 +374,8 @@ if (nrow(all_combined) > 0) {
       theme_bw(base_size = 10) +
       theme(axis.text.x = element_text(angle = 45, hjust = 1),
             panel.grid.major = element_line(color = "grey90")) +
-      labs(title = "Top L-R Pairs Explaining HyMy Gradients (Clean Only)",
-           subtitle = "Direction A: HyMy ligand -> Target receptor (artifacts excluded)",
+      labs(title = paste0("Top L-R Pairs Explaining ", QUERY_LABEL, " Gradients (Clean Only)"),
+           subtitle = paste0("Direction A: ", QUERY_LABEL, " ligand -> Target receptor (artifacts excluded)"),
            x = "Target Cell Type", y = "Ligand-Receptor Pair")
 
     ggsave(file.path(PLOT_DIR, "bubble_plot_top_pairs.pdf"),
@@ -426,7 +423,7 @@ if (nrow(all_combined) > 0) {
     geom_text(aes(label = n_lr_pairs), vjust = -0.3, size = 3) +
     theme_bw(base_size = 11) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    labs(title = "L-R Pairs per Cell Type (Direction A: HyMy -> Target)",
+    labs(title = paste0("L-R Pairs per Cell Type (Direction A: ", QUERY_LABEL, " -> Target)"),
          x = "Cell Type", y = "Number of L-R Pairs")
 
   ggsave(file.path(PLOT_DIR, "coverage_by_celltype.pdf"),
@@ -457,7 +454,7 @@ if (nrow(all_combined) > 0) {
     theme_bw(base_size = 11) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     labs(title = "L-R Pair Artifact Classification by Cell Type",
-         subtitle = "Based on receptor lineage, HyMy signature, and expression thresholds",
+         subtitle = paste0("Based on receptor lineage, ", QUERY_LABEL, " signature, and expression thresholds"),
          x = "Cell Type", y = "Number of L-R Pairs")
 
   ggsave(file.path(PLOT_DIR, "artifact_classification.pdf"),
@@ -622,8 +619,8 @@ if (nrow(all_combined) > 0) {
   }
 }
 if (nrow(all_direct_b) > 0) {
-  message(sprintf("Total L-R pairs (Direction B: Target->HyMy): %d",
-                  nrow(all_direct_b)))
+  message(sprintf("Total L-R pairs (Direction B: Target->%s): %d",
+                  QUERY_LABEL, nrow(all_direct_b)))
 }
 
 message(sprintf("\nTimestamp: %s", Sys.time()))

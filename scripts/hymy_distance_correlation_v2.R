@@ -1,35 +1,22 @@
 #!/usr/bin/env Rscript
 #' =============================================================================
-#' HyMy Distance Correlation Analysis v2 (Poisson GLM)
+#' RIPPLE Stage 1: Distance Correlation Analysis (Poisson GLM)
 #' =============================================================================
 #'
-#' Statistical improvements over v1 (logistic regression) based on collaborator
-#' feedback:
+#' Per-sample Poisson GLM: gene expression ~ distance to query cell type,
+#' with cell-size offset. Results are combined via Fisher's combined p-value.
 #'
-#' 1. POISSON GLM instead of binary logistic regression:
-#'    - Uses raw counts (not binarized expression)
-#'    - Better reflects the count nature of Xenium data
-#'    - Model: glm(counts ~ distance + offset(log(total_counts)), family=poisson)
-#'    - Offset accounts for cell size (total transcripts per cell)
-#'
-#' 2. GLM inference (Wald test) as primary:
-#'    - Per-sample p-values from Wald z-test on distance coefficient
-#'    - Permutation tests are secondary validation
-#'
-#' 3. Per-sample diagnostics:
-#'    - Sign consistency: how many mice agree on direction?
-#'    - Overdispersion diagnostic: is Poisson appropriate?
-#'    - Coefficient strip plots for visual reproducibility
-#'
-#' 4. k-NN distance support (via K_NEIGHBORS env var):
-#'    - Default k=1 (identical to v1 for clean comparison)
-#'    - Set K_NEIGHBORS=5 for robustness sanity check
-#'    - Averages distance to k nearest query cells
+#' Model: glm(counts ~ distance + offset(log(total_counts)), family=poisson)
 #'
 #' Coefficient Interpretation:
-#' - Coef < 0: expression rate DECREASES with distance = HyMy-INDUCED
-#' - Coef > 0: expression rate INCREASES with distance = HyMy-REPRESSED
-#' - Units: log-rate change per µm of distance
+#' - Coef < 0: expression rate DECREASES with distance = query-INDUCED
+#' - Coef > 0: expression rate INCREASES with distance = query-REPRESSED
+#' - Units: log-rate change per um of distance
+#'
+#' Usage:
+#'   Rscript hymy_distance_correlation_v2.R
+#'   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript hymy_distance_correlation_v2.R
+#'   ANNOTATION_LEVEL=L1 Rscript hymy_distance_correlation_v2.R
 #'
 #' Author: CMM Project
 #' =============================================================================
@@ -80,18 +67,8 @@ K_NEIGHBORS <- as.integer(Sys.getenv("K_NEIGHBORS", unset = "1"))
 ANALYSIS_NAME <- paste0("hymy_distance_correlation_v2",
                         if (K_NEIGHBORS > 1) paste0("_k", K_NEIGHBORS) else "")
 
-# Annotation level (set via environment variable or default)
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
-
-if (ANNOTATION_LEVEL == "L1") {
-  QUERY_CELLTYPE <- "IL1B_myeloid"
-  CELLTYPE_COL <- "cell_type_assignment_L1"
-  OUTPUT_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", ANALYSIS_NAME)
-} else {
-  QUERY_CELLTYPE <- "HyMy_GMM"
-  CELLTYPE_COL <- "cell_type_with_HyMy"
-  OUTPUT_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis", ANALYSIS_NAME)
-}
+# Inherited from config.R (via utils.R): QUERY_CELLTYPE, CELLTYPE_COL, OUTPUT_SUFFIX, QUERY_LABEL
+OUTPUT_BASE <- file.path(OUTPUT_ROOT, ANALYSIS_NAME)
 
 ensure_dir(OUTPUT_BASE)
 ensure_dir(file.path(OUTPUT_BASE, "per_celltype"))
@@ -211,7 +188,7 @@ if (CELLTYPE_INDEX > 0) {
 POSITIVE_CONTROLS <- c("Csf3", "Il33", "Cxcl12")
 
 message(strrep("=", 70))
-message("HyMy Distance Correlation Analysis v2 (Poisson GLM)")
+message(paste0(QUERY_LABEL, " Distance Correlation Analysis v2 (Poisson GLM)"))
 message(strrep("=", 70))
 message("Annotation level: ", ANNOTATION_LEVEL)
 message("Query cell type: ", QUERY_CELLTYPE)
@@ -684,7 +661,7 @@ create_gradient_volcano <- function(results, cell_type, output_path) {
       title = sprintf("Distance-Expression Analysis (Poisson GLM, k=%d): %s", K_NEIGHBORS, cell_type),
       subtitle = sprintf("%d genes significant (FDR < %.2f)",
                         sum(plot_data$significant, na.rm = TRUE), FDR_THRESHOLD),
-      x = "Log-rate coefficient (negative = HyMy-induced)",
+      x = paste0("Log-rate coefficient (negative = ", QUERY_LABEL, "-induced)"),
       y = "-log10(FDR)"
     ) +
     theme_classic(base_size = 12) +
@@ -750,7 +727,7 @@ create_decay_examples <- function(obj, distances, target_mask, genes,
       labs(
         title = g,
         subtitle = sprintf("Pattern: %s", pattern),
-        x = "Distance to HyMy (\u00b5m)",
+        x = paste0("Distance to ", QUERY_LABEL, " (um)"),
         y = "Proportion Expressing"
       ) +
       theme_bw(base_size = 10) +
@@ -1167,7 +1144,7 @@ message(strrep("=", 70))
 # Load Seurat object
 obj <- load_seurat()
 
-# Merge HyMy annotations if using HyMy annotation level
+# Merge HyMy annotations if using legacy HyMy annotation level
 if (ANNOTATION_LEVEL == "HyMy") {
   message("Merging HyMy annotations...")
   obj <- merge_hymy_annotations(obj)
@@ -1504,8 +1481,8 @@ if (length(all_results) > 0) {
     n_positive <- sum(ct_result$fdr < FDR_THRESHOLD &
                        ct_result$gradient_score > 0, na.rm = TRUE)
 
-    message(sprintf("  %s: %d significant genes (%d HyMy-induced, %d HyMy-repressed)",
-                    ct, n_sig, n_negative, n_positive))
+    message(sprintf("  %s: %d significant genes (%d %s-induced, %d %s-repressed)",
+                    ct, n_sig, n_negative, QUERY_LABEL, n_positive, QUERY_LABEL))
   }
 
   # ==========================================================================
@@ -1515,7 +1492,7 @@ if (length(all_results) > 0) {
   message("Positive Control Validation")
   message(strrep("-", 60))
   message("Expected: CSF3, IL33, CXCL12 should show NEGATIVE gradient in FRC/LEC")
-  message("(negative = higher expression rate near HyMy = HyMy-induced)")
+  message(paste0("(negative = higher expression rate near ", QUERY_LABEL, " = ", QUERY_LABEL, "-induced)"))
   message("")
 
   for (ct in c("FRC", "LEC")) {
@@ -1527,7 +1504,7 @@ if (length(all_results) > 0) {
           score <- round(ctrl_row$gradient_score, 5)
           fdr_val <- signif(ctrl_row$fdr, 3)
           sig_marker <- if (!is.na(fdr_val) && fdr_val < FDR_THRESHOLD) "*" else ""
-          direction <- if (!is.na(score) && score < 0) "HyMy-induced" else "NOT induced"
+          direction <- if (!is.na(score) && score < 0) paste0(QUERY_LABEL, "-induced") else "NOT induced"
           sign_con <- if (!is.na(ctrl_row$sign_consistency)) {
             sprintf("sign: %d/%d agree", ctrl_row$n_negative_samples + ctrl_row$n_positive_samples -
                       min(ctrl_row$n_negative_samples, ctrl_row$n_positive_samples),

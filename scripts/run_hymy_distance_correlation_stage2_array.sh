@@ -37,7 +37,11 @@
 
 set -e
 
-ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
+# Query cell type configuration (pass through to R/Python)
+export QUERY_CELLTYPE=${QUERY_CELLTYPE:-}
+export CELLTYPE_COLUMN=${CELLTYPE_COLUMN:-}
+export QUERY_LABEL=${QUERY_LABEL:-}
+export ANNOTATION_LEVEL=${ANNOTATION_LEVEL:-HyMy}
 ANALYSIS_NAME=${ANALYSIS_NAME:-hymy_distance_correlation_v2}
 CELLTYPE_INDEX=${SLURM_ARRAY_TASK_ID}
 

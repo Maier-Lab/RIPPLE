@@ -1,33 +1,24 @@
 #!/usr/bin/env Rscript
 #' =============================================================================
-#' HyMy Distance Correlation Stage 2: Monocyte Distance Control (Poisson GLM)
+#' RIPPLE Stage 4: Confounder Control (Bivariate Poisson GLM)
 #' =============================================================================
 #'
-#' Validates Stage 1 v2 hits by adding distance-to-nearest-monocyte as a
-#' covariate, isolating HyMy-specific effects from general myeloid niche effects.
+#' Validates Stage 1 hits by adding distance-to-nearest-control-cell-type as a
+#' covariate, isolating query-specific effects from general niche effects.
 #'
-#' For each significant gene from Stage 1 v2, fits a bivariate Poisson GLM
+#' For each significant gene from Stage 1, fits a bivariate Poisson GLM
 #' per sample:
-#'   glm(counts ~ dist_to_hymy + dist_to_control + offset(log(total_counts)),
+#'   glm(counts ~ dist_to_query + dist_to_control + offset(log(total_counts)),
 #'       family = poisson)
 #'
-#' Extracts the dist_to_hymy coefficient — this now represents the HyMy-specific
-#' spatial effect AFTER controlling for monocyte proximity, in log-rate/µm units
-#' consistent with Stage 1 v2.
-#'
-#' Uses Fisher's combined p-value (not REML meta-analysis) to combine per-sample
-#' results, matching Stage 1 v2 methodology.
-#'
 #' Gene Classification:
-#' - HyMy-specific: significant in both Stage 1 and Stage 2 (gradient persists)
-#' - Niche-driven: significant in Stage 1, NOT in Stage 2 (explained by niche)
-#' - Enhanced: larger absolute effect in Stage 2 than Stage 1
+#' - query_specific: significant in both Stage 1 and Stage 2 (gradient persists)
+#' - niche_driven: significant in Stage 1, NOT in Stage 2 (explained by niche)
+#' - enhanced: larger absolute effect in Stage 2 than Stage 1
 #'
-#' Edge Cases:
-#' - Monocyte target analysis (array job #8): skipped — cannot use monocytes
-#'   as both target and control. Uses macrophages as alternative control.
-#' - Samples with <30 monocytes: flagged and excluded from Stage 2 analysis.
-#' - Collinearity (cor > 0.8): warning issued; inflated SEs are expected.
+#' Usage:
+#'   Rscript hymy_distance_correlation_stage2.R
+#'   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript hymy_distance_correlation_stage2.R
 #'
 #' Author: CMM Project
 #' =============================================================================
@@ -74,23 +65,12 @@ source(file.path(script_dir, "utils.R"))
 STAGE1_ANALYSIS_NAME <- Sys.getenv("ANALYSIS_NAME", unset = "hymy_distance_correlation_v2")
 ANALYSIS_NAME <- paste0(STAGE1_ANALYSIS_NAME, "_stage2")
 
-# Annotation level (set via environment variable or default)
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
-
 # Significance column in Stage 1 results (fisher_fdr for v2, fdr for v1)
 SIG_COL <- "fisher_fdr"
 
-if (ANNOTATION_LEVEL == "L1") {
-  QUERY_CELLTYPE <- "IL1B_myeloid"
-  CELLTYPE_COL <- "cell_type_assignment_L1"
-  OUTPUT_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", ANALYSIS_NAME)
-  STAGE1_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis_L1", STAGE1_ANALYSIS_NAME)
-} else {
-  QUERY_CELLTYPE <- "HyMy_GMM"
-  CELLTYPE_COL <- "cell_type_with_HyMy"
-  OUTPUT_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis", ANALYSIS_NAME)
-  STAGE1_BASE <- file.path(PROJECT_ROOT, "results", "spatial_analysis", STAGE1_ANALYSIS_NAME)
-}
+# Inherited from config.R (via utils.R): QUERY_CELLTYPE, CELLTYPE_COL, OUTPUT_SUFFIX, QUERY_LABEL
+OUTPUT_BASE <- file.path(OUTPUT_ROOT, ANALYSIS_NAME)
+STAGE1_BASE <- file.path(OUTPUT_ROOT, STAGE1_ANALYSIS_NAME)
 
 ensure_dir(OUTPUT_BASE)
 ensure_dir(file.path(OUTPUT_BASE, "per_celltype"))
@@ -145,7 +125,7 @@ if (CELLTYPE_INDEX > 0) {
 }
 
 message(strrep("=", 70))
-message("HyMy Distance Correlation Stage 2: Monocyte Distance Control (Poisson)")
+message(paste0(QUERY_LABEL, " Distance Correlation Stage 2: Monocyte Distance Control (Poisson)"))
 message(strrep("=", 70))
 message("Annotation level: ", ANNOTATION_LEVEL)
 message("Query cell type: ", QUERY_CELLTYPE)
@@ -329,7 +309,7 @@ message("  Total cells: ", nrow(cell_data))
 message("  Samples: ", length(unique(cell_data$sample_id)))
 
 # =============================================================================
-# Calculate Distances to Query Cells (HyMy)
+# Calculate Distances to Query Cells
 # =============================================================================
 
 message("\n", strrep("=", 70))
@@ -338,7 +318,7 @@ message(strrep("=", 70))
 
 coords <- as.matrix(cell_data[, .(spatial_x, spatial_y)])
 
-# Distance to HyMy
+# Distance to query cell type
 query_mask <- cell_data[[CELLTYPE_COL]] == QUERY_CELLTYPE
 message("Query cells (", QUERY_CELLTYPE, "): ", sum(query_mask))
 query_coords <- coords[query_mask, , drop = FALSE]
@@ -631,10 +611,11 @@ for (ct_name in names(TARGET_CELLTYPES)) {
 
   comparison[, coef_ratio := abs(stage2_coef) / abs(stage1_coef)]
 
+  query_specific_label <- paste0(QUERY_LABEL, "_specific")
   comparison[, classification := fcase(
     is.na(stage2_fisher_fdr), "no_stage2_result",
-    # HyMy_specific: significant in Stage 2, same direction
-    stage2_fisher_fdr < FDR_THRESHOLD & sign(stage2_coef) == sign(stage1_coef), "HyMy_specific",
+    # query_specific: significant in Stage 2, same direction
+    stage2_fisher_fdr < FDR_THRESHOLD & sign(stage2_coef) == sign(stage1_coef), query_specific_label,
     # Niche-driven: lost significance AND coefficient attenuated (effect explained by control)
     stage2_fisher_fdr >= FDR_THRESHOLD & coef_ratio < ATTENUATION_THRESHOLD, "niche_driven",
     # Underpowered: lost significance but coefficient NOT attenuated (likely SE inflation)
@@ -646,8 +627,8 @@ for (ct_name in names(TARGET_CELLTYPES)) {
   )]
 
   # Detect "enhanced" genes: absolute effect LARGER in Stage 2 than Stage 1
-  # (monocyte proximity was suppressing the HyMy signal)
-  comparison[classification == "HyMy_specific" &
+  # (control proximity was suppressing the query-specific signal)
+  comparison[classification == query_specific_label &
                abs(stage2_coef) > abs(stage1_coef) * 1.1,
              classification := "enhanced"]
 
@@ -682,13 +663,9 @@ for (ct_name in names(TARGET_CELLTYPES)) {
     max_range <- max(abs(c(plot_data$stage1_coef, plot_data$stage2_median_coef)), na.rm = TRUE) * 1.1
 
     # Color palette for classification
-    class_colors <- c(
-      "HyMy_specific" = "#E74C3C",   # red
-      "enhanced"      = "#8E44AD",   # purple
-      "niche_driven"  = "#3498DB",   # blue
-      "underpowered"  = "#F1C40F",   # yellow
-      "reversed"      = "#F39C12",   # orange
-      "no_stage2_result" = "grey70"
+    class_colors <- setNames(
+      c("#E74C3C", "#8E44AD", "#3498DB", "#F1C40F", "#F39C12", "grey70"),
+      c(query_specific_label, "enhanced", "niche_driven", "underpowered", "reversed", "no_stage2_result")
     )
 
     # Identify genes to label (top 15 by Stage 1 significance)
@@ -749,7 +726,7 @@ for (ct_name in names(TARGET_CELLTYPES)) {
                           control_label,
                           sum(volcano_data$significant, na.rm = TRUE),
                           FDR_THRESHOLD),
-        x = "Adjusted log-rate coefficient (negative = HyMy-induced)",
+        x = paste0("Adjusted log-rate coefficient (negative = ", QUERY_LABEL, "-induced)"),
         y = "-log10(Fisher FDR)"
       ) +
       theme_classic(base_size = 12) +
@@ -800,12 +777,9 @@ if (length(all_stage2_results) > 0 && !SKIP_COMBINED) {
   plot_all <- combined[!is.na(stage2_median_coef)]
 
   if (nrow(plot_all) > 0) {
-    class_colors <- c(
-      "HyMy_specific" = "#E74C3C",
-      "enhanced"      = "#8E44AD",
-      "niche_driven"  = "#3498DB",
-      "reversed"      = "#F39C12",
-      "no_stage2_result" = "grey70"
+    class_colors <- setNames(
+      c("#E74C3C", "#8E44AD", "#3498DB", "#F39C12", "grey70"),
+      c(query_specific_label, "enhanced", "niche_driven", "reversed", "no_stage2_result")
     )
 
     max_range <- max(abs(c(plot_all$stage1_coef, plot_all$stage2_median_coef)), na.rm = TRUE) * 1.1
@@ -867,7 +841,7 @@ if (length(all_stage2_results) > 0 && !SKIP_COMBINED) {
   message("\n", strrep("-", 60))
   message("Positive Control Validation")
   message(strrep("-", 60))
-  message("Expected: CSF3, IL33, CXCL12 should remain HyMy-specific (not niche-driven)")
+  message(paste0("Expected: CSF3, IL33, CXCL12 should remain ", QUERY_LABEL, "-specific (not niche-driven)"))
 
   POSITIVE_CONTROLS <- c("Csf3", "Il33", "Cxcl12")
 
@@ -896,12 +870,12 @@ if (length(all_stage2_results) > 0 && !SKIP_COMBINED) {
   for (ct in names(all_stage2_results)) {
     ct_result <- all_stage2_results[[ct]]
     n_total <- nrow(ct_result)
-    n_specific <- sum(ct_result$classification %in% c("HyMy_specific", "enhanced"), na.rm = TRUE)
+    n_specific <- sum(ct_result$classification %in% c(query_specific_label, "enhanced"), na.rm = TRUE)
     n_niche <- sum(ct_result$classification == "niche_driven", na.rm = TRUE)
     pct_specific <- round(n_specific / n_total * 100, 1)
 
-    message(sprintf("  %s: %d genes → %d HyMy-specific (%.1f%%), %d niche-driven",
-                    ct, n_total, n_specific, pct_specific, n_niche))
+    message(sprintf("  %s: %d genes → %d %s-specific (%.1f%%), %d niche-driven",
+                    ct, n_total, n_specific, QUERY_LABEL, pct_specific, n_niche))
   }
 }
 

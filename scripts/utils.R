@@ -1,5 +1,5 @@
 #' =============================================================================
-#' Shared utilities for HyMy spatial analysis pipeline
+#' Shared utilities for RIPPLE spatial analysis pipeline
 #'
 #' This module provides common functions for:
 #' - Data loading and preprocessing
@@ -9,6 +9,27 @@
 #'
 #' Author: CMM Project
 #' =============================================================================
+
+# Source lightweight config (platform detection + env var resolution)
+# This must come before package loads so config vars are available immediately.
+.utils_dir <- local({
+  # Try sys.frame ofile — iterate from innermost frame outward to find the
+  # source() call for THIS file (utils.R), not the outer calling script.
+  n <- sys.nframe()
+  for (i in rev(seq_len(n))) {
+    ofile <- sys.frame(i)$ofile
+    if (!is.null(ofile)) return(dirname(normalizePath(ofile)))
+  }
+  # Try commandArgs for Rscript (when utils.R is the main script)
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- grep("^--file=", args, value = TRUE)
+  if (length(file_arg) > 0) {
+    return(dirname(normalizePath(sub("^--file=", "", file_arg))))
+  }
+  # Fallback
+  getwd()
+})
+source(file.path(.utils_dir, "config.R"))
 
 suppressPackageStartupMessages({
   library(Seurat)
@@ -23,52 +44,10 @@ suppressPackageStartupMessages({
   library(tidyr)    # For pivot_wider/longer
 })
 
-# =============================================================================
-# Path Configuration (auto-detect Windows vs HPC)
-# =============================================================================
-
-# Detect platform and set base path accordingly
-if (.Platform$OS.type == "windows") {
-  BASE_PATH <- "N:/lab_maier/Projects/mXenium"
-} else {
-  BASE_PATH <- "/nobackup/lab_maier/Projects/mXenium"
-}
-
-PROJECT_ROOT <- file.path(BASE_PATH, "CMM")
-MXENIUM_ROOT <- BASE_PATH  # Parent project root
-
-# =============================================================================
-# Annotation Level Configuration
-# =============================================================================
-# Set ANNOTATION_LEVEL to control which cell type annotation to use:
-#   "HyMy" - Use cell_type_with_HyMy (includes HyMy_GMM as distinct type)
-#   "L1"   - Use cell_type_assignment_L1 (HyMy are part of IL1B_myeloid)
-#
-# Can be overridden by environment variable: ANNOTATION_LEVEL
-# =============================================================================
-
-ANNOTATION_LEVEL <- Sys.getenv("ANNOTATION_LEVEL", unset = "HyMy")
-
-if (ANNOTATION_LEVEL == "L1") {
-  # L1 annotation: HyMy cells are part of IL1B_myeloid
-  CELLTYPE_COLUMN <- "cell_type_assignment_L1"
-  QUERY_CELLTYPE <- "IL1B_myeloid"
-  OUTPUT_SUFFIX <- "_L1"
-  USE_HYMY_ANNOTATION <- FALSE
-  message(">>> Using L1 annotation (IL1B_myeloid as query type)")
-} else {
-  # HyMy annotation: HyMy_GMM is a distinct cell type
-  CELLTYPE_COLUMN <- "cell_type_with_HyMy"
-  QUERY_CELLTYPE <- "HyMy_GMM"
-  OUTPUT_SUFFIX <- ""
-  USE_HYMY_ANNOTATION <- TRUE
-  message(">>> Using HyMy annotation (HyMy_GMM as query type)")
-}
-
 # ------------------------------------------------------------------------------
 # Spatial Analysis Parameters
 # ------------------------------------------------------------------------------
-PROXIMITY_THRESHOLD_UM <- 50  # µm - paracrine signaling range (~3-5 cell diameters)
+PROXIMITY_THRESHOLD_UM <- 50  # um - paracrine signaling range (~3-5 cell diameters)
 
 # Target cell type for spatial NicheNet analysis
 # Can be overridden by environment variable: TARGET_TYPE
@@ -76,8 +55,7 @@ PROXIMITY_THRESHOLD_UM <- 50  # µm - paracrine signaling range (~3-5 cell diame
 TARGET_TYPE <- Sys.getenv("TARGET_TYPE", unset = "LEC")
 message(sprintf(">>> Target cell type for proximity analysis: %s", TARGET_TYPE))
 
-# Input data paths - use existing Seurat object from HyMy annotation
-# Using the FILTERED version (QC-filtered cells removed)
+# Input data paths
 SEURAT_PATH <- file.path(MXENIUM_ROOT, "results", "cell_type_assignment",
                          "HyMy_annotation", "seurat_xenium_filtered.rds")
 ADATA_PATH <- file.path(MXENIUM_ROOT, "results", "sopa", "adata.h5ad")
@@ -87,9 +65,6 @@ HYMY_ANNOTATION_PATH <- file.path(
 )
 SPACEL_DIR <- file.path(MXENIUM_ROOT, "results", "spacel")
 
-# Output paths - include suffix for L1 annotation
-OUTPUT_ROOT <- file.path(PROJECT_ROOT, "results", paste0("spatial_analysis", OUTPUT_SUFFIX))
-
 # Plotting defaults
 theme_set(theme_bw(base_size = 11))
 
@@ -97,30 +72,43 @@ theme_set(theme_bw(base_size = 11))
 # Cell Type Definitions
 # =============================================================================
 
-#' HyMy signature genes
-HYMY_SIGNATURE <- c(
-  "Il1b", "S100a9", "S100a8", "Cxcl2", "C5ar1", "Ccr1", "Csf3r",
-  "Trem1", "Il1r2", "Tnfaip2", "Ptgs2", "Nlrp3", "Cd14", "Itgam",
-  "Acod1", "Pilra"
-)
-
-#' Myeloid cell types for comparison (depends on annotation level)
-if (ANNOTATION_LEVEL == "L1") {
-  # L1: No HyMy_GMM, IL1B_myeloid contains the HyMy cells
-  MYELOID_CELL_TYPES <- c(
-    "Macrophages", "Monocyte", "IL1B_myeloid",
-    "cDC1", "cDC2", "mature_migDC", "pDC"
-  )
-  # For segregation analysis: compare IL1B_myeloid vs others (not itself)
-  SEGREGATION_COMPARISON_TYPES <- c("Monocyte", "Macrophages")
+#' Query cell type signature genes (for contamination checking)
+QUERY_SIGNATURE_GENES_ENV <- Sys.getenv("QUERY_SIGNATURE_GENES", unset = "")
+if (nchar(QUERY_SIGNATURE_GENES_ENV) > 0) {
+  QUERY_SIGNATURE <- trimws(strsplit(QUERY_SIGNATURE_GENES_ENV, ",")[[1]])
+} else if (QUERY_CELLTYPE %in% c("HyMy_GMM", "IL1B_myeloid")) {
+  QUERY_SIGNATURE <- c("Il1b", "S100a9", "S100a8", "Cxcl2", "C5ar1", "Ccr1", "Csf3r",
+                        "Trem1", "Il1r2", "Tnfaip2", "Ptgs2", "Nlrp3", "Cd14", "Itgam",
+                        "Acod1", "Pilra")
 } else {
-  # HyMy: Includes HyMy_GMM as distinct type
-  MYELOID_CELL_TYPES <- c(
-    "HyMy_GMM", "Macrophages", "Monocyte", "IL1B_myeloid",
-    "cDC1", "cDC2", "mature_migDC", "pDC"
-  )
-  # For segregation analysis: compare HyMy vs multiple myeloid types
-  SEGREGATION_COMPARISON_TYPES <- c("Monocyte", "IL1B_myeloid", "Macrophages")
+  QUERY_SIGNATURE <- character(0)
+  message(">>> No query signature genes defined; contamination check will be skipped")
+}
+HYMY_SIGNATURE <- QUERY_SIGNATURE  # backward compat alias
+
+#' Myeloid cell types for comparison (only defined for HyMy/IL1B legacy modes)
+if (QUERY_CELLTYPE %in% c("HyMy_GMM", "IL1B_myeloid")) {
+  if (ANNOTATION_LEVEL == "L1") {
+    # L1: No HyMy_GMM, IL1B_myeloid contains the HyMy cells
+    MYELOID_CELL_TYPES <- c(
+      "Macrophages", "Monocyte", "IL1B_myeloid",
+      "cDC1", "cDC2", "mature_migDC", "pDC"
+    )
+    # For segregation analysis: compare IL1B_myeloid vs others (not itself)
+    SEGREGATION_COMPARISON_TYPES <- c("Monocyte", "Macrophages")
+  } else {
+    # HyMy: Includes HyMy_GMM as distinct type
+    MYELOID_CELL_TYPES <- c(
+      "HyMy_GMM", "Macrophages", "Monocyte", "IL1B_myeloid",
+      "cDC1", "cDC2", "mature_migDC", "pDC"
+    )
+    # For segregation analysis: compare HyMy vs multiple myeloid types
+    SEGREGATION_COMPARISON_TYPES <- c("Monocyte", "IL1B_myeloid", "Macrophages")
+  }
+} else {
+  # Non-legacy query types: no predefined myeloid lists
+  MYELOID_CELL_TYPES <- character(0)
+  SEGREGATION_COMPARISON_TYPES <- character(0)
 }
 
 #' T cell subsets
@@ -251,7 +239,7 @@ merge_hymy_annotations <- function(obj, hymy_df = NULL) {
 #' @param image Name of spatial image/assay (for Xenium data)
 #' @return Matrix with columns x, y
 get_spatial_coords <- function(obj, image = NULL) {
-  # First try spatial_x, spatial_y (from HyMy annotation pipeline)
+  # First try spatial_x, spatial_y (from annotation pipeline)
   if (all(c("spatial_x", "spatial_y") %in% colnames(obj@meta.data))) {
     coords <- obj@meta.data[, c("spatial_x", "spatial_y")]
     colnames(coords) <- c("x", "y")
