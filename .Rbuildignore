@@ -1,0 +1,8 @@
+^\.claude$
+^scripts$
+^\.github$
+^README\.md$
+^RIPPLE_user_guide\.html$
+^LICENSE\.md$
+^\.Rproj\.user$
+^.*\.Rproj$

@@ -1,0 +1,42 @@
+Package: ripple
+Title: Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation
+Version: 0.1.0
+Authors@R:
+    person("Carolina", "Mangana", role = c("aut", "cre"),
+           email = "cmangana@cemm.at")
+Description: Detects distance-dependent gene expression gradients from any
+    query cell type in spatial transcriptomics data. For each gene in each
+    target cell type, fits a per-sample Poisson GLM with cell-size offset,
+    then combines across replicates via Fisher's combined p-value with sign
+    consistency gating. Supports confounder control, permutation testing,
+    pathway enrichment, and ligand-receptor integration.
+License: MIT + file LICENSE
+URL: https://github.com/CMangana/RIPPLE
+BugReports: https://github.com/CMangana/RIPPLE/issues
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    Seurat (>= 4.0),
+    data.table (>= 1.12),
+    ggplot2 (>= 3.3),
+    patchwork (>= 1.1),
+    RANN (>= 2.6),
+    Matrix (>= 1.3),
+    dplyr (>= 1.0),
+    tidyr (>= 1.1),
+    meta (>= 5.0),
+    scales (>= 1.1),
+    ggrepel (>= 0.9),
+    viridis (>= 0.6),
+    pheatmap (>= 1.0)
+Suggests:
+    fgsea (>= 1.18),
+    msigdbr (>= 7.4),
+    nichenetr (>= 1.1),
+    cowplot (>= 1.1),
+    rstatix (>= 0.7),
+    testthat (>= 3.0),
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr

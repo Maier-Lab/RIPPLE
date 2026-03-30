@@ -9,7 +9,13 @@
       "Bash(do echo:*)",
       "Read(//c/Users/CMangana/RIPPLE/**)",
       "Bash(done)",
-      "Bash(file:*)"
+      "Bash(file:*)",
+      "Bash(wc -l /c/Users/CMangana/RIPPLE/scripts/*.R)",
+      "Bash(for file:*)",
+      "Bash(cd:*)",
+      "Bash(cp scripts/*.R inst/scripts/)",
+      "Bash(cp scripts/*.sh inst/slurm/)",
+      "Bash(cp scripts/run_permutation_gpu.py inst/python/)"
     ]
   }
 }

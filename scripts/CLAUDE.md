@@ -128,6 +128,79 @@ All items from the original hardcoded HyMy/mXenium pipeline have been generalize
 
 ---
 
+## Usage
+
+### Minimal (discovery)
+
+```bash
+export INPUT_PATH="/path/to/seurat.rds"
+export QUERY_CELLTYPE="Tumor"
+export CELLTYPE_COLUMN="cell_type"
+
+Rscript scripts/hymy_distance_correlation_v2.R
+Rscript scripts/recompute_meta_summary.R
+Rscript scripts/merge_distance_correlation_results.R
+```
+
+Results land in `./results/spatial_analysis_Tumor/`.
+
+### With condition filtering
+
+```bash
+export CONDITION_COLUMN="treatment"
+export CONDITION_VALUE="treated"
+```
+
+### Full pipeline (publication-ready)
+
+```bash
+export INPUT_PATH="/path/to/seurat.rds"
+export QUERY_CELLTYPE="Tumor"
+export CELLTYPE_COLUMN="cell_type"
+export OUTPUT_DIR="./results"
+export CONDITION_COLUMN="treatment"
+export CONDITION_VALUE="treated"
+
+# Stage 1: Core analysis
+N_PERMUTATIONS=0 Rscript scripts/hymy_distance_correlation_v2.R
+
+# Stage 2: GPU permutation (optional)
+ADATA_PATH="/path/to/adata.h5ad" python scripts/run_permutation_gpu.py
+
+# Stage 3: Merge + Fisher's p-value
+Rscript scripts/merge_permutation_pvals.R
+Rscript scripts/recompute_meta_summary.R
+Rscript scripts/merge_distance_correlation_results.R
+
+# Stage 4: Confounder control (optional)
+CONTROL_CELLTYPE="Macrophage" Rscript scripts/hymy_distance_correlation_stage2.R
+
+# Stage 5: Visualization
+Rscript scripts/distance_correlation_atlas.R
+Rscript scripts/hypothesis_visualizations.R
+
+# Stage 6: L-R integration (requires NicheNet)
+Rscript scripts/gradient_lr_integration.R
+Rscript scripts/gradient_lr_atlas.R
+```
+
+### SLURM cluster (parallel across cell types)
+
+```bash
+# Array job: one job per target cell type (auto-detected)
+sbatch --array=1-20 scripts/run_hymy_distance_correlation_v2.sh
+```
+
+### Input data requirements
+
+The Seurat `.rds` object must have:
+- **Raw counts** in `RNA@counts` (not normalized)
+- **Spatial coordinates** in metadata (any column names -- auto-detected, or set `X_COLUMN`/`Y_COLUMN`)
+- **Cell type annotations** in a metadata column matching `CELLTYPE_COLUMN`, including the `QUERY_CELLTYPE` label
+- **Sample/replicate IDs** in a metadata column matching `SAMPLE_COLUMN` (default: `sample_id`) -- minimum 3 replicates
+
+---
+
 ## Script Inventory
 
 ### Core Pipeline
@@ -150,20 +223,12 @@ All items from the original hardcoded HyMy/mXenium pipeline have been generalize
 | `utils.R` | All | Shared utilities: data loading, spatial helpers, platform detection |
 | `load_data.R` | All | Data loading functions |
 
-### Supporting Scripts (reference implementations, not core pipeline)
+### Configuration
 
-| Script | Analysis |
-|--------|----------|
-| `hymy_distance_correlation.R` | v1 logistic regression (superseded by v2) |
-| `hymy_effect_analysis.R` | Binary proximity DE (superseded by distance correlation) |
-| `hymy_neighbor_composition.R` | kNN neighbor composition |
-| `hymy_microenvironment.R` | Niche gene expression profiling (30um radius) |
-| `hymy_spatial_atlas.R` | Publication atlas figure |
-| `lymph_node_polarity.R` | Tissue polarity analysis |
-| `csf3_stromal_niche_analysis.R` | CSF3 niche analysis |
-| `spatial_nichenet_atlas.R` | Spatial NicheNet (Differential NicheNet with spatial DE) |
-| `prepare_spatial_celltypes.R` | Spatial cell type labeling (proximal/distal) |
-| Others | Various HyMy-specific analyses |
+| Script | Role |
+|--------|------|
+| `config.R` | Lightweight env var resolution (no package loads) -- sourced by all scripts |
+| `plot_binary_assumption.R` | QC: verify Poisson assumption holds for the data |
 
 ---
 
@@ -223,14 +288,14 @@ All items from the original hardcoded HyMy/mXenium pipeline have been generalize
 
 ```r
 # WRONG - pseudoreplication
-wilcox.test(data[condition == "naive"]$entropy,
-            data[condition == "TDLN"]$entropy)
+wilcox.test(data[condition == "control"]$entropy,
+            data[condition == "treated"]$entropy)
 
 # RIGHT - sample-level aggregation
 sample_stats <- data[, .(median_entropy = median(entropy)),
                      by = .(sample_id, condition)]
-wilcox.test(sample_stats[condition == "naive"]$median_entropy,
-            sample_stats[condition == "TDLN"]$median_entropy,
+wilcox.test(sample_stats[condition == "control"]$median_entropy,
+            sample_stats[condition == "treated"]$median_entropy,
             exact = FALSE)
 ```
 
