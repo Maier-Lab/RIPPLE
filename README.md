@@ -96,7 +96,7 @@ pip install torch numpy scipy
 
 ## Minimal Example
 
-The absolute minimum to run RIPPLE -- three environment variables and one command:
+The absolute minimum to run RIPPLE is three environment variables and one command:
 
 ```bash
 export INPUT_PATH="/path/to/my/seurat.rds"
