@@ -37,8 +37,8 @@ NULL
 #'
 #'   The \code{offset(log(total_counts))} converts the model from counts to rates,
 #'   controlling for differences in cell size, ambient RNA, and segmentation
-#'   quality. This is critical -- without it, cells near query cells may appear
-#'   to express more of everything due to technical artifacts.
+#'   quality. This is critical, without it, cells near query cells may appear
+#'   to express more of everything due to technical artifacts!
 #'
 #'   Invalid values (NA, non-finite, zero total_counts) are automatically removed
 #'   before fitting.
@@ -73,7 +73,7 @@ fit_poisson <- function(counts, distances, total_counts, min_cells = 25) {
   # Need some non-zero counts for the model to be meaningful
   if (sum(counts > 0) < min_cells) return(NULL)
 
-  # Poisson GLM with offset for cell size
+  # Poisson GLM with offset for cell size with tryCatch for robustness
   fit <- tryCatch({
     suppressWarnings(stats::glm(counts ~ distances + offset(log_total),
                                 family = stats::poisson()))
@@ -85,7 +85,7 @@ fit_poisson <- function(counts, distances, total_counts, min_cells = 25) {
   if (!"distances" %in% rownames(coef_summary)) return(NULL)
 
   # Overdispersion diagnostic: residual deviance / residual df
-  # Values >> 1 suggest negative binomial would be more appropriate
+  # Values >> 1 suggest negative binomial would be more appropriate. shouldn't really happen for Xenium at least.
   dispersion <- fit$deviance / fit$df.residual
 
   list(
@@ -100,9 +100,9 @@ fit_poisson <- function(counts, distances, total_counts, min_cells = 25) {
 
 #' Fit bivariate Poisson GLM with confounder control
 #'
-#' Fits a bivariate Poisson GLM with two distance predictors -- one to the
-#' query cell type and one to a control cell type -- to isolate query-specific
-#' effects from general niche effects.
+#' Fits a bivariate Poisson GLM with two distance predictors, one to the
+#' query cell type and one to a control cell type, to isolate query-specific
+#' effects from general niche effects. ONLY SUGGESTIVE, don't take it at face value for interpretation.
 #'
 #' @param counts Integer vector of raw transcript counts for one gene.
 #' @param dist_query Numeric vector of distances to nearest query cell (um).
@@ -183,7 +183,7 @@ fit_poisson_controlled <- function(counts, dist_query, dist_control, total_count
 }
 
 
-#' Classify expression decay pattern
+#' Classify expression decay pattern - use at your own risk
 #'
 #' Fits multiple Poisson regression models to classify the shape of the
 #' expression-distance relationship. Compares linear, step (at various
