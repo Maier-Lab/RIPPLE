@@ -11,7 +11,7 @@ NULL
 #'
 #' Combines per-sample log-rate coefficients using a random-effects
 #' meta-analysis model via \code{meta::metagen}. This accounts for both
-#' within-sample and between-sample variability.
+#' within-sample and between-sample variability. This is not the recommended solution for most cases.
 #'
 #' @param coefs Numeric vector of per-sample coefficient estimates.
 #' @param ses Numeric vector of per-sample standard errors.
@@ -30,7 +30,7 @@ NULL
 #' All values are \code{NA_real_} if fewer than 2 valid samples.
 #'
 #' @details Uses the REML estimator for between-study variance (tau-squared)
-#'   by default, which is recommended for small numbers of studies. Samples
+#'   by default, which is for small numbers of studies. Samples
 #'   with NA coefficients, NA standard errors, or zero standard errors are
 #'   excluded.
 #'
@@ -90,7 +90,7 @@ run_meta_analysis <- function(coefs, ses, sample_ids, method = "REML") {
 }
 
 
-#' Fisher's combined p-value with sign consistency gate
+#' Fisher's combined p-value with sign consistency gate - RECOMMENDED APPROACH
 #'
 #' Combines per-sample p-values using Fisher's method, with an additional
 #' requirement that a minimum fraction of samples agree on the direction
