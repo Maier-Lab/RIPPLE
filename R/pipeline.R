@@ -279,7 +279,10 @@ run_ripple <- function(
   # 3. Load data
   # --------------------------------------------------------------------------
   .msg("\nLoading data...", verbose = verbose)
-  obj <- load_seurat(input_path)
+  if (!file.exists(input_path)) {
+    stop("Seurat file not found at: ", input_path, call. = FALSE)
+  }
+  obj <- readRDS(input_path)
 
   # Verify counts layer
   count_matrix_full <- tryCatch(
@@ -738,7 +741,7 @@ run_ripple <- function(
       query_per_sample_valid <- query_per_sample[
         names(query_per_sample) %in% valid_samples]
 
-      perm_results <- .run_permutation_tests(
+      perm_results <- run_permutation_tests(
         genes = top_genes_for_perm,
         count_matrix = target_counts,
         target_barcodes = target_barcodes,
@@ -838,7 +841,7 @@ run_ripple <- function(
     .msg("  Step 5: Creating visualizations...", verbose = verbose)
 
     # Volcano plot
-    .create_gradient_volcano(meta_results, ct_name,
+    create_gradient_volcano(meta_results, ct_name,
                              file.path(ct_output_dir, "gradient_volcano.pdf"),
                              fdr_threshold = fdr_threshold,
                              query_label = query_label,
@@ -855,7 +858,7 @@ run_ripple <- function(
 
       for (g in top_sig_genes) {
         gene_data <- coef_results[gene == g]
-        .create_forest_plot(
+        create_forest_plot(
           coefs = gene_data$coef,
           ses = gene_data$se,
           sample_ids = gene_data[["sample_id"]],
@@ -868,7 +871,7 @@ run_ripple <- function(
       }
 
       # Coefficient strip plot
-      .create_coefficient_strips(
+      create_coefficient_strips(
         coef_results = coef_results,
         meta_results = meta_results,
         cell_type = ct_name,
@@ -1147,7 +1150,10 @@ run_ripple_confounder <- function(
   # 4. Load Seurat object
   # --------------------------------------------------------------------------
   .msg("\nLoading data...", verbose = verbose)
-  obj <- load_seurat(input_path)
+  if (!file.exists(input_path)) {
+    stop("Seurat file not found at: ", input_path, call. = FALSE)
+  }
+  obj <- readRDS(input_path)
 
   cell_data <- data.table::as.data.table(obj@meta.data,
                                          keep.rownames = "barcode")
@@ -1767,299 +1773,3 @@ merge_ripple_results <- function(
 }
 
 
-# ============================================================================
-# Internal helper functions (permutation testing)
-# ============================================================================
-
-#' Run permutation tests for multiple genes
-#' @noRd
-.run_permutation_tests <- function(genes, count_matrix, target_barcodes,
-                                    coords_target, coords_all,
-                                    sample_ids_target, sample_ids_all,
-                                    query_per_sample, observed_coefs,
-                                    n_perms, k_neighbors, max_distance_um,
-                                    min_cells_per_sample, min_expr_cells,
-                                    total_counts_target) {
-
-  unique_samples <- names(query_per_sample)
-
-  results <- lapply(genes, function(g) {
-    count_vec <- as.numeric(count_matrix[g, target_barcodes])
-    obs_coef <- observed_coefs[g]
-
-    null_coefs <- numeric(n_perms)
-    for (i in seq_len(n_perms)) {
-      # Stratified sampling within each sample
-      pseudo_query_coords_list <- lapply(unique_samples, function(samp) {
-        samp_mask <- sample_ids_all == samp
-        samp_coords <- coords_all[samp_mask, , drop = FALSE]
-        n_to_sample <- query_per_sample[samp]
-        if (n_to_sample > 0 && nrow(samp_coords) >= n_to_sample) {
-          pseudo_idx <- sample(nrow(samp_coords), n_to_sample)
-          samp_coords[pseudo_idx, , drop = FALSE]
-        } else {
-          matrix(nrow = 0, ncol = 2)
-        }
-      })
-      pseudo_query_coords <- do.call(rbind, pseudo_query_coords_list)
-
-      if (is.null(pseudo_query_coords) || nrow(pseudo_query_coords) < 5) {
-        null_coefs[i] <- NA
-        next
-      }
-
-      eff_k <- min(k_neighbors, nrow(pseudo_query_coords))
-      nn_res <- RANN::nn2(pseudo_query_coords, coords_target, k = eff_k)
-      if (eff_k == 1) {
-        perm_distances <- pmin(as.vector(nn_res$nn.dists), max_distance_um)
-      } else {
-        perm_distances <- pmin(rowMeans(nn_res$nn.dists), max_distance_um)
-      }
-
-      coefs <- numeric(length(unique_samples))
-      ses <- numeric(length(unique_samples))
-      for (j in seq_along(unique_samples)) {
-        samp <- unique_samples[j]
-        idx <- which(sample_ids_target == samp)
-        if (length(idx) >= min_cells_per_sample) {
-          samp_counts <- count_vec[idx]
-          samp_dist <- perm_distances[idx]
-          samp_log_total <- log(total_counts_target[idx])
-          if (sum(samp_counts > 0) >= min_expr_cells) {
-            fit <- tryCatch({
-              suppressWarnings(stats::glm(
-                samp_counts ~ samp_dist + offset(samp_log_total),
-                family = stats::poisson
-              ))
-            }, error = function(e) NULL)
-            if (!is.null(fit) && fit$converged) {
-              cs <- summary(fit)$coefficients
-              if (nrow(cs) >= 2) {
-                coefs[j] <- cs[2, "Estimate"]
-                ses[j] <- cs[2, "Std. Error"]
-              }
-            }
-          }
-        }
-      }
-
-      valid <- !is.na(coefs) & !is.na(ses) & ses > 0
-      if (sum(valid) >= 2) {
-        weights <- 1 / (ses[valid]^2)
-        null_coefs[i] <- sum(weights * coefs[valid]) / sum(weights)
-      } else {
-        null_coefs[i] <- NA
-      }
-    }
-
-    null_coefs <- null_coefs[!is.na(null_coefs)]
-    if (length(null_coefs) < 10) {
-      perm_pval <- NA_real_
-    } else {
-      perm_pval <- (sum(abs(null_coefs) >= abs(obs_coef)) + 1) /
-        (length(null_coefs) + 1)
-    }
-
-    data.table::data.table(gene = g, perm_pval = perm_pval)
-  })
-
-  data.table::rbindlist(results)
-}
-
-# ============================================================================
-# Internal visualization functions
-# ============================================================================
-
-#' Create gradient volcano plot
-#' @noRd
-.create_gradient_volcano <- function(results, cell_type, output_path,
-                                      fdr_threshold = 0.05,
-                                      query_label = "Query",
-                                      k_neighbors = 1) {
-  plot_data <- data.table::copy(results)
-
-  # Use fisher_fdr if available, otherwise fall back to fdr
-  fdr_col <- if ("fisher_fdr" %in% names(plot_data)) "fisher_fdr" else "fdr"
-  plot_data[, neg_log10_fdr := -log10(get(fdr_col))]
-  plot_data[neg_log10_fdr > 50, neg_log10_fdr := 50]
-  plot_data[, significant := get(fdr_col) < fdr_threshold]
-
-  top_genes <- head(plot_data[significant == TRUE][order(get(fdr_col))], 20)
-  max_score <- max(abs(plot_data$gradient_score), na.rm = TRUE) * 1.1
-
-  if ("decay_pattern" %in% names(plot_data)) {
-    plot_data[, decay_pattern := factor(decay_pattern,
-      levels = c("linear", "exponential", "step_10um", "step_25um",
-                 "step_50um", "none", "no_variation", "insufficient_data",
-                 "not_significant", "undetermined"))]
-  }
-
-  p <- ggplot2::ggplot(plot_data,
-                       ggplot2::aes(x = gradient_score, y = neg_log10_fdr)) +
-    ggplot2::geom_point(
-      ggplot2::aes(color = if ("decay_pattern" %in% names(plot_data))
-        decay_pattern else NULL,
-        size = significant),
-      alpha = 0.6
-    ) +
-    ggplot2::scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.5),
-                               guide = "none") +
-    ggplot2::geom_hline(yintercept = -log10(fdr_threshold),
-                        linetype = "dashed", color = "grey40") +
-    ggplot2::geom_vline(xintercept = 0, linetype = "solid",
-                        color = "grey60") +
-    ggplot2::xlim(-max_score, max_score) +
-    ggrepel::geom_text_repel(
-      data = top_genes,
-      ggplot2::aes(label = gene),
-      size = 3, max.overlaps = 20, box.padding = 0.5
-    ) +
-    ggplot2::labs(
-      title = sprintf("Distance-Expression Analysis (Poisson GLM, k=%d): %s",
-                       k_neighbors, cell_type),
-      subtitle = sprintf("%d genes significant (FDR < %.2f)",
-                         sum(plot_data$significant, na.rm = TRUE),
-                         fdr_threshold),
-      x = paste0("Log-rate coefficient (negative = ", query_label,
-                  "-induced)"),
-      y = paste0("-log10(", fdr_col, ")")
-    ) +
-    ggplot2::theme_classic(base_size = 12) +
-    ggplot2::theme(
-      legend.position = "right",
-      plot.title = ggplot2::element_text(hjust = 0.5, face = "bold")
-    )
-
-  if ("decay_pattern" %in% names(plot_data)) {
-    p <- p + ggplot2::scale_color_brewer(palette = "Set2",
-                                          name = "Decay Pattern")
-  }
-
-  ggplot2::ggsave(output_path, p, width = 10, height = 8)
-  invisible(p)
-}
-
-#' Create forest plot for a single gene
-#' @noRd
-.create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
-                                 output_path, query_label = "Query") {
-  valid_idx <- !is.na(coefs) & !is.na(ses) & ses > 0
-  if (sum(valid_idx) < 2) return(invisible(NULL))
-
-  coefs <- coefs[valid_idx]
-  ses <- ses[valid_idx]
-  sample_ids <- sample_ids[valid_idx]
-
-  plot_data <- data.table::data.table(
-    sample = sample_ids,
-    coef = coefs,
-    se = ses,
-    lower = coefs - 1.96 * ses,
-    upper = coefs + 1.96 * ses
-  )
-
-  meta_result <- run_meta_analysis(coefs, ses, sample_ids)
-
-  if (!is.na(meta_result$combined_coef)) {
-    meta_row <- data.table::data.table(
-      sample = "Combined",
-      coef = meta_result$combined_coef,
-      se = meta_result$combined_se,
-      lower = meta_result$combined_coef - 1.96 * meta_result$combined_se,
-      upper = meta_result$combined_coef + 1.96 * meta_result$combined_se
-    )
-    plot_data <- rbind(plot_data, meta_row)
-    plot_data[, is_combined := sample == "Combined"]
-  } else {
-    plot_data[, is_combined := FALSE]
-  }
-
-  plot_data[, sample := factor(sample, levels = rev(unique(sample)))]
-
-  n_neg <- sum(coefs < 0)
-  n_pos <- sum(coefs > 0)
-  sign_text <- sprintf("%d/%d samples agree on sign",
-                        max(n_neg, n_pos), length(coefs))
-
-  i2_display <- if (is.na(meta_result$i2)) "N/A" else
-    sprintf("%.1f%%", meta_result$i2 * 100)
-  pval_display <- if (is.na(meta_result$pval)) "N/A" else
-    sprintf("%.2e", meta_result$pval)
-
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = coef, y = sample)) +
-    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
-                        color = "grey50") +
-    ggplot2::geom_errorbarh(ggplot2::aes(xmin = lower, xmax = upper),
-                            height = 0.2) +
-    ggplot2::geom_point(ggplot2::aes(shape = is_combined,
-                                      size = is_combined)) +
-    ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 18),
-                                guide = "none") +
-    ggplot2::scale_size_manual(values = c("FALSE" = 3, "TRUE" = 5),
-                               guide = "none") +
-    ggplot2::labs(
-      x = "Log-rate coefficient (per um)",
-      y = NULL,
-      title = sprintf("%s in %s (Poisson GLM)", gene, cell_type),
-      subtitle = sprintf("p = %s, I2 = %s | %s",
-                          pval_display, i2_display, sign_text)
-    ) +
-    ggplot2::theme_bw(base_size = 11) +
-    ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
-
-  ggplot2::ggsave(output_path, p, width = 6, height = 4)
-  invisible(p)
-}
-
-#' Create coefficient strip plot for per-sample reproducibility
-#' @noRd
-.create_coefficient_strips <- function(coef_results, meta_results, cell_type,
-                                        output_path, fdr_threshold = 0.05,
-                                        n_top = 20) {
-  fdr_col <- if ("fisher_fdr" %in% names(meta_results)) {
-    "fisher_fdr"
-  } else {
-    "fdr"
-  }
-
-  sig_genes <- meta_results[get(fdr_col) < fdr_threshold][
-    order(get(fdr_col))]$gene
-  if (length(sig_genes) == 0) return(invisible(NULL))
-
-  genes_to_plot <- head(sig_genes, n_top)
-  plot_data <- coef_results[gene %in% genes_to_plot & !is.na(coef)]
-  if (nrow(plot_data) == 0) return(invisible(NULL))
-
-  gene_order <- meta_results[gene %in% genes_to_plot][
-    order(combined_coef)]$gene
-  plot_data[, gene := factor(gene, levels = gene_order)]
-
-  p <- ggplot2::ggplot(plot_data,
-                       ggplot2::aes(x = coef, y = gene,
-                                    color = sample_id)) +
-    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
-                        color = "grey50") +
-    ggplot2::geom_errorbarh(
-      ggplot2::aes(xmin = coef - 1.96 * se, xmax = coef + 1.96 * se),
-      height = 0.2, alpha = 0.5
-    ) +
-    ggplot2::geom_point(size = 2.5, alpha = 0.8) +
-    ggplot2::scale_color_brewer(palette = "Set1", name = "Sample") +
-    ggplot2::labs(
-      x = "Log-rate coefficient (per um)",
-      y = NULL,
-      title = sprintf("Per-Sample Coefficients: %s (Poisson GLM)",
-                       cell_type),
-      subtitle = sprintf("Top %d significant genes | Points = individual samples",
-                          length(genes_to_plot))
-    ) +
-    ggplot2::theme_bw(base_size = 10) +
-    ggplot2::theme(
-      plot.title = ggplot2::element_text(face = "bold"),
-      legend.position = "bottom"
-    )
-
-  ggplot2::ggsave(output_path, p,
-                  width = 8, height = 0.4 * length(genes_to_plot) + 2)
-  invisible(p)
-}

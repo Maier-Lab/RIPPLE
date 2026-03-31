@@ -15,7 +15,10 @@
       "Bash(cd:*)",
       "Bash(cp scripts/*.R inst/scripts/)",
       "Bash(cp scripts/*.sh inst/slurm/)",
-      "Bash(cp scripts/run_permutation_gpu.py inst/python/)"
+      "Bash(cp scripts/run_permutation_gpu.py inst/python/)",
+      "Bash(Rscript -e \"testthat::test_local\\(''.''\\)\")",
+      "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" -e \"testthat::test_local\\('C:/Users/CMangana/RIPPLE'\\)\" 2>&1)",
+      "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" -e \"devtools::check\\('C:/Users/CMangana/RIPPLE', args='--no-manual'\\)\" 2>&1)"
     ]
   }
 }

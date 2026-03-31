@@ -6,54 +6,6 @@
 #' @name visualization
 NULL
 
-#' Basic spatial scatter plot
-#'
-#' Creates a spatial scatter plot of cells colored by a variable.
-#' Supports both categorical (character/factor) and continuous coloring.
-#'
-#' @param coords Numeric matrix of spatial coordinates (n x 2).
-#' @param color_by Vector to color points by (character, factor, or numeric).
-#' @param point_size Numeric. Point size (default: 0.5).
-#' @param alpha Numeric. Transparency (default: 0.5).
-#' @param palette Named character vector of colors for categorical variables,
-#'   or NULL for default palettes.
-#' @param title Character or NULL. Plot title.
-#'
-#' @return A \code{ggplot} object.
-#'
-#' @examples
-#' \dontrun{
-#' coords <- matrix(runif(200), ncol = 2)
-#' types <- sample(c("A", "B", "C"), 100, replace = TRUE)
-#' plot_spatial_scatter(coords, types, title = "Cell Types")
-#' }
-#'
-#' @importFrom ggplot2 ggplot aes geom_point coord_fixed labs theme_minimal
-#'   theme scale_color_manual scale_color_viridis_c
-#' @export
-plot_spatial_scatter <- function(coords, color_by, point_size = 0.5, alpha = 0.5,
-                                 palette = NULL, title = NULL) {
-  df <- data.frame(x = coords[, 1], y = coords[, 2], color = color_by)
-
-  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$x, y = .data$y, color = .data$color)) +
-    ggplot2::geom_point(size = point_size, alpha = alpha) +
-    ggplot2::coord_fixed() +
-    ggplot2::labs(x = "X (um)", y = "Y (um)", title = title) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(legend.position = "right")
-
-  if (is.factor(color_by) || is.character(color_by)) {
-    if (!is.null(palette)) {
-      p <- p + ggplot2::scale_color_manual(values = palette)
-    }
-  } else {
-    p <- p + ggplot2::scale_color_viridis_c()
-  }
-
-  return(p)
-}
-
-
 #' Single-sample spatial plot
 #'
 #' Creates a clean spatial plot for a single sample using \code{theme_void()}
@@ -377,47 +329,6 @@ plot_decay_curve <- function(bin_stats, gene_name, cell_type,
 }
 
 
-#' Violin plot helper
-#'
-#' Creates a violin plot with overlaid box plot for group comparisons.
-#'
-#' @param data A \code{data.frame} or \code{data.table}.
-#' @param x Character. Column name for x-axis (groups).
-#' @param y Character. Column name for y-axis (values).
-#' @param fill Character or NULL. Column name for fill color. If NULL, uses
-#'   the \code{x} column.
-#' @param palette Named character vector of colors, or NULL.
-#' @param title Character or NULL. Plot title.
-#'
-#' @return A \code{ggplot} object.
-#'
-#' @examples
-#' \dontrun{
-#' plot_violin(data, x = "condition", y = "entropy", title = "Entropy by Condition")
-#' }
-#'
-#' @importFrom ggplot2 ggplot aes geom_violin geom_boxplot labs theme_bw theme
-#'   element_text scale_fill_manual
-#' @export
-plot_violin <- function(data, x, y, fill = NULL, palette = NULL, title = NULL) {
-  if (is.null(fill)) fill <- x
-
-  p <- ggplot2::ggplot(data, ggplot2::aes(x = .data[[x]], y = .data[[y]],
-                                           fill = .data[[fill]])) +
-    ggplot2::geom_violin(scale = "width", trim = TRUE) +
-    ggplot2::geom_boxplot(width = 0.1, outlier.size = 0.5, fill = "white") +
-    ggplot2::labs(title = title) +
-    ggplot2::theme_bw() +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-
-  if (!is.null(palette)) {
-    p <- p + ggplot2::scale_fill_manual(values = palette)
-  }
-
-  return(p)
-}
-
-
 #' Ensure directory exists
 #'
 #' Creates a directory (and all parent directories) if it does not already exist.
@@ -479,4 +390,300 @@ save_plot <- function(p, output_dir, filename, width = 8, height = 6,
     message("Saved: ", filepath)
   }
   invisible(NULL)
+}
+
+
+#' Create gradient volcano plot for distance-expression analysis
+#'
+#' Creates a volcano plot showing genes colored by decay pattern and sized by
+#' significance. Uses \code{gradient_score} on the x-axis and
+#' \code{-log10(FDR)} on the y-axis, with the top significant genes labeled.
+#'
+#' @param results A \code{data.table} with per-gene meta-analysis results.
+#'   Must contain \code{gradient_score}, \code{gene}, and an FDR column
+#'   (\code{fisher_fdr} or \code{fdr}). Optionally contains
+#'   \code{decay_pattern} for coloring.
+#' @param cell_type Character. Cell type name for the plot title.
+#' @param output_path Character. File path to save the plot (e.g., a PDF).
+#' @param fdr_threshold Numeric. Significance threshold (default: 0.05).
+#' @param query_label Character. Display label for the query cell type
+#'   (default: "Query").
+#' @param k_neighbors Integer. Number of nearest neighbors used in the
+#'   analysis, shown in the title (default: 1).
+#'
+#' @return The \code{ggplot} object, invisibly.
+#'
+#' @examples
+#' \dontrun{
+#' create_gradient_volcano(
+#'   results = meta_results,
+#'   cell_type = "LEC",
+#'   output_path = "volcano.pdf",
+#'   query_label = "Tumor"
+#' )
+#' }
+#'
+#' @importFrom ggplot2 ggplot aes geom_point geom_hline geom_vline xlim labs
+#'   theme_classic theme element_text scale_size_manual scale_color_brewer
+#'   ggsave
+#' @importFrom ggrepel geom_text_repel
+#' @importFrom data.table copy
+#' @export
+create_gradient_volcano <- function(results, cell_type, output_path,
+                                    fdr_threshold = 0.05,
+                                    query_label = "Query",
+                                    k_neighbors = 1) {
+  plot_data <- data.table::copy(results)
+
+  # Use fisher_fdr if available, otherwise fall back to fdr
+  fdr_col <- if ("fisher_fdr" %in% names(plot_data)) "fisher_fdr" else "fdr"
+  plot_data[, neg_log10_fdr := -log10(get(fdr_col))]
+  plot_data[neg_log10_fdr > 50, neg_log10_fdr := 50]
+  plot_data[, significant := get(fdr_col) < fdr_threshold]
+
+  top_genes <- head(plot_data[significant == TRUE][order(get(fdr_col))], 20)
+  max_score <- max(abs(plot_data$gradient_score), na.rm = TRUE) * 1.1
+
+  if ("decay_pattern" %in% names(plot_data)) {
+    plot_data[, decay_pattern := factor(decay_pattern,
+      levels = c("linear", "exponential", "step_10um", "step_25um",
+                 "step_50um", "none", "no_variation", "insufficient_data",
+                 "not_significant", "undetermined"))]
+  }
+
+  p <- ggplot2::ggplot(plot_data,
+                       ggplot2::aes(x = gradient_score, y = neg_log10_fdr)) +
+    ggplot2::geom_point(
+      ggplot2::aes(color = if ("decay_pattern" %in% names(plot_data))
+        decay_pattern else NULL,
+        size = significant),
+      alpha = 0.6
+    ) +
+    ggplot2::scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.5),
+                               guide = "none") +
+    ggplot2::geom_hline(yintercept = -log10(fdr_threshold),
+                        linetype = "dashed", color = "grey40") +
+    ggplot2::geom_vline(xintercept = 0, linetype = "solid",
+                        color = "grey60") +
+    ggplot2::xlim(-max_score, max_score) +
+    ggrepel::geom_text_repel(
+      data = top_genes,
+      ggplot2::aes(label = gene),
+      size = 3, max.overlaps = 20, box.padding = 0.5
+    ) +
+    ggplot2::labs(
+      title = sprintf("Distance-Expression Analysis (Poisson GLM, k=%d): %s",
+                       k_neighbors, cell_type),
+      subtitle = sprintf("%d genes significant (FDR < %.2f)",
+                         sum(plot_data$significant, na.rm = TRUE),
+                         fdr_threshold),
+      x = paste0("Log-rate coefficient (negative = ", query_label,
+                  "-induced)"),
+      y = paste0("-log10(", fdr_col, ")")
+    ) +
+    ggplot2::theme_classic(base_size = 12) +
+    ggplot2::theme(
+      legend.position = "right",
+      plot.title = ggplot2::element_text(hjust = 0.5, face = "bold")
+    )
+
+  if ("decay_pattern" %in% names(plot_data)) {
+    p <- p + ggplot2::scale_color_brewer(palette = "Set2",
+                                          name = "Decay Pattern")
+  }
+
+  ggplot2::ggsave(output_path, p, width = 10, height = 8)
+  invisible(p)
+}
+
+
+#' Create forest plot for a single gene
+#'
+#' Shows per-sample Poisson GLM coefficients with 95\% confidence intervals
+#' and the inverse-variance weighted combined estimate (diamond). Useful for
+#' assessing cross-sample reproducibility of a distance-expression gradient.
+#'
+#' @param coefs Numeric vector. Per-sample coefficients.
+#' @param ses Numeric vector. Per-sample standard errors.
+#' @param sample_ids Character vector. Sample identifiers (same length as
+#'   \code{coefs}).
+#' @param gene Character. Gene name for the plot title.
+#' @param cell_type Character. Cell type name for the plot title.
+#' @param output_path Character. File path to save the plot.
+#' @param query_label Character. Display label for the query cell type
+#'   (default: "Query").
+#'
+#' @return The \code{ggplot} object invisibly, or invisible \code{NULL} if
+#'   fewer than two valid samples.
+#'
+#' @examples
+#' \dontrun{
+#' create_forest_plot(
+#'   coefs = c(-0.005, -0.003, -0.004),
+#'   ses = c(0.001, 0.002, 0.001),
+#'   sample_ids = c("S1", "S2", "S3"),
+#'   gene = "Cxcl12",
+#'   cell_type = "LEC",
+#'   output_path = "Cxcl12_forest.pdf"
+#' )
+#' }
+#'
+#' @importFrom ggplot2 ggplot aes geom_vline geom_errorbarh geom_point
+#'   scale_shape_manual scale_size_manual labs theme_bw theme element_text
+#'   ggsave
+#' @importFrom data.table data.table
+#' @export
+create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
+                               output_path, query_label = "Query") {
+  valid_idx <- !is.na(coefs) & !is.na(ses) & ses > 0
+  if (sum(valid_idx) < 2) return(invisible(NULL))
+
+  coefs <- coefs[valid_idx]
+  ses <- ses[valid_idx]
+  sample_ids <- sample_ids[valid_idx]
+
+  plot_data <- data.table::data.table(
+    sample = sample_ids,
+    coef = coefs,
+    se = ses,
+    lower = coefs - 1.96 * ses,
+    upper = coefs + 1.96 * ses
+  )
+
+  meta_result <- run_meta_analysis(coefs, ses, sample_ids)
+
+  if (!is.na(meta_result$combined_coef)) {
+    meta_row <- data.table::data.table(
+      sample = "Combined",
+      coef = meta_result$combined_coef,
+      se = meta_result$combined_se,
+      lower = meta_result$combined_coef - 1.96 * meta_result$combined_se,
+      upper = meta_result$combined_coef + 1.96 * meta_result$combined_se
+    )
+    plot_data <- rbind(plot_data, meta_row)
+    plot_data[, is_combined := sample == "Combined"]
+  } else {
+    plot_data[, is_combined := FALSE]
+  }
+
+  plot_data[, sample := factor(sample, levels = rev(unique(sample)))]
+
+  n_neg <- sum(coefs < 0)
+  n_pos <- sum(coefs > 0)
+  sign_text <- sprintf("%d/%d samples agree on sign",
+                        max(n_neg, n_pos), length(coefs))
+
+  i2_display <- if (is.na(meta_result$i2)) "N/A" else
+    sprintf("%.1f%%", meta_result$i2 * 100)
+  pval_display <- if (is.na(meta_result$pval)) "N/A" else
+    sprintf("%.2e", meta_result$pval)
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = coef, y = sample)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
+                        color = "grey50") +
+    ggplot2::geom_errorbarh(ggplot2::aes(xmin = lower, xmax = upper),
+                            height = 0.2) +
+    ggplot2::geom_point(ggplot2::aes(shape = is_combined,
+                                      size = is_combined)) +
+    ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 18),
+                                guide = "none") +
+    ggplot2::scale_size_manual(values = c("FALSE" = 3, "TRUE" = 5),
+                               guide = "none") +
+    ggplot2::labs(
+      x = "Log-rate coefficient (per um)",
+      y = NULL,
+      title = sprintf("%s in %s (Poisson GLM)", gene, cell_type),
+      subtitle = sprintf("p = %s, I2 = %s | %s",
+                          pval_display, i2_display, sign_text)
+    ) +
+    ggplot2::theme_bw(base_size = 11) +
+    ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
+
+  ggplot2::ggsave(output_path, p, width = 6, height = 4)
+  invisible(p)
+}
+
+
+#' Create coefficient strip plot for per-sample reproducibility
+#'
+#' Shows per-sample coefficients for the top significant genes, allowing
+#' visual assessment of effect consistency across biological replicates.
+#' Genes are ordered by combined coefficient magnitude.
+#'
+#' @param coef_results A \code{data.table} with per-sample coefficient
+#'   results. Must contain columns \code{gene}, \code{coef}, \code{se},
+#'   and \code{sample_id}.
+#' @param meta_results A \code{data.table} with per-gene meta-analysis
+#'   results. Must contain \code{gene}, \code{combined_coef}, and an FDR
+#'   column (\code{fisher_fdr} or \code{fdr}).
+#' @param cell_type Character. Cell type name for the plot title.
+#' @param output_path Character. File path to save the plot.
+#' @param fdr_threshold Numeric. Significance threshold (default: 0.05).
+#' @param n_top Integer. Maximum number of top genes to plot (default: 20).
+#'
+#' @return The \code{ggplot} object invisibly, or invisible \code{NULL} if
+#'   no significant genes.
+#'
+#' @examples
+#' \dontrun{
+#' create_coefficient_strips(
+#'   coef_results = per_sample_coefs,
+#'   meta_results = meta_results,
+#'   cell_type = "LEC",
+#'   output_path = "coefficient_strips.pdf"
+#' )
+#' }
+#'
+#' @importFrom ggplot2 ggplot aes geom_vline geom_errorbarh geom_point
+#'   scale_color_brewer labs theme_bw theme element_text ggsave
+#' @export
+create_coefficient_strips <- function(coef_results, meta_results, cell_type,
+                                      output_path, fdr_threshold = 0.05,
+                                      n_top = 20) {
+  fdr_col <- if ("fisher_fdr" %in% names(meta_results)) {
+    "fisher_fdr"
+  } else {
+    "fdr"
+  }
+
+  sig_genes <- meta_results[get(fdr_col) < fdr_threshold][
+    order(get(fdr_col))]$gene
+  if (length(sig_genes) == 0) return(invisible(NULL))
+
+  genes_to_plot <- head(sig_genes, n_top)
+  plot_data <- coef_results[gene %in% genes_to_plot & !is.na(coef)]
+  if (nrow(plot_data) == 0) return(invisible(NULL))
+
+  gene_order <- meta_results[gene %in% genes_to_plot][
+    order(combined_coef)]$gene
+  plot_data[, gene := factor(gene, levels = gene_order)]
+
+  p <- ggplot2::ggplot(plot_data,
+                       ggplot2::aes(x = coef, y = gene,
+                                    color = sample_id)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
+                        color = "grey50") +
+    ggplot2::geom_errorbarh(
+      ggplot2::aes(xmin = coef - 1.96 * se, xmax = coef + 1.96 * se),
+      height = 0.2, alpha = 0.5
+    ) +
+    ggplot2::geom_point(size = 2.5, alpha = 0.8) +
+    ggplot2::scale_color_brewer(palette = "Set1", name = "Sample") +
+    ggplot2::labs(
+      x = "Log-rate coefficient (per um)",
+      y = NULL,
+      title = sprintf("Per-Sample Coefficients: %s (Poisson GLM)",
+                       cell_type),
+      subtitle = sprintf("Top %d significant genes | Points = individual samples",
+                          length(genes_to_plot))
+    ) +
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold"),
+      legend.position = "bottom"
+    )
+
+  ggplot2::ggsave(output_path, p,
+                  width = 8, height = 0.4 * length(genes_to_plot) + 2)
+  invisible(p)
 }

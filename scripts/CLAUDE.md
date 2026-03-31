@@ -201,34 +201,103 @@ The Seurat `.rds` object must have:
 
 ---
 
-## Script Inventory
+## R Package Structure
 
-### Core Pipeline
+RIPPLE is an installable R package. The core analysis functions live in `R/`, while the original standalone scripts are preserved in `scripts/` (and `inst/scripts/`, `inst/slurm/`).
+
+### Two ways to use RIPPLE
+
+**As an R package** (recommended):
+```r
+library(ripple)
+results <- run_ripple(
+  input_path = "my_seurat.rds",
+  query_celltype = "Tumor",
+  celltype_column = "cell_type"
+)
+```
+
+**As standalone scripts** (for SLURM / backward compat):
+```bash
+export INPUT_PATH="my_seurat.rds"
+export QUERY_CELLTYPE="Tumor"
+export CELLTYPE_COLUMN="cell_type"
+Rscript scripts/hymy_distance_correlation_v2.R
+```
+
+### Package directory layout
+
+```
+RIPPLE/
+├── DESCRIPTION              # Package metadata + dependencies
+├── NAMESPACE                # Exported functions + imports
+├── LICENSE
+├── R/                       # Package source (functions with roxygen2 docs)
+│   ├── config.R             # Package options system (.onLoad, ripple_config)
+│   ├── data_loading.R       # load_seurat, load_metadata_only, check_data
+│   ├── spatial.R            # get_coord_columns, build_knn_graph, distance_to_type
+│   ├── glm.R                # fit_poisson, fit_poisson_controlled, classify_decay
+│   ├── meta_analysis.R      # run_meta_analysis, compute_fisher_pval
+│   ├── permutation.R        # run_permutation_test, merge_permutation_results
+│   ├── pipeline.R           # run_ripple, run_ripple_confounder, merge_ripple_results
+│   ├── visualization.R      # plot_gradient_volcano, plot_decay_curve, spatial plots
+│   └── utils.R              # entropy, enrichment, gene scoring helpers
+├── tests/testthat/          # Unit tests (31 tests, all passing)
+├── scripts/                 # Standalone scripts (env var interface, for SLURM)
+├── inst/
+│   ├── scripts/             # Copies of standalone scripts (installed with package)
+│   ├── slurm/               # SLURM job templates
+│   └── python/              # GPU permutation script
+├── README.md
+└── RIPPLE_user_guide.html   # Statistical methodology guide
+```
+
+### Exported functions (28 total)
+
+| Module | Functions | Purpose |
+|--------|-----------|---------|
+| `pipeline.R` | `run_ripple`, `run_ripple_confounder`, `merge_ripple_results` | Main entry points |
+| `config.R` | `ripple_config` | Get/set package options |
+| `data_loading.R` | `load_seurat`, `load_metadata_only`, `check_data` | Data loading |
+| `glm.R` | `fit_poisson`, `fit_poisson_controlled`, `classify_decay_pattern` | Core statistical models |
+| `meta_analysis.R` | `run_meta_analysis`, `compute_fisher_pval` | Cross-replicate inference |
+| `permutation.R` | `run_permutation_test`, `merge_permutation_results` | Null distribution |
+| `spatial.R` | `get_coord_columns`, `build_knn_graph`, `build_radius_graph`, `calculate_distance_to_type`, `get_neighbor_cell_types`, `calculate_neighbor_composition` | Spatial utilities |
+| `visualization.R` | `plot_spatial_scatter`, `plot_spatial_single`, `plot_spatial_by_sample`, `plot_gradient_volcano`, `plot_decay_curve`, `plot_violin` | Plotting |
+| `utils.R` | `shannon_entropy`, `calculate_enrichment`, `score_gene_signature`, `score_multiple_modules`, `permutation_pvalue`, `calculate_neighborhood_entropy` | Helpers |
+
+### Development workflow
+
+```r
+devtools::load_all()    # Load package for development (no install)
+devtools::test()        # Run unit tests
+devtools::document()    # Regenerate NAMESPACE + man/ from roxygen2
+devtools::check()       # Full R CMD check (needs Rtools on Windows)
+devtools::install()     # Install locally
+```
+
+### Standalone scripts (scripts/)
+
+These are the original pipeline scripts, configured via environment variables. They are independent of the R package and can be run directly with `Rscript`. Useful for SLURM array jobs.
 
 | Script | Stage | Role |
 |--------|-------|------|
-| `hymy_distance_correlation_v2.R` | 1 (Core) | Poisson GLM distance correlation (main analysis) |
+| `hymy_distance_correlation_v2.R` | 1 (Core) | Poisson GLM distance correlation |
 | `run_permutation_gpu.py` | 2 (Optional) | GPU-accelerated permutation testing |
-| `run_permutation_gpu.sh` | 2 (Optional) | SLURM wrapper for GPU permutation |
-| `merge_permutation_pvals.R` | 3 (Core) | Integrate GPU permutation p-values into R results |
-| `recompute_meta_summary.R` | 3 (Core) | Fisher's combined p-value + sign consistency gate |
-| `merge_distance_correlation_results.R` | 3 (Core) | Merge per-celltype results into summary CSVs |
-| `hymy_distance_correlation_stage2.R` | 4 (Optional) | Bivariate GLM with confounder control |
-| `distance_correlation_atlas.R` | 5 (Optional) | Volcanos, dotplots, heatmaps, contamination flagging, fGSEA |
-| `hypothesis_visualizations.R` | 5 (Optional) | Per-sample decay curves for biological themes |
+| `merge_permutation_pvals.R` | 3 (Core) | Integrate GPU permutation p-values |
+| `recompute_meta_summary.R` | 3 (Core) | Fisher's combined p-value + sign gate |
+| `merge_distance_correlation_results.R` | 3 (Core) | Merge per-celltype results |
+| `hymy_distance_correlation_stage2.R` | 4 (Optional) | Bivariate GLM confounder control |
+| `distance_correlation_atlas.R` | 5 (Optional) | Volcanos, heatmaps, fGSEA |
+| `hypothesis_visualizations.R` | 5 (Optional) | Per-sample decay curves |
 | `plot_decay_curves.R` | 5 (Optional) | Decay curve plots |
-| `gradient_lr_integration.R` | 6 (Optional) | L-R pair matching: direct mapping + NicheNet activity + enrichment |
-| `gradient_lr_atlas.R` | 6 (Optional) | L-R summary figures + 4-tier artifact classification |
-| `gradient_lr_biology_figure.R` | 6 (Optional) | Curated bidirectional L-R biology figure |
-| `utils.R` | All | Shared utilities: data loading, spatial helpers, platform detection |
+| `gradient_lr_integration.R` | 6 (Optional) | L-R pair matching via NicheNet |
+| `gradient_lr_atlas.R` | 6 (Optional) | L-R summary figures + artifact classification |
+| `gradient_lr_biology_figure.R` | 6 (Optional) | Curated L-R biology figure |
+| `config.R` | All | Env var resolution (sourced by all scripts) |
+| `utils.R` | All | Shared utilities |
 | `load_data.R` | All | Data loading functions |
-
-### Configuration
-
-| Script | Role |
-|--------|------|
-| `config.R` | Lightweight env var resolution (no package loads) -- sourced by all scripts |
-| `plot_binary_assumption.R` | QC: verify Poisson assumption holds for the data |
+| `plot_binary_assumption.R` | QC | Verify Poisson assumption |
 
 ---
 

@@ -6,48 +6,6 @@
 #' @name data_loading
 NULL
 
-#' Load Seurat object from RDS path
-#'
-#' Loads a Seurat object from an RDS file and verifies it contains the expected
-#' structure. The object should have raw counts in the RNA assay.
-#'
-#' @param path Character. Path to the Seurat RDS file.
-#'
-#' @return A Seurat object.
-#'
-#' @details The Seurat object is expected to contain:
-#' \itemize{
-#'   \item Raw counts in the RNA assay (\code{RNA@counts})
-#'   \item Spatial coordinates in metadata columns
-#'   \item Cell type annotations in a metadata column
-#'   \item Sample/replicate IDs in a metadata column
-#' }
-#'
-#' @examples
-#' \dontrun{
-#' obj <- load_seurat("/path/to/seurat.rds")
-#' }
-#'
-#' @importFrom Seurat Assays
-#' @export
-load_seurat <- function(path) {
-  if (missing(path) || is.null(path) || !nzchar(path)) {
-    stop("'path' must be a non-empty path to a Seurat RDS file.")
-  }
-
-  message("Loading Seurat object from ", path, "...")
-
-  if (!file.exists(path)) {
-    stop("Seurat file not found at: ", path)
-  }
-
-  obj <- readRDS(path)
-  message(sprintf("Loaded %s cells x %s genes", ncol(obj), nrow(obj)))
-
-  return(obj)
-}
-
-
 #' Load just metadata and coordinates (fast, no expression matrix)
 #'
 #' Extracts cell metadata and spatial coordinates from a Seurat object without
@@ -87,7 +45,10 @@ load_metadata_only <- function(path, celltype_column = "cell_type",
                                x_column = NULL, y_column = NULL) {
   message("Loading metadata from Seurat object...")
 
-  obj <- load_seurat(path)
+  if (!file.exists(path)) {
+    stop("Seurat file not found at: ", path)
+  }
+  obj <- readRDS(path)
 
   # Extract metadata with barcodes
 

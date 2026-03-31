@@ -83,7 +83,7 @@ run_meta_analysis <- function(coefs, ses, sample_ids, method = "REML") {
   list(
     combined_coef = meta_result$TE.random,
     combined_se = meta_result$seTE.random,
-    pval = meta_result$pval.random,
+    combined_pval = meta_result$pval.random,
     i2 = meta_result$I2,
     n_samples = length(coefs)
   )

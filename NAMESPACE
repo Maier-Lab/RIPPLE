@@ -9,7 +9,6 @@ export(merge_ripple_results)
 export(ripple_config)
 
 # data_loading.R
-export(load_seurat)
 export(load_metadata_only)
 export(check_data)
 
@@ -24,6 +23,7 @@ export(compute_fisher_pval)
 
 # permutation.R
 export(run_permutation_test)
+export(run_permutation_tests)
 export(merge_permutation_results)
 
 # spatial.R
@@ -35,20 +35,29 @@ export(get_neighbor_cell_types)
 export(calculate_neighbor_composition)
 
 # visualization.R
-export(plot_spatial_scatter)
 export(plot_spatial_single)
 export(plot_spatial_by_sample)
 export(plot_gradient_volcano)
 export(plot_decay_curve)
-export(plot_violin)
+export(create_gradient_volcano)
+export(create_forest_plot)
+export(create_coefficient_strips)
+
+# enrichment.R
+export(run_ripple_fgsea)
+export(classify_gene_specificity)
+export(bin_decay_data)
+
+# atlas.R
+export(run_ripple_atlas)
+
+# lr_integration.R
+export(run_ripple_lr)
+export(classify_lr_artifacts)
 
 # utils.R
-export(shannon_entropy)
 export(calculate_enrichment)
-export(score_gene_signature)
-export(score_multiple_modules)
 export(permutation_pvalue)
-export(calculate_neighborhood_entropy)
 
 # --- importFrom ---
 
@@ -90,6 +99,9 @@ importFrom(ggplot2,scale_fill_manual)
 importFrom(ggplot2,scale_size_manual)
 importFrom(ggplot2,scale_size_continuous)
 importFrom(ggplot2,scale_x_continuous)
+importFrom(ggplot2,geom_errorbarh)
+importFrom(ggplot2,scale_color_brewer)
+importFrom(ggplot2,scale_shape_manual)
 importFrom(ggplot2,ggsave)
 
 # ggrepel
@@ -111,4 +123,3 @@ importFrom(stats,nls)
 
 # Seurat
 importFrom(Seurat,Assays)
-importFrom(Seurat,AddModuleScore)

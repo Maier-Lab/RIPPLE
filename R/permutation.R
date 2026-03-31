@@ -170,6 +170,156 @@ run_permutation_test <- function(counts, coords_target, coords_all,
 }
 
 
+#' Run permutation tests for multiple genes
+#'
+#' Batch version of \code{\link{run_permutation_test}} that loops over a vector
+#' of genes and returns a \code{data.table} of gene-level permutation p-values.
+#' Used internally by \code{\link{run_ripple}} to validate the top significant
+#' distance-expression gradients.
+#'
+#' @param genes Character vector. Gene names to test.
+#' @param count_matrix Sparse or dense matrix. Raw count matrix (genes x cells).
+#' @param target_barcodes Character vector. Barcodes of target cells.
+#' @param coords_target Numeric matrix (n_target x 2). Coordinates of target
+#'   cells.
+#' @param coords_all Numeric matrix (n_all x 2). Coordinates of ALL cells.
+#' @param sample_ids_target Character vector. Sample IDs for target cells.
+#' @param sample_ids_all Character vector. Sample IDs for all cells.
+#' @param query_per_sample Named integer vector. Number of query cells per
+#'   sample.
+#' @param observed_coefs Named numeric vector. Observed combined coefficients
+#'   per gene (names = gene names).
+#' @param n_perms Integer. Number of permutations per gene.
+#' @param k_neighbors Integer. Number of nearest neighbors for distance
+#'   calculation.
+#' @param max_distance_um Numeric. Maximum distance in micrometers.
+#' @param min_cells_per_sample Integer. Minimum target cells per sample for
+#'   GLM fitting.
+#' @param min_expr_cells Integer. Minimum expressing cells for GLM fitting.
+#' @param total_counts_target Numeric vector. Total UMI counts per target cell
+#'   (for Poisson offset).
+#'
+#' @return A \code{data.table} with columns \code{gene} and \code{perm_pval}.
+#'
+#' @examples
+#' \dontrun{
+#' perm_dt <- run_permutation_tests(
+#'   genes = c("Cxcl12", "Ccl21a"),
+#'   count_matrix = counts,
+#'   target_barcodes = barcodes,
+#'   coords_target = target_xy,
+#'   coords_all = all_xy,
+#'   sample_ids_target = target_samples,
+#'   sample_ids_all = all_samples,
+#'   query_per_sample = c(s1 = 50, s2 = 60),
+#'   observed_coefs = c(Cxcl12 = -0.005, Ccl21a = -0.003),
+#'   n_perms = 500,
+#'   k_neighbors = 1,
+#'   max_distance_um = 200,
+#'   min_cells_per_sample = 30,
+#'   min_expr_cells = 5,
+#'   total_counts_target = total_counts
+#' )
+#' }
+#'
+#' @importFrom RANN nn2
+#' @importFrom stats glm poisson
+#' @importFrom data.table data.table rbindlist
+#' @export
+run_permutation_tests <- function(genes, count_matrix, target_barcodes,
+                                  coords_target, coords_all,
+                                  sample_ids_target, sample_ids_all,
+                                  query_per_sample, observed_coefs,
+                                  n_perms, k_neighbors, max_distance_um,
+                                  min_cells_per_sample, min_expr_cells,
+                                  total_counts_target) {
+
+  unique_samples <- names(query_per_sample)
+
+  results <- lapply(genes, function(g) {
+    count_vec <- as.numeric(count_matrix[g, target_barcodes])
+    obs_coef <- observed_coefs[g]
+
+    null_coefs <- numeric(n_perms)
+    for (i in seq_len(n_perms)) {
+      # Stratified sampling within each sample
+      pseudo_query_coords_list <- lapply(unique_samples, function(samp) {
+        samp_mask <- sample_ids_all == samp
+        samp_coords <- coords_all[samp_mask, , drop = FALSE]
+        n_to_sample <- query_per_sample[samp]
+        if (n_to_sample > 0 && nrow(samp_coords) >= n_to_sample) {
+          pseudo_idx <- sample(nrow(samp_coords), n_to_sample)
+          samp_coords[pseudo_idx, , drop = FALSE]
+        } else {
+          matrix(nrow = 0, ncol = 2)
+        }
+      })
+      pseudo_query_coords <- do.call(rbind, pseudo_query_coords_list)
+
+      if (is.null(pseudo_query_coords) || nrow(pseudo_query_coords) < 5) {
+        null_coefs[i] <- NA
+        next
+      }
+
+      eff_k <- min(k_neighbors, nrow(pseudo_query_coords))
+      nn_res <- RANN::nn2(pseudo_query_coords, coords_target, k = eff_k)
+      if (eff_k == 1) {
+        perm_distances <- pmin(as.vector(nn_res$nn.dists), max_distance_um)
+      } else {
+        perm_distances <- pmin(rowMeans(nn_res$nn.dists), max_distance_um)
+      }
+
+      coefs <- numeric(length(unique_samples))
+      ses <- numeric(length(unique_samples))
+      for (j in seq_along(unique_samples)) {
+        samp <- unique_samples[j]
+        idx <- which(sample_ids_target == samp)
+        if (length(idx) >= min_cells_per_sample) {
+          samp_counts <- count_vec[idx]
+          samp_dist <- perm_distances[idx]
+          samp_log_total <- log(total_counts_target[idx])
+          if (sum(samp_counts > 0) >= min_expr_cells) {
+            fit <- tryCatch({
+              suppressWarnings(stats::glm(
+                samp_counts ~ samp_dist + offset(samp_log_total),
+                family = stats::poisson
+              ))
+            }, error = function(e) NULL)
+            if (!is.null(fit) && fit$converged) {
+              cs <- summary(fit)$coefficients
+              if (nrow(cs) >= 2) {
+                coefs[j] <- cs[2, "Estimate"]
+                ses[j] <- cs[2, "Std. Error"]
+              }
+            }
+          }
+        }
+      }
+
+      valid <- !is.na(coefs) & !is.na(ses) & ses > 0
+      if (sum(valid) >= 2) {
+        weights <- 1 / (ses[valid]^2)
+        null_coefs[i] <- sum(weights * coefs[valid]) / sum(weights)
+      } else {
+        null_coefs[i] <- NA
+      }
+    }
+
+    null_coefs <- null_coefs[!is.na(null_coefs)]
+    if (length(null_coefs) < 10) {
+      perm_pval <- NA_real_
+    } else {
+      perm_pval <- (sum(abs(null_coefs) >= abs(obs_coef)) + 1) /
+        (length(null_coefs) + 1)
+    }
+
+    data.table::data.table(gene = g, perm_pval = perm_pval)
+  })
+
+  data.table::rbindlist(results)
+}
+
+
 #' Merge GPU permutation results into meta-analysis CSVs
 #'
 #' Reads GPU-produced \code{permutation_pvals.csv} files from per-celltype
