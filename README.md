@@ -392,6 +392,301 @@ Rscript scripts/gradient_lr_biology_figure.R
 
 ---
 
+## Tutorial: Step-by-Step Analysis
+
+This tutorial walks through a complete RIPPLE analysis using the R package functions. We assume you have a Seurat object with Xenium data, cell type annotations, and at least 3 biological replicates.
+
+### Step 0: Check the binary assumption
+
+RIPPLE uses a Poisson GLM on raw transcript counts. This works well when most detected genes have 1 transcript per cell (the typical regime for Xenium/MERFISH). Before running the analysis, verify this assumption by plotting the relationship between number of detected features and total counts per cell.
+
+```r
+library(Seurat)
+library(ggplot2)
+
+obj <- readRDS("my_seurat.rds")
+meta <- obj@meta.data
+meta$nCount <- colSums(obj[["RNA"]]$counts)
+meta$nFeature <- colSums(obj[["RNA"]]$counts > 0)
+
+ggplot(meta, aes(x = nFeature, y = nCount)) +
+  geom_point(size = 0.1, alpha = 0.1) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(
+    title = "Binary assumption check",
+    subtitle = "Points near the red line = most genes have 1 transcript (Poisson appropriate)",
+    x = "Number of detected genes (nFeature)",
+    y = "Total transcript counts (nCount)"
+  ) +
+  theme_minimal()
+```
+
+If points cluster tightly along the `y = x` line, the Poisson model with a cell-size offset is appropriate. If there is substantial spread above the line (many genes with 2+ transcripts per cell), consider a negative binomial model instead.
+
+### Step 1: Load data and inspect
+
+```r
+library(ripple)
+
+# Quick check that the data has the expected columns
+check_data("my_seurat.rds", celltype_column = "cell_type", sample_column = "sample_id")
+
+# Load metadata only (fast, no expression matrix in memory)
+meta <- load_metadata_only(
+  "my_seurat.rds",
+  celltype_column = "cell_type",
+  sample_column = "sample_id"
+)
+
+# Verify query cell type is present and has enough cells
+table(meta[["cell_type"]])
+```
+
+### Step 2: Run the core analysis
+
+```r
+results <- run_ripple(
+  input_path       = "my_seurat.rds",
+  query_celltype   = "Tumor",
+  celltype_column  = "cell_type",
+  output_dir       = "./results",
+  sample_column    = "sample_id",
+  analysis_name    = "tumor_ripple"
+)
+
+# Results is a data.table with one row per gene x cell type
+head(results[order(fisher_fdr)])
+```
+
+`run_ripple()` auto-detects all non-query cell types as targets, fits per-sample Poisson GLMs, combines across replicates with Fisher's method, and writes per-cell-type CSVs to `./results/spatial_analysis_Tumor/tumor_ripple/`.
+
+To restrict to a specific condition (e.g., only treated samples):
+
+```r
+results <- run_ripple(
+  input_path       = "my_seurat.rds",
+  query_celltype   = "Tumor",
+  celltype_column  = "cell_type",
+  output_dir       = "./results",
+  condition_column = "treatment",
+  condition_value  = "treated"
+)
+```
+
+### Step 3: Merge results across cell types
+
+```r
+merged <- merge_ripple_results(
+  results_dir = "./results/spatial_analysis_Tumor/tumor_ripple",
+  recompute_fisher = TRUE
+)
+
+# Top hits
+merged[fisher_fdr < 0.05][order(fisher_fdr)]
+```
+
+### Step 4: Visualize the results
+
+#### Volcano plot
+
+```r
+library(data.table)
+
+# Load merged results
+all_results <- fread("./results/spatial_analysis_Tumor/tumor_ripple/summary/all_genes_results.csv")
+
+# Volcano for one cell type
+cd8_results <- all_results[cell_type == "CD8_T"]
+plot_gradient_volcano(
+  cd8_results,
+  query_label = "Tumor",
+  title = "CD8 T cells: distance-dependent genes"
+)
+```
+
+#### Decay curves
+
+```r
+# Bin expression by distance for a specific gene
+obj <- readRDS("my_seurat.rds")
+counts_matrix <- obj[["RNA"]]$counts
+
+# Get the gene of interest
+gene <- "PDCD1"
+gene_counts <- as.numeric(counts_matrix[gene, ])
+
+# You need the distances (saved during run_ripple in per_celltype output)
+# Or compute them directly:
+meta <- as.data.table(obj@meta.data, keep.rownames = "barcode")
+coord_cols <- get_coord_columns(meta)
+query_coords <- as.matrix(meta[cell_type == "Tumor", ..coord_cols])
+target_mask <- meta$cell_type == "CD8_T"
+target_coords <- as.matrix(meta[target_mask, ..coord_cols])
+
+nn <- RANN::nn2(query_coords, target_coords, k = 1)
+distances <- as.vector(nn$nn.dists)
+
+# Bin and plot
+bins <- bin_decay_data(
+  gene_counts[target_mask],
+  distances,
+  n_bins = 20,
+  max_distance = 200
+)
+plot_decay_curve(bins, gene_name = "PDCD1", cell_type = "CD8_T")
+```
+
+#### Gene specificity classification
+
+```r
+# Which genes are specific to one cell type vs contamination?
+specificity <- classify_gene_specificity(all_results, fdr_threshold = 0.05)
+table(specificity$specificity_class)
+#   specific  moderate  ubiquitous  contamination
+#       412       187          45             23
+```
+
+### Step 5: Confounder control (optional)
+
+If your query cell type co-localizes with another cell type, validate that the gradients are query-specific:
+
+```r
+stage2 <- run_ripple_confounder(
+  input_path       = "my_seurat.rds",
+  results_dir      = "./results/spatial_analysis_Tumor/tumor_ripple",
+  query_celltype   = "Tumor",
+  celltype_column  = "cell_type",
+  control_celltype = "CAF"   # cells that share the same niche
+)
+
+# Classification breakdown
+table(stage2$classification)
+#   query_specific  enhanced  niche_driven  underpowered
+#             892       134            67            45
+```
+
+### Step 6: Generate atlas figures (optional)
+
+```r
+run_ripple_atlas(
+  results_dir = "./results/spatial_analysis_Tumor/tumor_ripple",
+  output_dir  = "./results/spatial_analysis_Tumor/tumor_ripple/atlas",
+  query_label = "Tumor",
+  run_fgsea   = TRUE,
+  organism    = "human"
+)
+```
+
+This generates volcanos, dotplots, heatmaps, fGSEA enrichment panels, and contamination reports.
+
+---
+
+## Tutorial: Downstream Integrations
+
+After running the core RIPPLE analysis, you can feed the results into pathway enrichment and ligand-receptor analysis.
+
+### Pathway enrichment with fGSEA
+
+RIPPLE provides `run_ripple_fgsea()` which ranks genes by their gradient coefficient and runs fast gene set enrichment analysis per cell type.
+
+```r
+library(ripple)
+library(data.table)
+
+# Load merged results
+results <- fread("./results/spatial_analysis_Tumor/tumor_ripple/summary/all_genes_results.csv")
+
+# Run fGSEA with Hallmark gene sets
+gsea <- run_ripple_fgsea(
+  results,
+  gene_sets = "hallmark",    # or "kegg", "reactome", "go_bp"
+  organism  = "human",       # or "mouse"
+  coef_col  = "median_coef",
+  fdr_col   = "fisher_fdr"
+)
+
+# Top enriched pathways across all cell types
+gsea[padj < 0.05][order(pval)]
+
+# Filter to one cell type
+gsea[cell_type == "CD8_T" & padj < 0.05][order(NES)]
+```
+
+You can also pass your own custom gene sets:
+
+```r
+my_gene_sets <- list(
+  exhaustion = c("PDCD1", "HAVCR2", "LAG3", "TIGIT", "ENTPD1"),
+  cytotoxicity = c("GZMA", "GZMB", "PRF1", "GNLY", "NKG7"),
+  stemness = c("TCF7", "SELL", "IL7R", "LEF1", "CCR7")
+)
+
+gsea_custom <- run_ripple_fgsea(results, gene_sets = my_gene_sets)
+```
+
+### Ligand-receptor integration with NicheNet
+
+RIPPLE provides `run_ripple_lr()` which matches gradient genes to ligand-receptor pairs using the NicheNet database. It scores L-R pairs by combining direct expression matching, NicheNet activity prediction, and downstream target enrichment.
+
+```r
+# Requires nichenetr: devtools::install_github("saeyslab/nichenetr")
+
+lr_results <- run_ripple_lr(
+  results_dir      = "./results/spatial_analysis_Tumor/tumor_ripple",
+  input_path       = "my_seurat.rds",
+  query_celltype   = "Tumor",
+  celltype_column  = "cell_type",
+  organism         = "human",
+  output_dir       = "./results/lr_integration"
+)
+
+# Top L-R pairs (Direction A: Query → Target)
+lr_results[artifact_flag == "clean"][order(-combined_score)][1:20]
+```
+
+#### Artifact classification
+
+L-R results can include false positives from segmentation artifacts. Use `classify_lr_artifacts()` to flag them:
+
+```r
+# Provide query marker genes to detect leakage
+lr_clean <- classify_lr_artifacts(
+  lr_results,
+  query_signature = c("EPCAM", "KRT8", "KRT18"),
+  contamination_genes = c("JCHAIN", "IGKC"),  # genes in many cell types
+  low_expr_threshold = 0.02
+)
+
+# See classification breakdown
+table(lr_clean$artifact_flag)
+#   clean  suspect  low_confidence  artifact
+#     891       42              31        18
+
+# Use only clean pairs for downstream analysis
+lr_clean[artifact_flag == "clean"][order(-combined_score)]
+```
+
+#### Combining with Stage 4 results
+
+If you ran the confounder control, you can cross-reference to focus on query-specific L-R pairs:
+
+```r
+# Load Stage 4 classifications
+stage2 <- fread("./results/spatial_analysis_Tumor/tumor_ripple_stage2/summary/stage2_all_results.csv")
+
+# Keep only L-R pairs where the receptor gene is query-specific (not niche-driven)
+query_specific_genes <- stage2[classification == "query_specific"]$gene
+lr_validated <- lr_clean[
+  artifact_flag == "clean" &
+  receptor %in% query_specific_genes
+][order(-combined_score)]
+
+# These are high-confidence L-R pairs: clean artifacts + query-specific gradients
+lr_validated[1:10, .(ligand, receptor, cell_type, combined_score)]
+```
+
+---
+
 ## Input Data Format
 
 RIPPLE expects a Seurat object (`.rds`) specified by `INPUT_PATH` with the following structure:
