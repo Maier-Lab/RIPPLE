@@ -115,6 +115,29 @@ results <- run_ripple(
 
 This will auto-detect spatial coordinates, sample IDs, and all non-query cell types, then fit per-sample Poisson GLMs for every gene in every target cell type.
 
+### Try it on the bundled mock dataset
+
+RIPPLE ships with `ripple_mock_data`, a small synthetic SpatialExperiment (50 genes x 600 cells, 3 samples) containing a planted distance-dependent gradient. You can run the full pipeline on it without any external data:
+
+```r
+library(ripple)
+data(ripple_mock_data)
+
+results <- run_ripple(
+  input           = ripple_mock_data,
+  query_celltype  = "Tumor",
+  celltype_column = "cell_type",
+  output_dir      = tempfile("ripple_demo_"),
+  min_expr_pct    = 0,
+  min_expr_floor  = 10
+)
+
+# The top hits should be the planted INDUCED_* and REPRESSED_* genes in T_cell
+head(results[order(fisher_fdr)], 12)
+```
+
+The 5 INDUCED genes have expression that decays away from Tumor cells (negative `median_coef`), and the 5 REPRESSED genes show the opposite pattern (positive `median_coef`). The 40 background genes should mostly be non-significant.
+
 ---
 
 ## Configuration

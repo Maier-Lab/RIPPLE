@@ -21,7 +21,11 @@
       "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" -e \"devtools::check\\('C:/Users/CMangana/RIPPLE', args='--no-manual'\\)\" 2>&1)",
       "Bash(mkdir -p \"C:/Users/CMangana/HyMy-distance-correlation-analysis\")",
       "Bash(cp -r \"C:/Users/CMangana/RIPPLE/scripts/\"* \"C:/Users/CMangana/HyMy-distance-correlation-analysis/\")",
-      "Bash(cp \"C:/Users/CMangana/RIPPLE/RIPPLE_user_guide.html\" \"C:/Users/CMangana/HyMy-distance-correlation-analysis/\")"
+      "Bash(cp \"C:/Users/CMangana/RIPPLE/RIPPLE_user_guide.html\" \"C:/Users/CMangana/HyMy-distance-correlation-analysis/\")",
+      "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" -e 'library\\(Seurat\\); cat\\(\"ok\\\\n\"\\)')",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" data-raw/debug_mock.R)",
+      "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" data-raw/validate_mock_data.R)"
     ]
   }
 }

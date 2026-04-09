@@ -575,14 +575,14 @@ create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
 
   i2_display <- if (is.na(meta_result$i2)) "N/A" else
     sprintf("%.1f%%", meta_result$i2 * 100)
-  pval_display <- if (is.na(meta_result$pval)) "N/A" else
-    sprintf("%.2e", meta_result$pval)
+  pval_display <- if (is.na(meta_result$combined_pval)) "N/A" else
+    sprintf("%.2e", meta_result$combined_pval)
 
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = coef, y = sample)) +
     ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
                         color = "grey50") +
-    ggplot2::geom_errorbarh(ggplot2::aes(xmin = lower, xmax = upper),
-                            height = 0.2) +
+    ggplot2::geom_errorbar(ggplot2::aes(xmin = lower, xmax = upper),
+                           orientation = "y", width = 0.2) +
     ggplot2::geom_point(ggplot2::aes(shape = is_combined,
                                       size = is_combined)) +
     ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 18),
@@ -663,9 +663,9 @@ create_coefficient_strips <- function(coef_results, meta_results, cell_type,
                                     color = sample_id)) +
     ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
                         color = "grey50") +
-    ggplot2::geom_errorbarh(
+    ggplot2::geom_errorbar(
       ggplot2::aes(xmin = coef - 1.96 * se, xmax = coef + 1.96 * se),
-      height = 0.2, alpha = 0.5
+      orientation = "y", width = 0.2, alpha = 0.5
     ) +
     ggplot2::geom_point(size = 2.5, alpha = 0.8) +
     ggplot2::scale_color_brewer(palette = "Set1", name = "Sample") +

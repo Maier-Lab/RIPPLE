@@ -369,7 +369,8 @@ run_ripple <- function(
   count_matrix <- count_matrix_full[, cell_data$barcode, drop = FALSE]
 
   # Total counts per cell (for Poisson offset)
-  total_counts <- colSums(count_matrix_full[, cell_data$barcode, drop = FALSE])
+  # Use Matrix::colSums so this works on both dense and sparse matrices
+  total_counts <- Matrix::colSums(count_matrix)
   total_counts <- stats::setNames(as.numeric(total_counts), cell_data$barcode)
 
   .msg("Total counts per cell: median=", round(stats::median(total_counts)),
@@ -689,7 +690,7 @@ run_ripple <- function(
         gene = g,
         combined_coef = meta_result$combined_coef,
         combined_se = meta_result$combined_se,
-        pval = meta_result$pval,
+        pval = meta_result$combined_pval,
         i2 = meta_result$i2,
         n_samples = meta_result$n_samples,
         mean_expr = mean(gene_counts, na.rm = TRUE),
@@ -1335,7 +1336,7 @@ run_ripple_confounder <- function(
     target_barcodes <- target_valid$barcode
 
     count_matrix_ct <- count_matrix_full[, target_barcodes, drop = FALSE]
-    total_counts_target <- colSums(count_matrix_ct)
+    total_counts_target <- Matrix::colSums(count_matrix_ct)
 
     sig_genes <- intersect(sig_genes, rownames(count_matrix_ct))
     if (length(sig_genes) == 0) {
