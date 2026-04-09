@@ -12,6 +12,10 @@ export(ripple_config)
 export(load_metadata_only)
 export(check_data)
 
+# make_input.R
+export(make_ripple_input)
+export(read_ripple_csv)
+
 # glm.R
 export(fit_poisson)
 export(fit_poisson_controlled)

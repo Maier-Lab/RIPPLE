@@ -276,30 +276,16 @@ run_ripple <- function(
   .msg("Output directory: ", output_base, verbose = verbose)
 
   # --------------------------------------------------------------------------
-  # 3. Load data
+  # 3. Load and normalize data
   # --------------------------------------------------------------------------
   .msg("\nLoading data...", verbose = verbose)
-  if (!file.exists(input_path)) {
-    stop("Seurat file not found at: ", input_path, call. = FALSE)
-  }
-  obj <- readRDS(input_path)
+  data <- .resolve_input(input_path, require_expr = FALSE, verbose = verbose)
+  count_matrix_full <- data$counts
+  cell_data <- data$meta
+  rm(data)
 
-  # Verify counts layer
-  count_matrix_full <- tryCatch(
-    Seurat::GetAssayData(obj, layer = "counts"),
-    error = function(e) {
-      stop("No 'counts' layer found in Seurat object. ",
-           "Poisson GLM requires raw integer counts. Error: ", e$message,
-           call. = FALSE)
-    }
-  )
-  .msg("Counts layer verified: ", nrow(count_matrix_full), " genes x ",
+  .msg("Counts verified: ", nrow(count_matrix_full), " genes x ",
        ncol(count_matrix_full), " cells", verbose = verbose)
-
-  # --------------------------------------------------------------------------
-  # 4. Extract metadata
-  # --------------------------------------------------------------------------
-  cell_data <- data.table::as.data.table(obj@meta.data, keep.rownames = "barcode")
 
   if (!celltype_column %in% names(cell_data)) {
     stop("Cell type column '", celltype_column, "' not found in metadata. ",
@@ -1147,16 +1133,13 @@ run_ripple_confounder <- function(
   .msg("Output directory:  ", output_dir, verbose = verbose)
 
   # --------------------------------------------------------------------------
-  # 4. Load Seurat object
+  # 4. Load and normalize data
   # --------------------------------------------------------------------------
   .msg("\nLoading data...", verbose = verbose)
-  if (!file.exists(input_path)) {
-    stop("Seurat file not found at: ", input_path, call. = FALSE)
-  }
-  obj <- readRDS(input_path)
-
-  cell_data <- data.table::as.data.table(obj@meta.data,
-                                         keep.rownames = "barcode")
+  data <- .resolve_input(input_path, require_expr = FALSE, verbose = verbose)
+  count_matrix_full <- data$counts
+  cell_data <- data$meta
+  rm(data)
 
   if (!celltype_column %in% names(cell_data)) {
     stop("Cell type column '", celltype_column, "' not found in metadata.",
@@ -1291,8 +1274,7 @@ run_ripple_confounder <- function(
     target_valid <- target_data[get(sample_column) %in% valid_samples]
     target_barcodes <- target_valid$barcode
 
-    count_matrix_ct <- Seurat::GetAssayData(obj, layer = "counts")[
-      , target_barcodes, drop = FALSE]
+    count_matrix_ct <- count_matrix_full[, target_barcodes, drop = FALSE]
     total_counts_target <- colSums(count_matrix_ct)
 
     sig_genes <- intersect(sig_genes, rownames(count_matrix_ct))

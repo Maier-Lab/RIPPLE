@@ -314,14 +314,11 @@ run_ripple_lr <- function(results_dir,
   lr_network <- nn_db$lr_network
   ligand_target_matrix <- nn_db$ligand_target_matrix
 
-  # --- Load Seurat object ---
-  .msg("\nLoading Seurat object...")
-  if (!file.exists(input_path)) {
-    stop("Seurat object not found: ", input_path, call. = FALSE)
-  }
-
-  obj <- readRDS(input_path)
-  meta <- data.table::as.data.table(obj@meta.data, keep.rownames = "barcode")
+  # --- Load data (Seurat, SCE, or SpatialExperiment) ---
+  .msg("\nLoading input data...")
+  data <- .resolve_input(input_path, require_expr = TRUE, verbose = verbose)
+  meta <- data$meta
+  expr_matrix <- data$expr
 
   if (!celltype_column %in% names(meta)) {
     stop("Cell type column '", celltype_column, "' not found in Seurat metadata.",
@@ -351,8 +348,7 @@ run_ripple_lr <- function(results_dir,
          call. = FALSE)
   }
 
-  # Expression matrix
-  expr_matrix <- Seurat::GetAssayData(obj, layer = "data")
+  # Sanitize gene names for downstream matching
   rownames(expr_matrix) <- make.names(rownames(expr_matrix))
 
   # Compute query expression profile (pooled)
