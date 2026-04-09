@@ -102,8 +102,11 @@ NULL
 #' then combines across replicates via Fisher's combined p-value with a
 #' sign consistency gate.
 #'
-#' @param input_path Path to Seurat \code{.rds} file with raw counts in the
-#'   \code{RNA} assay.
+#' @param input A Seurat, SingleCellExperiment, or SpatialExperiment object,
+#'   or a path to an \code{.rds} file containing one of these. Must have raw
+#'   counts, cell metadata with a cell type column, sample IDs, and spatial
+#'   coordinates. See \code{\link{make_ripple_input}} for building from raw
+#'   matrices or CSVs.
 #' @param query_celltype Cell type label for the source population (e.g.,
 #'   \code{"Tumor"}).
 #' @param celltype_column Metadata column containing cell type annotations.
@@ -191,7 +194,7 @@ NULL
 #'
 #' @export
 run_ripple <- function(
-  input_path,
+  input,
   query_celltype,
   celltype_column,
   output_dir              = ".",
@@ -243,8 +246,9 @@ run_ripple <- function(
   # --------------------------------------------------------------------------
   # 1. Validate inputs
   # --------------------------------------------------------------------------
-  if (missing(input_path) || !file.exists(input_path)) {
-    stop("input_path does not exist: ", input_path, call. = FALSE)
+  if (missing(input)) {
+    stop("'input' is required (Seurat/SCE/SPE object or path to an .rds file)",
+         call. = FALSE)
   }
   if (missing(query_celltype) || !nzchar(query_celltype)) {
     stop("query_celltype must be a non-empty string.", call. = FALSE)
@@ -279,7 +283,7 @@ run_ripple <- function(
   # 3. Load and normalize data
   # --------------------------------------------------------------------------
   .msg("\nLoading data...", verbose = verbose)
-  data <- .resolve_input(input_path, require_expr = FALSE, verbose = verbose)
+  data <- .resolve_input(input, require_expr = FALSE, verbose = verbose)
   count_matrix_full <- data$counts
   cell_data <- data$meta
   rm(data)
@@ -287,9 +291,26 @@ run_ripple <- function(
   .msg("Counts verified: ", nrow(count_matrix_full), " genes x ",
        ncol(count_matrix_full), " cells", verbose = verbose)
 
+  # Validate required columns exist in metadata
   if (!celltype_column %in% names(cell_data)) {
     stop("Cell type column '", celltype_column, "' not found in metadata. ",
          "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
+         call. = FALSE)
+  }
+  if (!sample_column %in% names(cell_data)) {
+    stop("Sample column '", sample_column, "' not found in metadata. ",
+         "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
+         call. = FALSE)
+  }
+
+  # Validate the query cell type exists in the data (better error than
+  # the n_query < 10 check further below which assumes typos away)
+  available_types <- unique(cell_data[[celltype_column]])
+  if (!query_celltype %in% available_types) {
+    stop("query_celltype '", query_celltype, "' not found in column '",
+         celltype_column, "'.\n  Available values: ",
+         paste(head(available_types, 20), collapse = ", "),
+         if (length(available_types) > 20) ", ..." else "",
          call. = FALSE)
   }
 
@@ -323,6 +344,13 @@ run_ripple <- function(
        verbose = verbose)
 
   if (!is.null(condition_value) && nzchar(condition_value)) {
+    available_cond <- unique(cell_data$condition)
+    if (!condition_value %in% available_cond) {
+      stop("condition_value '", condition_value, "' not found in condition ",
+           "column.\n  Available values: ",
+           paste(available_cond, collapse = ", "),
+           call. = FALSE)
+    }
     .msg("\nFiltering to condition == '", condition_value, "'...",
          verbose = verbose)
     cell_data <- cell_data[condition == condition_value]
@@ -974,7 +1002,9 @@ run_ripple <- function(
 #' query-distance coefficient persists after controlling for the shared
 #' niche effect.
 #'
-#' @param input_path Path to Seurat \code{.rds} file.
+#' @param input A Seurat, SingleCellExperiment, or SpatialExperiment object,
+#'   or a path to an \code{.rds} file containing one of these. Should be the
+#'   same object used for Stage 1.
 #' @param results_dir Path to Stage 1 results directory (the parent directory
 #'   containing \code{summary/all_genes_results.csv}).
 #' @param query_celltype Query cell type label.
@@ -1027,7 +1057,7 @@ run_ripple <- function(
 #'
 #' @export
 run_ripple_confounder <- function(
-  input_path,
+  input,
   results_dir,
   query_celltype,
   celltype_column,
@@ -1069,8 +1099,9 @@ run_ripple_confounder <- function(
   # --------------------------------------------------------------------------
   # 1. Validate inputs
   # --------------------------------------------------------------------------
-  if (missing(input_path) || !file.exists(input_path)) {
-    stop("input_path does not exist: ", input_path, call. = FALSE)
+  if (missing(input)) {
+    stop("'input' is required (Seurat/SCE/SPE object or path to an .rds file)",
+         call. = FALSE)
   }
   if (missing(control_celltype) || !nzchar(control_celltype)) {
     stop("control_celltype is required for confounder analysis.",
@@ -1136,13 +1167,35 @@ run_ripple_confounder <- function(
   # 4. Load and normalize data
   # --------------------------------------------------------------------------
   .msg("\nLoading data...", verbose = verbose)
-  data <- .resolve_input(input_path, require_expr = FALSE, verbose = verbose)
+  data <- .resolve_input(input, require_expr = FALSE, verbose = verbose)
   count_matrix_full <- data$counts
   cell_data <- data$meta
   rm(data)
 
+  # Validate required columns
   if (!celltype_column %in% names(cell_data)) {
-    stop("Cell type column '", celltype_column, "' not found in metadata.",
+    stop("Cell type column '", celltype_column, "' not found in metadata. ",
+         "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
+         call. = FALSE)
+  }
+  if (!sample_column %in% names(cell_data)) {
+    stop("Sample column '", sample_column, "' not found in metadata. ",
+         "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
+         call. = FALSE)
+  }
+
+  # Validate that query and control cell types exist
+  available_types <- unique(cell_data[[celltype_column]])
+  if (!query_celltype %in% available_types) {
+    stop("query_celltype '", query_celltype, "' not found in column '",
+         celltype_column, "'.\n  Available values: ",
+         paste(head(available_types, 20), collapse = ", "),
+         call. = FALSE)
+  }
+  if (!control_celltype %in% available_types) {
+    stop("control_celltype '", control_celltype, "' not found in column '",
+         celltype_column, "'.\n  Available values: ",
+         paste(head(available_types, 20), collapse = ", "),
          call. = FALSE)
   }
 
@@ -1157,8 +1210,15 @@ run_ripple_confounder <- function(
     cell_data[, condition := "all"]
   }
 
-  # Filter by condition
+  # Filter by condition (validate value exists first)
   if (!is.null(condition_value) && nzchar(condition_value)) {
+    available_cond <- unique(cell_data$condition)
+    if (!condition_value %in% available_cond) {
+      stop("condition_value '", condition_value, "' not found in condition ",
+           "column.\n  Available values: ",
+           paste(available_cond, collapse = ", "),
+           call. = FALSE)
+    }
     cell_data <- cell_data[condition == condition_value]
   }
 

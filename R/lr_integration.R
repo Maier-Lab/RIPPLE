@@ -173,7 +173,9 @@ NULL
 #' @param results_dir Character. Path to RIPPLE results directory (Stage 1 or
 #'   merged). Must contain \code{summary/all_genes_results.csv} and optionally
 #'   \code{per_celltype/<ct>/coef_per_sample.csv} for per-sample scoring.
-#' @param input_path Character. Path to Seurat \code{.rds} file.
+#' @param input A Seurat, SingleCellExperiment, or SpatialExperiment object,
+#'   or a path to an \code{.rds} file containing one of these. Used to extract
+#'   the normalized expression matrix for ligand/receptor filtering.
 #' @param query_celltype Character. Query cell type label as it appears in
 #'   the cell type metadata column.
 #' @param celltype_column Character. Name of the metadata column containing
@@ -230,11 +232,11 @@ NULL
 #' @examples
 #' \dontrun{
 #' lr_results <- run_ripple_lr(
-#'   results_dir = "output/distance_correlation/",
-#'   input_path = "data/seurat_object.rds",
-#'   query_celltype = "Neutrophil",
+#'   results_dir     = "output/distance_correlation/",
+#'   input           = my_spe,   # or a Seurat/SCE object, or a path to an .rds
+#'   query_celltype  = "Neutrophil",
 #'   celltype_column = "cell_type",
-#'   organism = "mouse"
+#'   organism        = "mouse"
 #' )
 #' # Filter to clean, high-confidence pairs
 #' lr_results[combined_score > 0.3]
@@ -245,7 +247,7 @@ NULL
 #' @importFrom scales rescale
 #' @export
 run_ripple_lr <- function(results_dir,
-                           input_path,
+                           input,
                            query_celltype,
                            celltype_column,
                            sample_column = "sample_id",
@@ -277,7 +279,6 @@ run_ripple_lr <- function(results_dir,
   .msg("RIPPLE Ligand-Receptor Integration")
   .msg(strrep("=", 70))
   .msg("Results directory: ", results_dir)
-  .msg("Seurat object: ", input_path)
   .msg("Query cell type: ", query_celltype)
   .msg("Output: ", output_dir)
 
@@ -316,17 +317,27 @@ run_ripple_lr <- function(results_dir,
 
   # --- Load data (Seurat, SCE, or SpatialExperiment) ---
   .msg("\nLoading input data...")
-  data <- .resolve_input(input_path, require_expr = TRUE, verbose = verbose)
+  if (missing(input)) {
+    stop("'input' is required (Seurat/SCE/SPE object or path to an .rds file)",
+         call. = FALSE)
+  }
+  data <- .resolve_input(input, require_expr = TRUE, verbose = verbose)
   meta <- data$meta
   expr_matrix <- data$expr
 
   if (!celltype_column %in% names(meta)) {
-    stop("Cell type column '", celltype_column, "' not found in Seurat metadata.",
+    stop("Cell type column '", celltype_column, "' not found in metadata. ",
+         "Available: ", paste(head(names(meta), 20), collapse = ", "),
          call. = FALSE)
   }
   if (!sample_column %in% names(meta)) {
-    stop("Sample column '", sample_column, "' not found in Seurat metadata.",
+    stop("Sample column '", sample_column, "' not found in metadata. ",
+         "Available: ", paste(head(names(meta), 20), collapse = ", "),
          call. = FALSE)
+  }
+  if (!query_celltype %in% unique(meta[[celltype_column]])) {
+    stop("query_celltype '", query_celltype, "' not found in column '",
+         celltype_column, "'.", call. = FALSE)
   }
 
   # Get query cells

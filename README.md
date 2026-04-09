@@ -106,7 +106,7 @@ pip install torch numpy scipy
 ```r
 library(ripple)
 results <- run_ripple(
-  input_path      = "my_seurat.rds",
+  input           = "my_seurat.rds",
   query_celltype  = "Tumor",
   celltype_column = "cell_type",
   output_dir      = "./results"
@@ -125,7 +125,7 @@ All configuration can be passed as function arguments or via environment variabl
 
 | Argument / Env Var | Description |
 |--------------------|-------------|
-| `input_path` / `INPUT_PATH` | Path to a Seurat object (`.rds`) with raw counts |
+| `input` / `INPUT_PATH` | Seurat, SingleCellExperiment, or SpatialExperiment object (or path to an `.rds` containing one). Must have raw counts. |
 | `query_celltype` / `QUERY_CELLTYPE` | Cell type label for the source population (e.g., `"Tumor"`) |
 | `celltype_column` / `CELLTYPE_COLUMN` | Metadata column containing cell type annotations |
 
@@ -265,7 +265,7 @@ table(meta[["cell_type"]])
 
 ```r
 results <- run_ripple(
-  input_path       = "my_seurat.rds",
+  input            = "my_seurat.rds",
   query_celltype   = "Tumor",
   celltype_column  = "cell_type",
   output_dir       = "./results",
@@ -283,7 +283,7 @@ To restrict to a specific condition (e.g., only treated samples):
 
 ```r
 results <- run_ripple(
-  input_path       = "my_seurat.rds",
+  input            = "my_seurat.rds",
   query_celltype   = "Tumor",
   celltype_column  = "cell_type",
   output_dir       = "./results",
@@ -371,7 +371,7 @@ If your query cell type co-localizes with another cell type, validate that the g
 
 ```r
 stage2 <- run_ripple_confounder(
-  input_path       = "my_seurat.rds",
+  input            = "my_seurat.rds",
   results_dir      = "./results/spatial_analysis_Tumor/tumor_ripple",
   query_celltype   = "Tumor",
   celltype_column  = "cell_type",
@@ -452,7 +452,7 @@ RIPPLE provides `run_ripple_lr()` which matches gradient genes to ligand-recepto
 
 lr_results <- run_ripple_lr(
   results_dir      = "./results/spatial_analysis_Tumor/tumor_ripple",
-  input_path       = "my_seurat.rds",
+  input            = "my_seurat.rds",
   query_celltype   = "Tumor",
   celltype_column  = "cell_type",
   organism         = "human",
