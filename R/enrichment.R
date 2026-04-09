@@ -109,6 +109,11 @@ NULL
 #' @param min_size Integer. Minimum gene set size for fGSEA. Default: 15.
 #' @param max_size Integer. Maximum gene set size for fGSEA. Default: 500.
 #' @param n_perm Integer. Number of fGSEA permutations. Default: 10000.
+#' @param min_genes Integer. Minimum number of ranked genes required to run
+#'   fGSEA for a cell type. Cell types with fewer genes are skipped.
+#'   Default: 100. Lower for small custom gene panels.
+#' @param seed Integer. Random seed for fGSEA permutations. Set to ensure
+#'   reproducibility. Default: 42.
 #'
 #' @return A \code{data.table} with columns: cell_type, pathway, pathway_clean,
 #'   pval, padj, ES, NES, size, leadingEdge. The leadingEdge column contains
@@ -125,7 +130,7 @@ NULL
 #'   \item Combines results across cell types.
 #' }
 #'
-#' Cell types with fewer than 100 ranked genes are skipped with a message.
+#' Cell types with fewer than \code{min_genes} ranked genes are skipped.
 #'
 #' @examples
 #' \dontrun{
@@ -145,7 +150,9 @@ run_ripple_fgsea <- function(results,
                               fdr_threshold = 1,
                               min_size = 15,
                               max_size = 500,
-                              n_perm = 10000) {
+                              n_perm = 10000,
+                              min_genes = 100,
+                              seed = 42) {
 
   # --- Validate inputs ---
   if (!requireNamespace("fgsea", quietly = TRUE)) {
@@ -195,11 +202,15 @@ run_ripple_fgsea <- function(results,
     stats <- stats::setNames(ct_data[[coef_col]], ct_data$gene)
     stats <- sort(stats)
 
-    if (length(stats) < 100) {
-      message("    ", ct, ": too few genes (", length(stats), "), skipping")
+    if (length(stats) < min_genes) {
+      message("    ", ct, ": too few genes (", length(stats), " < ",
+              min_genes, "), skipping")
       return(NULL)
     }
 
+    # Seed immediately before fGSEA to ensure reproducibility across runs
+    # (fgsea uses a multilevel random permutation internally)
+    set.seed(seed)
     res <- fgsea::fgsea(
       pathways = pathways,
       stats = stats,

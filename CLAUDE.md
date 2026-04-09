@@ -19,15 +19,21 @@ RIPPLE/
 ├── LICENSE
 ├── R/                       # Package source (functions with roxygen2 docs)
 │   ├── config.R             # Package options system (.onLoad, ripple_config)
-│   ├── data_loading.R       # load_seurat, load_metadata_only, check_data
+│   ├── input_adapter.R      # .resolve_input() dispatcher (internal)
+│   ├── make_input.R         # make_ripple_input, read_ripple_csv constructors
+│   ├── data_loading.R       # load_metadata_only, check_data
 │   ├── spatial.R            # get_coord_columns, build_knn_graph, distance_to_type
 │   ├── glm.R                # fit_poisson, fit_poisson_controlled, classify_decay
 │   ├── meta_analysis.R      # run_meta_analysis, compute_fisher_pval
-│   ├── permutation.R        # run_permutation_test, merge_permutation_results
+│   ├── permutation.R        # run_permutation_test(s), merge_permutation_results
 │   ├── pipeline.R           # run_ripple, run_ripple_confounder, merge_ripple_results
-│   ├── visualization.R      # plot_gradient_volcano, plot_decay_curve, spatial plots
-│   └── utils.R              # entropy, enrichment, gene scoring helpers
-├── tests/testthat/          # Unit tests
+│   ├── enrichment.R         # run_ripple_fgsea, classify_gene_specificity, bin_decay_data
+│   ├── atlas.R              # run_ripple_atlas
+│   ├── lr_integration.R     # run_ripple_lr, classify_lr_artifacts
+│   ├── visualization.R      # plot_gradient_volcano, plot_decay_curve, spatial plots,
+│   │                        # create_gradient_volcano, create_forest_plot, create_coefficient_strips
+│   └── utils.R              # calculate_enrichment, permutation_pvalue
+├── tests/testthat/          # Unit tests (53 passing)
 ├── inst/
 │   ├── scripts/             # Copies of standalone scripts (installed with package)
 │   ├── slurm/               # SLURM job templates
@@ -37,44 +43,78 @@ RIPPLE/
 
 ---
 
-## Exported Functions (28 total)
+## Exported Functions (37 total)
 
 | Module | Functions | Purpose |
 |--------|-----------|---------|
 | `pipeline.R` | `run_ripple`, `run_ripple_confounder`, `merge_ripple_results` | Main entry points |
+| `atlas.R` | `run_ripple_atlas` | Stage 5 publication atlas |
+| `enrichment.R` | `run_ripple_fgsea`, `classify_gene_specificity`, `bin_decay_data` | Pathway enrichment + specificity |
+| `lr_integration.R` | `run_ripple_lr`, `classify_lr_artifacts` | Ligand-receptor integration |
 | `config.R` | `ripple_config` | Get/set package options |
-| `data_loading.R` | `load_seurat`, `load_metadata_only`, `check_data` | Data loading |
+| `make_input.R` | `make_ripple_input`, `read_ripple_csv` | Build canonical Seurat/SPE from raw matrices or CSVs |
+| `data_loading.R` | `load_metadata_only`, `check_data` | Lightweight metadata access |
 | `glm.R` | `fit_poisson`, `fit_poisson_controlled`, `classify_decay_pattern` | Core statistical models |
 | `meta_analysis.R` | `run_meta_analysis`, `compute_fisher_pval` | Cross-replicate inference |
-| `permutation.R` | `run_permutation_test`, `merge_permutation_results` | Null distribution |
+| `permutation.R` | `run_permutation_test`, `run_permutation_tests`, `merge_permutation_results` | Null distribution |
 | `spatial.R` | `get_coord_columns`, `build_knn_graph`, `build_radius_graph`, `calculate_distance_to_type`, `get_neighbor_cell_types`, `calculate_neighbor_composition` | Spatial utilities |
-| `visualization.R` | `plot_spatial_scatter`, `plot_spatial_single`, `plot_spatial_by_sample`, `plot_gradient_volcano`, `plot_decay_curve`, `plot_violin` | Plotting |
-| `utils.R` | `shannon_entropy`, `calculate_enrichment`, `score_gene_signature`, `score_multiple_modules`, `permutation_pvalue`, `calculate_neighborhood_entropy` | Helpers |
+| `visualization.R` | `plot_spatial_single`, `plot_spatial_by_sample`, `plot_gradient_volcano`, `plot_decay_curve`, `create_gradient_volcano`, `create_forest_plot`, `create_coefficient_strips` | Plotting |
+| `utils.R` | `calculate_enrichment`, `permutation_pvalue` | Helpers |
 
 ---
 
 ## Usage
+
+### Accepted input formats
+
+All pipeline functions accept any of:
+- Path to an `.rds` file containing a Seurat, SingleCellExperiment, or SpatialExperiment object
+- In-memory Seurat object
+- In-memory SingleCellExperiment
+- In-memory SpatialExperiment (coordinates from `spatialCoords()`)
+
+For raw matrices or CSV files, first build a canonical object with
+`make_ripple_input()` or `read_ripple_csv()`.
 
 ### Quick start
 
 ```r
 library(ripple)
 results <- run_ripple(
-  input_path      = "my_seurat.rds",
+  input           = "my_data.rds",   # Seurat, SCE, or SPE .rds
   query_celltype  = "Tumor",
   celltype_column = "cell_type",
   output_dir      = "./results"
 )
 ```
 
+### Building a canonical object from matrices
+
+```r
+spe <- make_ripple_input(
+  counts       = my_counts,         # sparse or dense, genes x cells
+  metadata     = my_metadata,       # data.frame, cells as rows
+  coords       = my_coords,         # 2-column matrix (x, y)
+  output_class = "SpatialExperiment"  # or "Seurat"
+)
+results <- run_ripple(spe, query_celltype = "Tumor", celltype_column = "cell_type")
+```
+
+### From CSVs
+
+```r
+spe <- read_ripple_csv("/path/to/csv_dir",   # counts.csv, metadata.csv, coords.csv
+                       output_class = "SpatialExperiment")
+results <- run_ripple(spe, query_celltype = "Tumor", celltype_column = "cell_type")
+```
+
 ### With condition filtering
 
 ```r
 results <- run_ripple(
-  input_path       = "my_seurat.rds",
+  input            = my_spe,
   query_celltype   = "Tumor",
   celltype_column  = "cell_type",
-  output_dir       = "./results",
   condition_column = "treatment",
   condition_value  = "treated"
 )
@@ -84,7 +124,7 @@ results <- run_ripple(
 
 ```r
 merged <- merge_ripple_results(
-  results_dir    = "./results/spatial_analysis_Tumor/tumor_ripple",
+  results_dir      = "./results/spatial_analysis_Tumor/ripple",
   recompute_fisher = TRUE
 )
 ```
@@ -93,23 +133,23 @@ merged <- merge_ripple_results(
 
 ```r
 stage2 <- run_ripple_confounder(
-  input_path       = "my_seurat.rds",
-  results_dir      = "./results/spatial_analysis_Tumor/tumor_ripple",
+  input            = my_spe,
+  results_dir      = "./results/spatial_analysis_Tumor/ripple",
   query_celltype   = "Tumor",
   celltype_column  = "cell_type",
   control_celltype = "CAF"
 )
 ```
 
-### Atlas figures
+### Atlas figures (with fGSEA)
 
 ```r
 run_ripple_atlas(
-  results_dir = "./results/spatial_analysis_Tumor/tumor_ripple",
-  output_dir  = "./results/spatial_analysis_Tumor/tumor_ripple/atlas",
+  results_dir = "./results/spatial_analysis_Tumor/ripple",
   query_label = "Tumor",
   run_fgsea   = TRUE,
-  organism    = "human"
+  organism    = "human",
+  fgsea_seed  = 42         # reproducible pathway enrichment
 )
 ```
 
@@ -143,11 +183,11 @@ Per-sample coefficients are combined via **Fisher's combined p-value** with sign
 | Stage | Type | R Package Function(s) | Description |
 |-------|------|-----------------------|-------------|
 | **1. Distance Correlation** | Core | `run_ripple()` | Per-sample Poisson GLM: gene expression ~ distance to query, with cell-size offset |
-| **2. GPU Permutation** | Optional | `run_permutation_test()` | GPU-accelerated null distribution (label permutation) -- validates query specificity |
-| **3. Merge & Summarize** | Core | `merge_ripple_results()`, `compute_fisher_pval()` | Integrate permutation p-values, compute Fisher's combined p-value, merge across cell types |
+| **2. Permutation Validation** | Optional | `run_permutation_tests()` (R, CPU) or `inst/python/run_permutation_gpu.py` (GPU) | Null distribution via label permutation -- validates query specificity. GPU script is faster for large datasets. |
+| **3. Merge & Summarize** | Core | `merge_ripple_results()`, `merge_permutation_results()`, `compute_fisher_pval()` | Integrate permutation p-values, compute Fisher's combined p-value, merge across cell types |
 | **4. Confounder Control** | Optional | `run_ripple_confounder()` | Bivariate GLM adding distance-to-control-cell-type -- isolates query-specific effects from shared niche |
-| **5. Visualization** | Optional | `run_ripple_atlas()`, `plot_gradient_volcano()`, `plot_decay_curve()` | Volcanos, decay curves, heatmaps, dotplots, fGSEA pathway enrichment |
-| **6. L-R Integration** | Optional | `run_ripple_lr()`, `classify_lr_artifacts()` | Match gradient genes to ligand-receptor pairs via NicheNet, artifact classification |
+| **5. Visualization & Enrichment** | Optional | `run_ripple_atlas()`, `run_ripple_fgsea()`, `classify_gene_specificity()`, `plot_gradient_volcano()`, `plot_decay_curve()` | Volcanos, decay curves, heatmaps, dotplots, fGSEA pathway enrichment, contamination flagging |
+| **6. L-R Integration** | Optional | `run_ripple_lr()`, `classify_lr_artifacts()` | Match gradient genes to ligand-receptor pairs via NicheNet, 4-tier artifact classification |
 
 ---
 
@@ -159,18 +199,19 @@ RIPPLE can be configured via environment variables (read by `ripple_config()` an
 
 | Parameter / Env Var | Default | Description |
 |---------------------|---------|-------------|
-| `input_path` / `INPUT_PATH` | -- | Path to Seurat object (`.rds`) with raw counts |
+| `input` / `INPUT_PATH` | -- | Seurat, SCE, or SpatialExperiment object (or path to an `.rds` file containing one) |
 | `query_celltype` / `QUERY_CELLTYPE` | -- | Cell type label for the source population |
 | `celltype_column` / `CELLTYPE_COLUMN` | -- | Metadata column containing cell type annotations |
-| `output_dir` / `OUTPUT_DIR` | `./results` | Output directory |
+| `output_dir` / `OUTPUT_DIR` | `.` | Output directory |
 | `sample_column` / `SAMPLE_COLUMN` | `sample_id` | Metadata column for sample/replicate IDs |
-| `condition_column` / `CONDITION_COLUMN` | -- | Metadata column for condition/group filtering |
-| `condition_value` / `CONDITION_VALUE` | -- | Which condition to analyze |
-| `target_celltypes` / `TARGET_CELLTYPES` | auto-detect all | Comma-separated target cell types |
+| `condition_column` / `CONDITION_COLUMN` | `NULL` | Metadata column for condition filtering |
+| `condition_value` / `CONDITION_VALUE` | `NULL` | Which condition to analyze (`NULL` = all) |
+| `target_celltypes` / `TARGET_CELLTYPES` | auto-detect all | Character vector of target cell types |
 | `query_label` / `QUERY_LABEL` | Same as query_celltype | Display name for plots |
-| `query_signature_genes` / `QUERY_SIGNATURE_GENES` | -- | Comma-separated markers for contamination check |
+| `query_signature_genes` / `QUERY_SIGNATURE_GENES` | -- | Query markers for contamination check |
 | `control_celltype` / `CONTROL_CELLTYPE` | -- | Control cell type for Stage 4 |
 | `k_neighbors` / `K_NEIGHBORS` | `1` | k for kNN distance calculation |
+| `analysis_name` | `"ripple"` | Subdirectory under `output_dir` for this analysis |
 
 ### Internal / Advanced
 

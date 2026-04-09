@@ -166,9 +166,17 @@ compute_fisher_pval <- function(pvals, coefs, min_samples = 2,
   median_coef <- median(valid_coefs)
 
   # Sign consistency check
+  # Exact zeros are treated as agreeing with both directions so they don't
+  # artificially drag the consistency below threshold. If all coefficients
+  # are zero, consistency is defined as 1 (nothing disagrees).
   n_pos <- sum(valid_coefs > 0)
   n_neg <- sum(valid_coefs < 0)
-  sign_consistency <- max(n_pos, n_neg) / n_valid
+  n_nonzero <- n_pos + n_neg
+  if (n_nonzero == 0) {
+    sign_consistency <- 1.0
+  } else {
+    sign_consistency <- max(n_pos, n_neg) / n_nonzero
+  }
 
   if (sign_consistency < sign_threshold) {
     # Contradictory directions -- not significant

@@ -360,6 +360,8 @@ run_ripple_atlas <- function(results_dir,
                               run_fgsea = TRUE,
                               gene_sets = "hallmark",
                               organism = "mouse",
+                              fgsea_min_genes = 100,
+                              fgsea_seed = 42,
                               stage2_dir = NULL,
                               verbose = TRUE) {
 
@@ -548,7 +550,8 @@ run_ripple_atlas <- function(results_dir,
       tryCatch({
         fgsea_results <- run_ripple_fgsea(
           all_results, gene_sets = gene_sets, organism = organism,
-          coef_col = coef_col, fdr_col = sig_col
+          coef_col = coef_col, fdr_col = sig_col,
+          min_genes = fgsea_min_genes, seed = fgsea_seed
         )
 
         if (nrow(fgsea_results) > 0) {
