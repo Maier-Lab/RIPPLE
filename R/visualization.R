@@ -918,7 +918,7 @@ plot_k_diagnostics <- function(input,
     ggplot2::scale_x_continuous(breaks = k_range) +
     ggplot2::labs(
       title = "SD of distance to query vs k",
-      subtitle = "Elbow = distance estimate stabilizes",
+      subtitle = "Flat = k=1 is sufficient; sharp drop = higher k stabilizes the estimate",
       x = "k (number of nearest query cells)",
       y = "SD of distance (um)",
       color = "Cell type"
