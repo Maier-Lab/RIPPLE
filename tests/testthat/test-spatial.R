@@ -39,3 +39,60 @@ test_that("calculate_distance_to_type computes distances", {
   # Cell 2 (B at 1,0): distance to itself should be 0 or to other B
   expect_true(dists[2] >= 0)
 })
+
+test_that("check_spatial_autocorrelation works on synthetic data", {
+  skip_if_not_installed("spdep")
+  skip_if_not_installed("SpatialExperiment")
+  skip_if_not_installed("S4Vectors")
+
+  set.seed(42)
+  n <- 200
+
+  # Build a synthetic SPE with query + target cells
+  x <- runif(n, 0, 500)
+  y <- runif(n, 0, 500)
+  ct <- c(rep("query", 30), rep("target", n - 30))
+
+  # Gene with spatially correlated expression near query
+  dists_to_query <- sapply(seq_len(n), function(i) {
+    min(sqrt((x[i] - x[1:30])^2 + (y[i] - y[1:30])^2))
+  })
+  gene_counts <- rpois(n, lambda = exp(-2 - 0.005 * dists_to_query))
+  bg_counts <- rpois(n, lambda = 2)
+
+  counts <- rbind(gene_counts, bg_counts)
+  rownames(counts) <- c("GRADIENT_GENE", "FLAT_GENE")
+  colnames(counts) <- paste0("cell_", seq_len(n))
+  counts <- methods::as(counts, "CsparseMatrix")
+
+  meta <- data.frame(
+    cell_type = ct,
+    sample_id = "s1",
+    row.names = colnames(counts)
+  )
+  coords_mat <- cbind(x, y)
+  rownames(coords_mat) <- colnames(counts)
+
+  spe <- SpatialExperiment::SpatialExperiment(
+    assays = list(counts = counts),
+    colData = S4Vectors::DataFrame(meta),
+    spatialCoords = coords_mat
+  )
+
+  result <- check_spatial_autocorrelation(
+    input           = spe,
+    genes           = c("GRADIENT_GENE", "FLAT_GENE"),
+    celltype_column = "cell_type",
+    target_celltype = "target",
+    query_celltype  = "query",
+    sample_column   = "sample_id",
+    k               = 10,
+    verbose         = FALSE
+  )
+
+  expect_s3_class(result, "data.table")
+  expect_true(all(c("gene", "sample_id", "morans_i", "morans_pvalue",
+                    "interpretation") %in% names(result)))
+  expect_equal(nrow(result), 2)  # 2 genes x 1 sample
+  expect_true(all(!is.na(result$morans_i)))
+})

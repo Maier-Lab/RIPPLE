@@ -24,54 +24,61 @@ NULL
 #'
 #' @noRd
 .load_nichenet_db <- function(organism = "mouse") {
-  if (!requireNamespace("nichenetr", quietly = TRUE)) {
-    stop("Package 'nichenetr' is required for L-R integration.\n",
-         "Install with: devtools::install_github('saeyslab/nichenetr')",
-         call. = FALSE)
+  # NicheNet v2 networks are hosted on Zenodo (record 7074291)
+  # No longer bundled as package data objects in recent nichenetr versions
+  zenodo_base <- "https://zenodo.org/record/7074291/files"
+
+  if (organism == "human") {
+    lr_url <- paste0(zenodo_base, "/lr_network_human_21122021.rds")
+    ltm_url <- paste0(zenodo_base, "/ligand_target_matrix_nsga2r_final.rds")
+  } else {
+    lr_url <- paste0(zenodo_base, "/lr_network_mouse_21122021.rds")
+    ltm_url <- paste0(zenodo_base, "/ligand_target_matrix_nsga2r_final_mouse.rds")
   }
 
-  message("  Loading NicheNet L-R network...")
+  # Cache directory
+  cache_dir <- tools::R_user_dir("ripple", which = "cache")
+  if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE)
 
-  lr_network_all <- nichenetr::lr_network
-  if (is.null(lr_network_all) || nrow(lr_network_all) == 0) {
-    stop("Failed to load NicheNet L-R network. ",
-         "Ensure nichenetr is properly installed with its data files.",
-         call. = FALSE)
+  lr_cache <- file.path(cache_dir, paste0("lr_network_", organism, ".rds"))
+  ltm_cache <- file.path(cache_dir, paste0("ligand_target_matrix_", organism, ".rds"))
+
+  # Download if not cached
+  if (!file.exists(lr_cache)) {
+    message("  Downloading NicheNet L-R network (", organism, ")...")
+    utils::download.file(lr_url, lr_cache, mode = "wb", quiet = TRUE)
+  } else {
+    message("  Using cached NicheNet L-R network")
   }
 
-  # Standardize gene names
-  lr_network_all <- as.data.frame(lr_network_all)
-  lr_network_all$ligand <- nichenetr::convert_alias_to_symbols(
-    lr_network_all$ligand, organism = organism
-  )
-  lr_network_all$receptor <- nichenetr::convert_alias_to_symbols(
-    lr_network_all$receptor, organism = organism
-  )
-  lr_network_all$ligand <- make.names(lr_network_all$ligand)
-  lr_network_all$receptor <- make.names(lr_network_all$receptor)
+  if (!file.exists(ltm_cache)) {
+    message("  Downloading NicheNet ligand-target matrix (", organism, ")...")
+    utils::download.file(ltm_url, ltm_cache, mode = "wb", quiet = TRUE)
+  } else {
+    message("  Using cached NicheNet ligand-target matrix")
+  }
+
+  message("  Loading L-R network...")
+  lr_network_all <- as.data.frame(readRDS(lr_cache))
+
+  # NicheNet v2 uses 'from'/'to' column names; v1 used 'ligand'/'receptor'
+  if ("from" %in% names(lr_network_all) && !"ligand" %in% names(lr_network_all)) {
+    names(lr_network_all)[names(lr_network_all) == "from"] <- "ligand"
+    names(lr_network_all)[names(lr_network_all) == "to"] <- "receptor"
+  }
+
+  lr_network_all$ligand <- make.names(as.character(lr_network_all$ligand))
+  lr_network_all$receptor <- make.names(as.character(lr_network_all$receptor))
 
   lr_network <- data.table::as.data.table(
     unique(lr_network_all[, c("ligand", "receptor")])
   )
 
-  message("  Loading NicheNet ligand-target matrix...")
+  message("  Loading ligand-target matrix...")
+  ligand_target_matrix <- readRDS(ltm_cache)
 
-  ligand_target_matrix <- nichenetr::ligand_target_matrix
-  if (is.null(ligand_target_matrix)) {
-    stop("Failed to load NicheNet ligand-target matrix.",
-         call. = FALSE)
-  }
-
-  colnames(ligand_target_matrix) <- make.names(
-    nichenetr::convert_alias_to_symbols(
-      colnames(ligand_target_matrix), organism = organism
-    )
-  )
-  rownames(ligand_target_matrix) <- make.names(
-    nichenetr::convert_alias_to_symbols(
-      rownames(ligand_target_matrix), organism = organism
-    )
-  )
+  colnames(ligand_target_matrix) <- make.names(colnames(ligand_target_matrix))
+  rownames(ligand_target_matrix) <- make.names(rownames(ligand_target_matrix))
 
   # Filter L-R network to ligands present in target matrix
   lr_network <- lr_network[ligand %in% colnames(ligand_target_matrix)]
@@ -227,7 +234,7 @@ NULL
 #'
 #' The combined score is a weighted average:
 #' \code{(4 * direct + 3 * activity + 2 * enrichment + 1 * expression) / 10},
-#' where each component is rescaled to [0, 1].
+#' where each component is rescaled to the 0-1 range.
 #'
 #' @examples
 #' \dontrun{
@@ -762,7 +769,7 @@ run_ripple_lr <- function(results_dir,
 #'   \item{Rule 1 - "artifact"}{Receptor is in \code{query_signature} AND
 #'     cell type is NOT in \code{myeloid_celltypes}.}
 #'   \item{Rule 2 - "suspect"}{Receptor is in \code{contamination_genes}
-#'     AND cell type is NOT myeloid AND receptor expression < 5\%.}
+#'     AND cell type is NOT myeloid AND receptor expression < 5 percent.}
 #'   \item{Rule 3 - "low_confidence"}{Cell type is NOT myeloid AND
 #'     receptor expression < \code{low_expr_threshold}.}
 #'   \item{Default - "clean"}{All other pairs.}

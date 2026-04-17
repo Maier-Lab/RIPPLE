@@ -35,6 +35,7 @@ export(get_coord_columns)
 export(build_knn_graph)
 export(build_radius_graph)
 export(calculate_distance_to_type)
+export(check_spatial_autocorrelation)
 export(get_neighbor_cell_types)
 export(calculate_neighbor_composition)
 
@@ -124,6 +125,14 @@ importFrom(stats,poisson)
 importFrom(stats,pchisq)
 importFrom(stats,AIC)
 importFrom(stats,nls)
+importFrom(stats,coef)
+importFrom(stats,median)
+
+# utils
+importFrom(utils,head)
+
+# methods
+importFrom(methods,as)
 
 # Seurat
 importFrom(Seurat,Assays)
