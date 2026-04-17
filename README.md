@@ -547,7 +547,7 @@ If you ran the confounder control, you can cross-reference to focus on query-spe
 
 ```r
 # Load Stage 4 classifications
-stage2 <- fread("./results/spatial_analysis_Tumor/tumor_ripple_stage2/summary/stage2_all_results.csv")
+stage2 <- read_csv("./results/spatial_analysis_Tumor/tumor_ripple_stage2/summary/stage2_all_results.csv")
 
 # Keep only L-R pairs where the receptor gene is query-specific (not niche-driven)
 query_specific_genes <- stage2[classification == "query_specific"]$gene
@@ -564,7 +564,7 @@ lr_validated[1:10, .(ligand, receptor, cell_type, combined_score)]
 
 ## Input Data Format
 
-RIPPLE expects a Seurat object (`.rds`) with the following structure:
+RIPPLE expects an object (`.rds`) with the following structure:
 
 | Component | Description |
 |-----------|-------------|
@@ -616,12 +616,12 @@ RIPPLE uses a per-sample Poisson GLM framework designed for count-based spatial 
 
 ## Citation
 
-A bibentry is shipped in `inst/CITATION` and will be picked up by `citation("ripple")`. The placeholder will be updated once the accompanying manuscript (skeleton in `paper/ripple_methods.Rmd`) is posted on bioRxiv.
+A bibentry is shipped in `inst/CITATION` and will be picked up by `citation("ripple")`. To be updated!
 
-> *Citation forthcoming (bioRxiv preprint in preparation).*
+> *Citation not here (bioRxiv preprint later).*
 
 ---
 
 ## License
 
-*License forthcoming.*
+*License not here.*
