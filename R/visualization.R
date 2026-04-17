@@ -898,6 +898,7 @@ plot_k_diagnostics <- function(input,
     ggplot2::scale_x_continuous(breaks = k_range) +
     ggplot2::labs(
       title = "Mean distance to query vs k",
+      subtitle = "Steep rise = query cells are clustered, use low k; flat = k has little effect",
       x = "k (number of nearest query cells)",
       y = "Mean distance (um)",
       color = "Cell type"
