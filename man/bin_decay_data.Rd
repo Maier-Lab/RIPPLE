@@ -56,8 +56,10 @@ binned <- bin_decay_data(
 library(ggplot2)
 ggplot(binned, aes(x = bin_center, y = prop_expressing)) +
   geom_point() +
-  geom_errorbar(aes(ymin = prop_expressing - se_prop,
-                    ymax = prop_expressing + se_prop), width = 2) +
+  geom_errorbar(aes(
+    ymin = prop_expressing - se_prop,
+    ymax = prop_expressing + se_prop
+  ), width = 2) +
   labs(x = "Distance to query", y = "Proportion expressing")
 }
 

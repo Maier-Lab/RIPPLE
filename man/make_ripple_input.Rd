@@ -55,9 +55,9 @@ Seurat object's \code{@meta.data}.
 \dontrun{
 # Build a SpatialExperiment from raw matrices
 spe <- make_ripple_input(
-  counts   = my_counts,       # matrix or dgCMatrix
-  metadata = my_metadata,     # data.frame with sample_id, cell_type, etc.
-  coords   = my_coords,       # two-column matrix (x, y)
+  counts = my_counts, # matrix or dgCMatrix
+  metadata = my_metadata, # data.frame with sample_id, cell_type, etc.
+  coords = my_coords, # two-column matrix (x, y)
   output_class = "SpatialExperiment"
 )
 

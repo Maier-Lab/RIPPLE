@@ -104,7 +104,7 @@ where each component is rescaled to the 0-1 range.
 \dontrun{
 lr_results <- run_ripple_lr(
   results_dir     = "output/distance_correlation/",
-  input           = my_spe,   # or a Seurat/SCE object, or a path to an .rds
+  input           = my_spe, # or a Seurat/SCE object, or a path to an .rds
   query_celltype  = "Neutrophil",
   celltype_column = "cell_type",
   organism        = "mouse"

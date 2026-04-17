@@ -31,8 +31,10 @@ a canonical object.
 \examples{
 \dontrun{
 spe <- read_ripple_csv("/path/to/csv_dir", output_class = "SpatialExperiment")
-results <- run_ripple(spe, query_celltype = "Tumor",
-                      celltype_column = "cell_type")
+results <- run_ripple(spe,
+  query_celltype = "Tumor",
+  celltype_column = "cell_type"
+)
 }
 
 }
