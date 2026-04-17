@@ -1,0 +1,29 @@
+citHeader("To cite RIPPLE in publications, please use:")
+
+bibentry(
+  bibtype  = "Misc",
+  title    = "RIPPLE: Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation",
+  author   = c(person("Carolina", "Mangana")),
+  year     = format(Sys.Date(), "%Y"),
+  note     = "R package version 0.1.0",
+  url      = "https://github.com/CMangana/RIPPLE",
+  textVersion = paste0(
+    "Mangana C (", format(Sys.Date(), "%Y"), "). ",
+    "RIPPLE: Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation. ",
+    "R package version 0.1.0. https://github.com/CMangana/RIPPLE"
+  )
+)
+
+## Once the bioRxiv preprint is live, replace the entry above with an Article
+## bibentry pointing to the preprint DOI, e.g.:
+##
+## bibentry(
+##   bibtype  = "Article",
+##   title    = "RIPPLE: ...",
+##   author   = c(person("Carolina", "Mangana"), ...),
+##   journal  = "bioRxiv",
+##   year     = 2026,
+##   doi      = "10.1101/XXXX.XX.XX.XXXXXX",
+##   url      = "https://doi.org/10.1101/XXXX.XX.XX.XXXXXX",
+##   textVersion = "..."
+## )

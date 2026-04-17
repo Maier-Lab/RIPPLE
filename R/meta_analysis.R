@@ -66,15 +66,18 @@ run_meta_analysis <- function(coefs, ses, sample_ids, method = "REML") {
   ses <- ses[valid_idx]
   sample_ids <- sample_ids[valid_idx]
 
-  meta_result <- tryCatch({
-    meta::metagen(
-      TE = coefs,
-      seTE = ses,
-      studlab = sample_ids,
-      random = TRUE,
-      method.tau = method
-    )
-  }, error = function(e) NULL)
+  meta_result <- tryCatch(
+    {
+      meta::metagen(
+        TE = coefs,
+        seTE = ses,
+        studlab = sample_ids,
+        random = TRUE,
+        method.tau = method
+      )
+    },
+    error = function(e) NULL
+  )
 
   if (is.null(meta_result)) {
     return(na_result)
@@ -190,7 +193,7 @@ compute_fisher_pval <- function(pvals, coefs, min_samples = 2,
   }
 
   # Fisher's method: X^2 = -2 * sum(log(p_i)), df = 2k
-  clamped_pvals <- pmax(valid_pvals, 1e-15)  # avoid log(0)
+  clamped_pvals <- pmax(valid_pvals, 1e-15) # avoid log(0)
   fisher_stat <- -2 * sum(log(clamped_pvals))
   fisher_pval <- stats::pchisq(fisher_stat, df = 2 * n_valid, lower.tail = FALSE)
 

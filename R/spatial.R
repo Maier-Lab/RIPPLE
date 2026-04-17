@@ -42,13 +42,19 @@ get_coord_columns <- function(meta, x_col = NULL, y_col = NULL) {
 
   # Priority 1: user-specified via arguments
   if (!is.null(x_col) && !is.null(y_col) &&
-      nzchar(x_col) && nzchar(y_col)) {
-    if (!x_col %in% col_names)
-      stop(sprintf("X column '%s' not found in metadata. Available: %s",
-                   x_col, paste(head(col_names, 20), collapse = ", ")))
-    if (!y_col %in% col_names)
-      stop(sprintf("Y column '%s' not found in metadata. Available: %s",
-                   y_col, paste(head(col_names, 20), collapse = ", ")))
+    nzchar(x_col) && nzchar(y_col)) {
+    if (!x_col %in% col_names) {
+      stop(sprintf(
+        "X column '%s' not found in metadata. Available: %s",
+        x_col, paste(head(col_names, 20), collapse = ", ")
+      ))
+    }
+    if (!y_col %in% col_names) {
+      stop(sprintf(
+        "Y column '%s' not found in metadata. Available: %s",
+        y_col, paste(head(col_names, 20), collapse = ", ")
+      ))
+    }
     return(c(x_col, y_col))
   }
 
@@ -65,10 +71,12 @@ get_coord_columns <- function(meta, x_col = NULL, y_col = NULL) {
     }
   }
 
-  stop("Could not find spatial coordinate columns in metadata.\n",
-       "  Tried: spatial_x/spatial_y, x/y, x_centroid/y_centroid\n",
-       "  Provide x_col and y_col arguments to specify custom column names.\n",
-       "  Available columns: ", paste(head(col_names, 30), collapse = ", "))
+  stop(
+    "Could not find spatial coordinate columns in metadata.\n",
+    "  Tried: spatial_x/spatial_y, x/y, x_centroid/y_centroid\n",
+    "  Provide x_col and y_col arguments to specify custom column names.\n",
+    "  Available columns: ", paste(head(col_names, 30), collapse = ", ")
+  )
 }
 
 
@@ -101,7 +109,7 @@ build_knn_graph <- function(coords, k = 20) {
   message(sprintf("Building %d-nearest neighbor graph for %d cells...", k, nrow(coords)))
 
   # RANN::nn2 is very fast for kNN queries
-  nn_result <- RANN::nn2(coords, coords, k = k + 1)  # +1 because cell is its own neighbor
+  nn_result <- RANN::nn2(coords, coords, k = k + 1) # +1 because cell is its own neighbor
 
   # Remove self (first column)
   list(
@@ -353,10 +361,11 @@ check_spatial_autocorrelation <- function(input,
                                           x_column = NULL,
                                           y_column = NULL,
                                           verbose = TRUE) {
-
   if (!requireNamespace("spdep", quietly = TRUE)) {
     stop("Package 'spdep' is required for spatial autocorrelation testing.\n",
-         "Install with: install.packages('spdep')", call. = FALSE)
+      "Install with: install.packages('spdep')",
+      call. = FALSE
+    )
   }
 
   .msg <- function(...) if (isTRUE(verbose)) message(...)
@@ -375,11 +384,13 @@ check_spatial_autocorrelation <- function(input,
   # Validate columns
   if (!celltype_column %in% names(cell_data)) {
     stop("celltype_column '", celltype_column, "' not found in metadata.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (!sample_column %in% names(cell_data)) {
     stop("sample_column '", sample_column, "' not found in metadata.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   # Calculate distances to query
@@ -393,13 +404,15 @@ check_spatial_autocorrelation <- function(input,
 
   # Subset to target cells within max_distance
   target_mask <- cell_data[[celltype_column]] == target_celltype &
-                 cell_data$dist_to_query <= max_distance_um
+    cell_data$dist_to_query <= max_distance_um
   target_data <- cell_data[target_mask]
   target_barcodes <- target_data$barcode
   target_coords <- coords[target_mask, , drop = FALSE]
 
-  .msg("Target cells (", target_celltype, " within ", max_distance_um,
-       " um): ", nrow(target_data))
+  .msg(
+    "Target cells (", target_celltype, " within ", max_distance_um,
+    " um): ", nrow(target_data)
+  )
 
   # Total counts for offset
   target_counts <- count_matrix[, target_barcodes, drop = FALSE]
@@ -441,7 +454,7 @@ check_spatial_autocorrelation <- function(input,
 
       # Fit Poisson GLM (same as fit_poisson but we need the full model)
       valid <- !is.na(samp_counts) & !is.na(samp_dist) &
-               samp_total > 0 & is.finite(samp_dist)
+        samp_total > 0 & is.finite(samp_dist)
       if (sum(valid) < max(k + 1, 30) || sum(samp_counts[valid] > 0) < 5) {
         return(data.table::data.table(
           gene = g, sample_id = s,
@@ -458,7 +471,8 @@ check_spatial_autocorrelation <- function(input,
 
       fit <- tryCatch(
         suppressWarnings(stats::glm(y ~ d + offset(log_total),
-                                    family = stats::poisson())),
+          family = stats::poisson()
+        )),
         error = function(e) NULL
       )
 
@@ -524,7 +538,8 @@ check_spatial_autocorrelation <- function(input,
     .msg("  Median Moran's I: ", round(stats::median(results$morans_i, na.rm = TRUE), 4))
     interp_tab <- table(results$interpretation)
     .msg("  Interpretation: ", paste(names(interp_tab), interp_tab,
-                                     sep = "=", collapse = ", "))
+      sep = "=", collapse = ", "
+    ))
   }
 
   results

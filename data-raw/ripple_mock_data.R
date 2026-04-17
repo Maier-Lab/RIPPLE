@@ -28,30 +28,30 @@ library(Matrix)
 # ---------------------------------------------------------------------------
 # Parameters
 # ---------------------------------------------------------------------------
-n_samples        <- 3
+n_samples <- 3
 cells_per_sample <- list(Tumor = 30, T_cell = 100, Fibroblast = 70)
-n_induced        <- 5
-n_repressed      <- 5
-n_background     <- 40
+n_induced <- 5
+n_repressed <- 5
+n_background <- 40
 
-field_um         <- 500   # size of the spatial field
-tumor_radius     <- 60    # radius of the tumor cluster
-decay_scale_um   <- 40    # characteristic decay distance for planted genes
+field_um <- 500 # size of the spatial field
+tumor_radius <- 60 # radius of the tumor cluster
+decay_scale_um <- 40 # characteristic decay distance for planted genes
 
-background_rate  <- 2     # mean counts per cell for background genes
-induced_low      <- 1     # floor counts far from tumor
-induced_high     <- 12    # peak counts adjacent to tumor
-repressed_low    <- 1     # counts near tumor
-repressed_high   <- 8     # counts far from tumor
+background_rate <- 2 # mean counts per cell for background genes
+induced_low <- 1 # floor counts far from tumor
+induced_high <- 12 # peak counts adjacent to tumor
+repressed_low <- 1 # counts near tumor
+repressed_high <- 8 # counts far from tumor
 
 # ---------------------------------------------------------------------------
 # Gene catalog
 # ---------------------------------------------------------------------------
-induced_genes    <- paste0("INDUCED_", seq_len(n_induced))
-repressed_genes  <- paste0("REPRESSED_", seq_len(n_repressed))
+induced_genes <- paste0("INDUCED_", seq_len(n_induced))
+repressed_genes <- paste0("REPRESSED_", seq_len(n_repressed))
 background_genes <- paste0("BG_", sprintf("%02d", seq_len(n_background)))
-all_genes        <- c(induced_genes, repressed_genes, background_genes)
-n_genes          <- length(all_genes)
+all_genes <- c(induced_genes, repressed_genes, background_genes)
+n_genes <- length(all_genes)
 
 # ---------------------------------------------------------------------------
 # Helper: sample points inside a 2D disc around a center
@@ -108,7 +108,8 @@ build_sample <- function(sample_id) {
   dist_to_tumor <- numeric(n_total)
   for (i in seq_len(n_total)) {
     dists <- sqrt(rowSums((tumor_xy - matrix(all_xy[i, ], n_tumor, 2,
-                                             byrow = TRUE))^2))
+      byrow = TRUE
+    ))^2))
     dist_to_tumor[i] <- min(dists)
   }
 
@@ -163,7 +164,7 @@ sample_names <- paste0("sample_", seq_len(n_samples))
 samples <- lapply(sample_names, build_sample)
 
 all_counts <- do.call(cbind, lapply(samples, `[[`, "counts"))
-all_meta   <- do.call(rbind, lapply(samples, `[[`, "meta"))
+all_meta <- do.call(rbind, lapply(samples, `[[`, "meta"))
 all_coords <- do.call(rbind, lapply(samples, `[[`, "coords"))
 rownames(all_coords) <- rownames(all_meta)
 
@@ -171,8 +172,10 @@ message("Synthetic dataset built:")
 message("  Genes: ", nrow(all_counts))
 message("  Cells: ", ncol(all_counts))
 message("  Samples: ", length(unique(all_meta$sample_id)))
-message("  Cell types: ",
-        paste(names(table(all_meta$cell_type)), collapse = ", "))
+message(
+  "  Cell types: ",
+  paste(names(table(all_meta$cell_type)), collapse = ", ")
+)
 print(table(all_meta$cell_type, all_meta$sample_id))
 
 # Convert counts to a sparse matrix to match real data

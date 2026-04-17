@@ -1,0 +1,168 @@
+---
+title: "RIPPLE benchmark: FDR calibration, power, and method comparison"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{RIPPLE benchmark: FDR calibration, power, and method comparison}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  out.width = "100%"
+)
+library(data.table)
+library(ggplot2)
+library(patchwork)
+```
+
+## Overview
+
+This vignette presents three benchmarks that validate RIPPLE's statistical
+properties on synthetic data:
+
+1. **FDR calibration under the null** — empirical type-I error control.
+2. **Power curves** — sensitivity as a function of effect size and sample count.
+3. **Method comparison** — RIPPLE vs. MISTy and nnSVG on shared synthetic data.
+
+All benchmarks use a common synthetic data generator (`data-raw/benchmarks/`)
+that produces `SpatialExperiment` objects with controllable spatial structure
+and optional planted distance-dependent gradients.
+
+## Synthetic data design
+
+Each dataset contains three cell types:
+
+- **Tumour** (30 cells): dense central cluster (radius 60 µm).
+- **T cells** (120 cells): uniformly distributed; these are the target for
+  gradient testing.
+- **Fibroblasts** (50 cells): annular ring at 100--200 µm from the tumour
+  centre.
+
+For **null** datasets, all genes follow a flat Poisson rate with no distance
+dependence. For **gradient** datasets, a subset of genes in T cells have
+expression rates modulated by `exp(beta * distance_to_tumour)`, where `beta`
+controls the strength and direction of the gradient.
+
+## 1. FDR calibration under the null
+
+50 null datasets (no planted gradient, 50 background genes each) were generated
+for each of three sample sizes (N = 3, 5, 10 biological replicates). RIPPLE
+was run on each; the empirical FDR is the fraction of genes called significant
+at Fisher FDR < 0.05.
+
+```{r fdr-calibration, fig.cap = "Empirical FDR under a true null across 50 iterations per sample size. Dashed line: nominal 0.05 level."}
+null_path <- system.file("extdata/bench_null_results.rds", package = "ripple")
+if (file.exists(null_path)) {
+  null_res <- readRDS(null_path)$per_run
+
+  p1 <- ggplot(null_res, aes(x = factor(n_samples), y = empirical_fdr)) +
+    geom_boxplot(fill = "#E8E8E8", outlier.size = 1) +
+    geom_jitter(width = 0.15, alpha = 0.3, size = 1) +
+    geom_hline(yintercept = 0.05, linetype = "dashed", color = "#D55E00") +
+    labs(
+      x = "Number of biological replicates (N)",
+      y = "Empirical FDR",
+      title = "FDR calibration under the null"
+    ) +
+    theme_minimal()
+  print(p1)
+
+  # Summary table
+  summary_dt <- null_res[, .(
+    runs = .N,
+    mean_fdr = sprintf("%.4f", mean(empirical_fdr)),
+    max_fdr = sprintf("%.4f", max(empirical_fdr)),
+    pooled_fdr = sprintf("%.4f", sum(n_sig_fdr) / sum(n_genes_tested))
+  ), by = n_samples]
+  knitr::kable(summary_dt,
+    col.names = c(
+      "N", "Runs", "Mean FDR",
+      "Max FDR", "Pooled FDR"
+    ),
+    caption = "Summary of null FDR calibration."
+  )
+} else {
+  cat("Null benchmark results not yet available.\n")
+  cat("Run: Rscript data-raw/benchmarks/bench_null.R\n")
+}
+```
+
+## 2. Power curves
+
+5 gradient genes (negative coefficient, induced near tumour) and 45 background
+genes were planted in each dataset. Four effect sizes (`|beta|` = 0.002, 0.005,
+0.01, 0.02) were tested across three sample sizes (N = 3, 5, 10), with 30
+iterations each. Power is the fraction of the 5 gradient genes recovered at
+FDR < 0.05.
+
+```{r power-curves, fig.cap = "Power to detect planted gradient genes as a function of effect size and sample count. Error bars: ± 1 SD across iterations."}
+power_path <- system.file("extdata/bench_power_results.rds", package = "ripple")
+if (file.exists(power_path)) {
+  power_res <- readRDS(power_path)$summary
+
+  p2 <- ggplot(
+    power_res,
+    aes(
+      x = abs(beta), y = mean_power,
+      color = factor(n_samples), group = factor(n_samples)
+    )
+  ) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 3) +
+    geom_errorbar(
+      aes(
+        ymin = pmax(0, mean_power - sd_power),
+        ymax = pmin(1, mean_power + sd_power)
+      ),
+      width = 0.001
+    ) +
+    scale_x_log10(labels = scales::label_number()) +
+    labs(
+      x = expression("|" * beta * "| (log-rate change per µm)"),
+      y = "Power (sensitivity)",
+      color = "N (replicates)",
+      title = "Power to detect gradient genes"
+    ) +
+    theme_minimal()
+  print(p2)
+
+  knitr::kable(
+    power_res[, .(
+      beta = sprintf("%.3f", beta), N = n_samples,
+      power = sprintf("%.2f", mean_power),
+      sd = sprintf("%.2f", sd_power),
+      FDR = sprintf("%.3f", mean_fdr)
+    )],
+    col.names = c("beta", "N", "Power", "SD", "Observed FDR"),
+    caption = "Power and observed FDR by effect size and sample count."
+  )
+} else {
+  cat("Power benchmark results not yet available.\n")
+  cat("Run: Rscript data-raw/benchmarks/bench_power.R\n")
+}
+```
+
+## 3. Method comparison (MISTy and nnSVG)
+
+<!-- TODO: Add once bench_comparison.R results are available -->
+
+To be completed: comparison of RIPPLE, MISTy, and nnSVG on the same synthetic
+datasets. Expected findings:
+
+- **nnSVG** detects planted genes (positive control) but also flags many
+  additional SVGs unrelated to the tumour anchor (lower specificity).
+- **MISTy** importance scores correlate with RIPPLE |beta| (agreement on
+  signal magnitude) but do not provide direction or calibrated FDR.
+- **RIPPLE** uniquely provides directional inference, sign-consistency, and
+  formally calibrated FDR.
+
+## Session info
+
+```{r session-info}
+sessionInfo()
+```

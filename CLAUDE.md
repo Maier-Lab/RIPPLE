@@ -33,7 +33,10 @@ RIPPLE/
 │   ├── visualization.R      # plot_gradient_volcano, plot_decay_curve, spatial plots,
 │   │                        # create_gradient_volcano, create_forest_plot, create_coefficient_strips
 │   └── utils.R              # calculate_enrichment, permutation_pvalue
-├── tests/testthat/          # Unit tests (53 passing)
+├── data/                    # Bundled datasets
+│   └── ripple_mock_data.rda # Synthetic SPE with planted gradient (50 genes x 600 cells)
+├── data-raw/                # Dataset generation scripts (not in built package)
+├── tests/testthat/          # Unit tests (73 passing)
 ├── inst/
 │   ├── scripts/             # Copies of standalone scripts (installed with package)
 │   ├── slurm/               # SLURM job templates
@@ -43,7 +46,7 @@ RIPPLE/
 
 ---
 
-## Exported Functions (37 total)
+## Exported Functions (38 total)
 
 | Module | Functions | Purpose |
 |--------|-----------|---------|
@@ -57,7 +60,7 @@ RIPPLE/
 | `glm.R` | `fit_poisson`, `fit_poisson_controlled`, `classify_decay_pattern` | Core statistical models |
 | `meta_analysis.R` | `run_meta_analysis`, `compute_fisher_pval` | Cross-replicate inference |
 | `permutation.R` | `run_permutation_test`, `run_permutation_tests`, `merge_permutation_results` | Null distribution |
-| `spatial.R` | `get_coord_columns`, `build_knn_graph`, `build_radius_graph`, `calculate_distance_to_type`, `get_neighbor_cell_types`, `calculate_neighbor_composition` | Spatial utilities |
+| `spatial.R` | `get_coord_columns`, `build_knn_graph`, `build_radius_graph`, `calculate_distance_to_type`, `get_neighbor_cell_types`, `calculate_neighbor_composition`, `check_spatial_autocorrelation` | Spatial utilities |
 | `visualization.R` | `plot_spatial_single`, `plot_spatial_by_sample`, `plot_gradient_volcano`, `plot_decay_curve`, `create_gradient_volcano`, `create_forest_plot`, `create_coefficient_strips` | Plotting |
 | `utils.R` | `calculate_enrichment`, `permutation_pvalue` | Helpers |
 
@@ -175,6 +178,17 @@ Per-sample coefficients are combined via **Fisher's combined p-value** with sign
 - **Per-sample fitting**: Avoids pseudoreplication (true N = mice/patients, not cells)
 - **Fisher's + sign gate**: Equal weight per replicate; requires reproducibility across all biological replicates
 - **Cell-size offset**: Critical -- without it, cells near query may appear to express more of everything due to ambient RNA or segmentation artifacts
+
+### What RIPPLE Detects (and What It Doesn't)
+
+RIPPLE detects **distance-dependent expression changes**: genes whose RNA counts in target cells change as a continuous function of distance from query cells. This is different from **cell-type co-localization** (whether two cell types are spatially adjacent). A gene can show co-localization without a gradient (e.g., PD-1+ T cells accumulate near tumor but PDCD1 expression per cell doesn't change with distance), and a gradient can exist without simple co-localization (e.g., a secreted cytokine creates a diffusion field that affects distant cells).
+
+### Known Limitations
+
+- **Spatial autocorrelation**: The Poisson GLM assumes independent observations within each sample. Nearby cells are spatially correlated. Per-sample fitting + Fisher's method mitigates at the sample level (N = replicates, not cells), but within-sample p-values may be anti-conservative. Use `check_spatial_autocorrelation()` to assess severity for specific genes via Moran's I on GLM residuals.
+- **RNA, not protein**: RIPPLE measures RNA counts, not protein abundance or signaling activity. Distance-dependent RNA changes may not reflect protein-level changes.
+- **Coordinates must be global**: Spatial coordinates must be stitched/registered across FOVs. Per-FOV coordinates (resetting to 0 per field of view) will produce meaningless distances.
+- **200 um default cutoff**: Appropriate for cytokine signaling (~20-100 um). May miss longer-range morphogen gradients (200-500 um). Set `max_distance_um` based on the biology.
 
 ---
 
@@ -303,27 +317,28 @@ devtools::install()     # Install locally
 ### R Packages
 
 ```r
-# Core (required)
+# Core (Imports -- required)
 library(Seurat)       # Data loading, count extraction
 library(data.table)   # Core data manipulation
 library(ggplot2)      # All plotting
 library(patchwork)    # Multi-panel figure assembly
 library(RANN)         # Fast kNN
-library(meta)         # Meta-analysis across replicates
-library(ggrepel)      # Volcano label placement
 library(Matrix)       # Sparse matrix operations
+library(meta)         # Meta-analysis across replicates
 library(scales)       # Axis formatting
-library(dplyr)        # Data wrangling
-library(tidyr)        # Reshaping
-
-# Visualization (Stage 5)
+library(ggrepel)      # Volcano label placement
 library(pheatmap)     # Heatmaps
-library(fgsea)        # Pathway enrichment
-library(msigdbr)      # Gene set collections
+library(spdep)        # Spatial autocorrelation (Moran's I)
 
-# L-R Integration (Stage 6)
-library(nichenetr)    # Ligand-receptor database + activity prediction
+# Suggests (optional, for specific stages)
+library(SingleCellExperiment)  # SCE input support
+library(SpatialExperiment)     # SPE input support
+library(fgsea)        # Pathway enrichment (Stage 5)
+library(msigdbr)      # Gene set collections (Stage 5)
+library(nichenetr)    # Gene alias conversion (Stage 6, optional)
 ```
+
+L-R databases for Stage 6 are downloaded from [Zenodo](https://zenodo.org/records/7074291) and cached locally. The `nichenetr` package is NOT required -- only used optionally for gene alias conversion.
 
 ### Python (GPU Permutation, Stage 2)
 

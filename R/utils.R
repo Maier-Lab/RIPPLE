@@ -72,7 +72,7 @@ calculate_enrichment <- function(observed, expected) {
 #' @examples
 #' \dontrun{
 #' null <- rnorm(1000)
-#' permutation_pvalue(2.5, null)            # two-sided
+#' permutation_pvalue(2.5, null) # two-sided
 #' permutation_pvalue(2.5, null, "greater") # one-sided
 #' }
 #'
@@ -92,5 +92,3 @@ permutation_pvalue <- function(observed, null_distribution, alternative = "two.s
 
   return(p)
 }
-
-

@@ -42,9 +42,9 @@ NULL
 #' \dontrun{
 #' # Build a SpatialExperiment from raw matrices
 #' spe <- make_ripple_input(
-#'   counts   = my_counts,       # matrix or dgCMatrix
-#'   metadata = my_metadata,     # data.frame with sample_id, cell_type, etc.
-#'   coords   = my_coords,       # two-column matrix (x, y)
+#'   counts = my_counts, # matrix or dgCMatrix
+#'   metadata = my_metadata, # data.frame with sample_id, cell_type, etc.
+#'   coords = my_coords, # two-column matrix (x, y)
 #'   output_class = "SpatialExperiment"
 #' )
 #'
@@ -60,11 +60,10 @@ NULL
 #' @export
 make_ripple_input <- function(counts,
                               metadata,
-                              coords       = NULL,
+                              coords = NULL,
                               output_class = c("SpatialExperiment", "Seurat"),
-                              x_column     = "x",
-                              y_column     = "y") {
-
+                              x_column = "x",
+                              y_column = "y") {
   output_class <- match.arg(output_class)
 
   # ------------------------------------------------------------------
@@ -97,7 +96,9 @@ make_ripple_input <- function(counts,
 
   if (is.null(rownames(meta_df))) {
     stop("metadata must have rownames (or a 'barcode'/'cell_id' column) ",
-         "matching counts column names", call. = FALSE)
+      "matching counts column names",
+      call. = FALSE
+    )
   }
 
   # ------------------------------------------------------------------
@@ -106,11 +107,14 @@ make_ripple_input <- function(counts,
   common <- intersect(colnames(counts), rownames(meta_df))
   if (length(common) == 0) {
     stop("No matching barcodes between counts columns and metadata rownames",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (length(common) < ncol(counts)) {
-    message("Subsetting counts to ", length(common),
-            " cells present in metadata")
+    message(
+      "Subsetting counts to ", length(common),
+      " cells present in metadata"
+    )
     counts <- counts[, common, drop = FALSE]
   }
   meta_df <- meta_df[common, , drop = FALSE]
@@ -132,8 +136,10 @@ make_ripple_input <- function(counts,
       } else {
         if (nrow(coord_matrix) != length(common)) {
           stop("coords has no rownames and length does not match cells: ",
-               "got ", nrow(coord_matrix), " rows, expected ",
-               length(common), call. = FALSE)
+            "got ", nrow(coord_matrix), " rows, expected ",
+            length(common),
+            call. = FALSE
+          )
         }
         rownames(coord_matrix) <- common
       }
@@ -150,18 +156,20 @@ make_ripple_input <- function(counts,
   if (output_class == "SpatialExperiment") {
     if (!requireNamespace("SpatialExperiment", quietly = TRUE)) {
       stop("Package 'SpatialExperiment' is required for output_class = ",
-           "'SpatialExperiment'.\n",
-           "Install with: BiocManager::install('SpatialExperiment')",
-           call. = FALSE)
+        "'SpatialExperiment'.\n",
+        "Install with: BiocManager::install('SpatialExperiment')",
+        call. = FALSE
+      )
     }
     if (is.null(coord_matrix)) {
       stop("coords is required when output_class = 'SpatialExperiment'",
-           call. = FALSE)
+        call. = FALSE
+      )
     }
 
     spe <- SpatialExperiment::SpatialExperiment(
-      assays       = list(counts = counts),
-      colData      = S4Vectors::DataFrame(meta_df),
+      assays = list(counts = counts),
+      colData = S4Vectors::DataFrame(meta_df),
       spatialCoords = coord_matrix
     )
     return(spe)
@@ -170,7 +178,8 @@ make_ripple_input <- function(counts,
   if (output_class == "Seurat") {
     if (!requireNamespace("Seurat", quietly = TRUE)) {
       stop("Package 'Seurat' is required for output_class = 'Seurat'",
-           call. = FALSE)
+        call. = FALSE
+      )
     }
 
     # Merge coordinates into metadata for Seurat
@@ -213,8 +222,10 @@ make_ripple_input <- function(counts,
 #' @examples
 #' \dontrun{
 #' spe <- read_ripple_csv("/path/to/csv_dir", output_class = "SpatialExperiment")
-#' results <- run_ripple(spe, query_celltype = "Tumor",
-#'                       celltype_column = "cell_type")
+#' results <- run_ripple(spe,
+#'   query_celltype = "Tumor",
+#'   celltype_column = "cell_type"
+#' )
 #' }
 #'
 #' @importFrom data.table fread setnames
@@ -225,7 +236,7 @@ read_ripple_csv <- function(dir_path,
   output_class <- match.arg(output_class)
 
   counts_file <- file.path(dir_path, "counts.csv")
-  meta_file   <- file.path(dir_path, "metadata.csv")
+  meta_file <- file.path(dir_path, "metadata.csv")
   coords_file <- file.path(dir_path, "coords.csv")
 
   if (!file.exists(counts_file)) {

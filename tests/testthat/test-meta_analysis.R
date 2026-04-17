@@ -14,11 +14,11 @@ test_that("compute_fisher_pval combines consistent results", {
 test_that("compute_fisher_pval gates inconsistent signs", {
   # 4 samples with mixed signs
   pvals <- c(0.01, 0.02, 0.05, 0.03)
-  coefs <- c(-0.005, 0.003, -0.004, 0.006)  # mixed signs
+  coefs <- c(-0.005, 0.003, -0.004, 0.006) # mixed signs
 
   result <- compute_fisher_pval(pvals, coefs)
 
-  expect_equal(result$fisher_pval, 1.0)  # Gated
+  expect_equal(result$fisher_pval, 1.0) # Gated
   expect_true(result$sign_consistency < 1.0)
 })
 

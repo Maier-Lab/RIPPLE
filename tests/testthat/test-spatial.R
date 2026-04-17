@@ -29,7 +29,7 @@ test_that("build_knn_graph returns correct structure", {
 })
 
 test_that("calculate_distance_to_type computes distances", {
-  coords <- matrix(c(0,0, 1,0, 2,0, 10,10), ncol = 2, byrow = TRUE)
+  coords <- matrix(c(0, 0, 1, 0, 2, 0, 10, 10), ncol = 2, byrow = TRUE)
   cell_types <- c("A", "B", "A", "B")
 
   dists <- calculate_distance_to_type(coords, cell_types, "B")
@@ -91,8 +91,10 @@ test_that("check_spatial_autocorrelation works on synthetic data", {
   )
 
   expect_s3_class(result, "data.table")
-  expect_true(all(c("gene", "sample_id", "morans_i", "morans_pvalue",
-                    "interpretation") %in% names(result)))
-  expect_equal(nrow(result), 2)  # 2 genes x 1 sample
+  expect_true(all(c(
+    "gene", "sample_id", "morans_i", "morans_pvalue",
+    "interpretation"
+  ) %in% names(result)))
+  expect_equal(nrow(result), 2) # 2 genes x 1 sample
   expect_true(all(!is.na(result$morans_i)))
 })

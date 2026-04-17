@@ -83,11 +83,14 @@ NULL
   # Filter L-R network to ligands present in target matrix
   lr_network <- lr_network[ligand %in% colnames(ligand_target_matrix)]
   ligand_target_matrix <- ligand_target_matrix[, unique(lr_network$ligand),
-                                                 drop = FALSE]
+    drop = FALSE
+  ]
 
-  message(sprintf("  L-R network: %d pairs | Ligand-target matrix: %d targets x %d ligands",
-                  nrow(lr_network), nrow(ligand_target_matrix),
-                  ncol(ligand_target_matrix)))
+  message(sprintf(
+    "  L-R network: %d pairs | Ligand-target matrix: %d targets x %d ligands",
+    nrow(lr_network), nrow(ligand_target_matrix),
+    ncol(ligand_target_matrix)
+  ))
 
   list(lr_network = lr_network, ligand_target_matrix = ligand_target_matrix)
 }
@@ -121,9 +124,11 @@ NULL
 #' @return data.table with one row of enrichment results, or NULL
 #' @noRd
 .test_downstream_enrichment <- function(ligand_target_matrix, ligand,
-                                         gradient_genes, universe_genes,
-                                         n_top_targets = 200) {
-  if (!ligand %in% colnames(ligand_target_matrix)) return(NULL)
+                                        gradient_genes, universe_genes,
+                                        n_top_targets = 200) {
+  if (!ligand %in% colnames(ligand_target_matrix)) {
+    return(NULL)
+  }
 
   target_weights <- ligand_target_matrix[, ligand]
   target_weights <- target_weights[names(target_weights) %in% universe_genes]
@@ -142,12 +147,16 @@ NULL
   c_val <- n_gradient - n_overlap
   d <- n_universe - n_targets - n_gradient + n_overlap
 
-  fisher_res <- tryCatch({
-    stats::fisher.test(matrix(c(a, c_val, b, d), nrow = 2),
-                        alternative = "greater")
-  }, error = function(e) {
-    list(p.value = 1, estimate = 1)
-  })
+  fisher_res <- tryCatch(
+    {
+      stats::fisher.test(matrix(c(a, c_val, b, d), nrow = 2),
+        alternative = "greater"
+      )
+    },
+    error = function(e) {
+      list(p.value = 1, estimate = 1)
+    }
+  )
 
   jaccard <- if ((n_targets + n_gradient - n_overlap) > 0) {
     n_overlap / (n_targets + n_gradient - n_overlap)
@@ -240,7 +249,7 @@ NULL
 #' \dontrun{
 #' lr_results <- run_ripple_lr(
 #'   results_dir     = "output/distance_correlation/",
-#'   input           = my_spe,   # or a Seurat/SCE object, or a path to an .rds
+#'   input           = my_spe, # or a Seurat/SCE object, or a path to an .rds
 #'   query_celltype  = "Neutrophil",
 #'   celltype_column = "cell_type",
 #'   organism        = "mouse"
@@ -254,20 +263,19 @@ NULL
 #' @importFrom scales rescale
 #' @export
 run_ripple_lr <- function(results_dir,
-                           input,
-                           query_celltype,
-                           celltype_column,
-                           sample_column = "sample_id",
-                           condition_column = NULL,
-                           condition_value = NULL,
-                           organism = "mouse",
-                           expr_threshold_pct = 5,
-                           fdr_threshold = 0.05,
-                           coef_col = "median_coef",
-                           fdr_col = "fisher_fdr",
-                           output_dir = NULL,
-                           verbose = TRUE) {
-
+                          input,
+                          query_celltype,
+                          celltype_column,
+                          sample_column = "sample_id",
+                          condition_column = NULL,
+                          condition_value = NULL,
+                          organism = "mouse",
+                          expr_threshold_pct = 5,
+                          fdr_threshold = 0.05,
+                          coef_col = "median_coef",
+                          fdr_col = "fisher_fdr",
+                          output_dir = NULL,
+                          verbose = TRUE) {
   .msg <- function(...) if (isTRUE(verbose)) message(...)
   .ensure_dir <- function(path) {
     if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
@@ -326,7 +334,8 @@ run_ripple_lr <- function(results_dir,
   .msg("\nLoading input data...")
   if (missing(input)) {
     stop("'input' is required (Seurat/SCE/SPE object or path to an .rds file)",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   data <- .resolve_input(input, require_expr = TRUE, verbose = verbose)
   meta <- data$meta
@@ -334,36 +343,45 @@ run_ripple_lr <- function(results_dir,
 
   if (!celltype_column %in% names(meta)) {
     stop("Cell type column '", celltype_column, "' not found in metadata. ",
-         "Available: ", paste(head(names(meta), 20), collapse = ", "),
-         call. = FALSE)
+      "Available: ", paste(head(names(meta), 20), collapse = ", "),
+      call. = FALSE
+    )
   }
   if (!sample_column %in% names(meta)) {
     stop("Sample column '", sample_column, "' not found in metadata. ",
-         "Available: ", paste(head(names(meta), 20), collapse = ", "),
-         call. = FALSE)
+      "Available: ", paste(head(names(meta), 20), collapse = ", "),
+      call. = FALSE
+    )
   }
   if (!query_celltype %in% unique(meta[[celltype_column]])) {
     stop("query_celltype '", query_celltype, "' not found in column '",
-         celltype_column, "'.", call. = FALSE)
+      celltype_column, "'.",
+      call. = FALSE
+    )
   }
 
   # Get query cells
   if (!is.null(condition_column) && !is.null(condition_value)) {
     query_barcodes <- meta[get(celltype_column) == query_celltype &
-                            get(condition_column) == condition_value]$barcode
+      get(condition_column) == condition_value]$barcode
     analysis_samples <- unique(meta[get(condition_column) == condition_value][[sample_column]])
-    .msg(sprintf("  Query cells (%s, %s): %d", query_celltype,
-                 condition_value, length(query_barcodes)))
+    .msg(sprintf(
+      "  Query cells (%s, %s): %d", query_celltype,
+      condition_value, length(query_barcodes)
+    ))
   } else {
     query_barcodes <- meta[get(celltype_column) == query_celltype]$barcode
     analysis_samples <- unique(meta[[sample_column]])
-    .msg(sprintf("  Query cells (%s, all): %d", query_celltype,
-                 length(query_barcodes)))
+    .msg(sprintf(
+      "  Query cells (%s, all): %d", query_celltype,
+      length(query_barcodes)
+    ))
   }
 
   if (length(query_barcodes) == 0) {
     stop("No query cells found. Check celltype_column and query_celltype.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   # Sanitize gene names for downstream matching
@@ -375,8 +393,10 @@ run_ripple_lr <- function(results_dir,
   # Per-sample query expression profiles
   query_per_sample <- data.table::rbindlist(lapply(analysis_samples, function(sid) {
     barcodes <- meta[get(celltype_column) == query_celltype &
-                      get(sample_column) == sid]$barcode
-    if (length(barcodes) == 0) return(NULL)
+      get(sample_column) == sid]$barcode
+    if (length(barcodes) == 0) {
+      return(NULL)
+    }
     prof <- .compute_expr_profile(expr_matrix, barcodes)
     prof[, sample_id := sid]
     prof[, n_query_cells := length(barcodes)]
@@ -395,10 +415,14 @@ run_ripple_lr <- function(results_dir,
     gene %in% available_receptors & pct_expr >= expr_threshold_pct
   ]$gene
 
-  .msg(sprintf("  Query-expressed ligands (>=%d%%): %d",
-               expr_threshold_pct, length(query_expressed_ligands)))
-  .msg(sprintf("  Query-expressed receptors (>=%d%%): %d",
-               expr_threshold_pct, length(query_expressed_receptors)))
+  .msg(sprintf(
+    "  Query-expressed ligands (>=%d%%): %d",
+    expr_threshold_pct, length(query_expressed_ligands)
+  ))
+  .msg(sprintf(
+    "  Query-expressed receptors (>=%d%%): %d",
+    expr_threshold_pct, length(query_expressed_receptors)
+  ))
 
   # Free Seurat object memory
   rm(obj)
@@ -428,8 +452,10 @@ run_ripple_lr <- function(results_dir,
     repressed_genes <- sig_genes[get(coef_col) > 0]$gene_safe
     background_genes <- ct_gradient$gene_safe
 
-    .msg(sprintf("  Significant: %d (%d induced, %d repressed)",
-                 nrow(sig_genes), length(induced_genes), length(repressed_genes)))
+    .msg(sprintf(
+      "  Significant: %d (%d induced, %d repressed)",
+      nrow(sig_genes), length(induced_genes), length(repressed_genes)
+    ))
 
     # Load per-sample coefficients if available
     coef_per_sample_file <- file.path(
@@ -471,7 +497,7 @@ run_ripple_lr <- function(results_dir,
             for (sid in analysis_samples) {
               lig_sample <- query_per_sample[gene == lig & sample_id == sid]
               rec_sample <- coef_per_sample[gene_safe == receptor_gene &
-                                             sample_id == sid]
+                sample_id == sid]
 
               if (nrow(lig_sample) > 0 && nrow(rec_sample) > 0) {
                 lig_pct <- lig_sample$pct_expr[1]
@@ -480,8 +506,10 @@ run_ripple_lr <- function(results_dir,
                 agrees <- if (expected_neg) rec_coef < 0 else rec_coef > 0
 
                 if (lig_pct >= expr_threshold_pct && !is.na(rec_coef) && agrees) {
-                  per_sample_scores <- c(per_sample_scores,
-                                          abs(rec_coef) * (lig_pct / 100))
+                  per_sample_scores <- c(
+                    per_sample_scores,
+                    abs(rec_coef) * (lig_pct / 100)
+                  )
                   n_supporting <- n_supporting + 1L
                 }
               }
@@ -532,8 +560,10 @@ run_ripple_lr <- function(results_dir,
       .msg("  Direction A: 0 L-R pairs")
     }
 
-    data.table::fwrite(direct_a_results,
-                        file.path(ct_output_dir, "direct_lr_pairs.csv"))
+    data.table::fwrite(
+      direct_a_results,
+      file.path(ct_output_dir, "direct_lr_pairs.csv")
+    )
 
     # =====================================================================
     # Part 2: NicheNet Ligand Activity
@@ -544,8 +574,10 @@ run_ripple_lr <- function(results_dir,
     response_induced <- intersect(induced_genes, rownames(ligand_target_matrix))
     response_all_sig <- intersect(sig_genes$gene_safe, rownames(ligand_target_matrix))
     bg_in_matrix <- intersect(background_genes, rownames(ligand_target_matrix))
-    potential_ligands <- intersect(query_expressed_ligands,
-                                    colnames(ligand_target_matrix))
+    potential_ligands <- intersect(
+      query_expressed_ligands,
+      colnames(ligand_target_matrix)
+    )
 
     response_in_matrix <- if (length(response_induced) >= 10) {
       response_induced
@@ -577,8 +609,10 @@ run_ripple_lr <- function(results_dir,
       .msg("  Insufficient genes for ligand activity. Skipping.")
     }
 
-    data.table::fwrite(activity_results,
-                        file.path(ct_output_dir, "nichenet_ligand_activity.csv"))
+    data.table::fwrite(
+      activity_results,
+      file.path(ct_output_dir, "nichenet_ligand_activity.csv")
+    )
 
     # =====================================================================
     # Part 3: Downstream Target Enrichment
@@ -611,27 +645,34 @@ run_ripple_lr <- function(results_dir,
           receptors_for_lig <- lr_network[
             ligand == lig & receptor %in% available_receptors
           ]$receptor
-          res[, `:=`(ligand = lig,
-                     receptors = paste(receptors_for_lig, collapse = ";"),
-                     cell_type = ct_name)]
+          res[, `:=`(
+            ligand = lig,
+            receptors = paste(receptors_for_lig, collapse = ";"),
+            cell_type = ct_name
+          )]
         }
         res
       }), fill = TRUE)
 
       if (nrow(enrichment_results) > 0) {
         enrichment_results[, fdr_fisher := stats::p.adjust(pvalue_fisher,
-                                                            method = "BH")]
+          method = "BH"
+        )]
         enrichment_results[, enrichment_score :=
           -log10(pvalue_fisher + 1e-50) * sign(log2(pmax(odds_ratio, 0.01)))]
         data.table::setorder(enrichment_results, pvalue_fisher)
-        .msg(sprintf("  Enrichment: %d / %d ligands significant (FDR<0.05)",
-                     sum(enrichment_results$fdr_fisher < 0.05),
-                     nrow(enrichment_results)))
+        .msg(sprintf(
+          "  Enrichment: %d / %d ligands significant (FDR<0.05)",
+          sum(enrichment_results$fdr_fisher < 0.05),
+          nrow(enrichment_results)
+        ))
       }
     }
 
-    data.table::fwrite(enrichment_results,
-                        file.path(ct_output_dir, "downstream_enrichment.csv"))
+    data.table::fwrite(
+      enrichment_results,
+      file.path(ct_output_dir, "downstream_enrichment.csv")
+    )
 
     # =====================================================================
     # Combined Prioritization
@@ -650,8 +691,10 @@ run_ripple_lr <- function(results_dir,
         act_merge <- activity_results[, ..activity_cols]
         data.table::setnames(act_merge,
           old = intersect(c("activity", "auroc"), names(act_merge)),
-          new = paste0("nichenet_", intersect(c("activity", "auroc"),
-                                               names(act_merge)))
+          new = paste0("nichenet_", intersect(
+            c("activity", "auroc"),
+            names(act_merge)
+          ))
         )
         combined <- merge(combined, act_merge, by = "ligand", all.x = TRUE)
       } else {
@@ -661,7 +704,8 @@ run_ripple_lr <- function(results_dir,
       # Merge enrichment
       if (nrow(enrichment_results) > 0) {
         enrich_merge <- enrichment_results[, .(
-          ligand, enrichment_pval = pvalue_fisher,
+          ligand,
+          enrichment_pval = pvalue_fisher,
           enrichment_fdr = fdr_fisher,
           enrichment_odds_ratio = odds_ratio,
           n_downstream_overlap = n_overlap,
@@ -669,10 +713,12 @@ run_ripple_lr <- function(results_dir,
         )]
         combined <- merge(combined, enrich_merge, by = "ligand", all.x = TRUE)
       } else {
-        combined[, `:=`(enrichment_pval = NA_real_, enrichment_fdr = NA_real_,
-                        enrichment_odds_ratio = NA_real_,
-                        n_downstream_overlap = NA_integer_,
-                        enrichment_score = NA_real_)]
+        combined[, `:=`(
+          enrichment_pval = NA_real_, enrichment_fdr = NA_real_,
+          enrichment_odds_ratio = NA_real_,
+          n_downstream_overlap = NA_integer_,
+          enrichment_score = NA_real_
+        )]
       }
 
       # Combined score (weighted average of rescaled components)
@@ -682,7 +728,8 @@ run_ripple_lr <- function(results_dir,
       w_expression <- 1
 
       combined[, scaled_direct := scales::rescale(
-        direct_score, to = c(0, 1), na.rm = TRUE
+        direct_score,
+        to = c(0, 1), na.rm = TRUE
       )]
       combined[, scaled_activity := data.table::fifelse(
         is.na(nichenet_activity), 0,
@@ -693,7 +740,8 @@ run_ripple_lr <- function(results_dir,
         scales::rescale(pmax(enrichment_score, 0), to = c(0, 1), na.rm = TRUE)
       )]
       combined[, scaled_expression := scales::rescale(
-        ligand_pct_query / 100, to = c(0, 1), na.rm = TRUE
+        ligand_pct_query / 100,
+        to = c(0, 1), na.rm = TRUE
       )]
 
       combined[, combined_score := (
@@ -710,8 +758,10 @@ run_ripple_lr <- function(results_dir,
       .msg("  No Direction A pairs to combine.")
     }
 
-    data.table::fwrite(combined,
-                        file.path(ct_output_dir, "combined_prioritization.csv"))
+    data.table::fwrite(
+      combined,
+      file.path(ct_output_dir, "combined_prioritization.csv")
+    )
 
     all_combined <- rbind(all_combined, combined, fill = TRUE)
   }
@@ -719,11 +769,15 @@ run_ripple_lr <- function(results_dir,
   # --- Save overall summary ---
   if (nrow(all_combined) > 0) {
     summary_dir <- .ensure_dir(file.path(output_dir, "summary"))
-    data.table::fwrite(all_combined,
-                        file.path(summary_dir, "all_lr_pairs_combined.csv"))
-    .msg(sprintf("\n  Total L-R pairs: %d across %d cell types",
-                 nrow(all_combined),
-                 data.table::uniqueN(all_combined$cell_type)))
+    data.table::fwrite(
+      all_combined,
+      file.path(summary_dir, "all_lr_pairs_combined.csv")
+    )
+    .msg(sprintf(
+      "\n  Total L-R pairs: %d across %d cell types",
+      nrow(all_combined),
+      data.table::uniqueN(all_combined$cell_type)
+    ))
   }
 
   .msg("\n=== L-R Integration Complete ===")
@@ -791,11 +845,10 @@ run_ripple_lr <- function(results_dir,
 #' @importFrom data.table copy fifelse
 #' @export
 classify_lr_artifacts <- function(lr_results,
-                                   query_signature = character(0),
-                                   contamination_genes = character(0),
-                                   myeloid_celltypes = character(0),
-                                   low_expr_threshold = 0.02) {
-
+                                  query_signature = character(0),
+                                  contamination_genes = character(0),
+                                  myeloid_celltypes = character(0),
+                                  low_expr_threshold = 0.02) {
   if (!inherits(lr_results, "data.table")) {
     lr_results <- data.table::as.data.table(lr_results)
   }
@@ -823,34 +876,42 @@ classify_lr_artifacts <- function(lr_results,
 
   # Rule 1: Receptor is query signature gene on non-myeloid cell type
   if (length(query_signature) > 0) {
-    lr_results[receptor %in% query_signature &
-               !(cell_type %in% myeloid_celltypes),
-               artifact_flag := "artifact"]
+    lr_results[
+      receptor %in% query_signature &
+        !(cell_type %in% myeloid_celltypes),
+      artifact_flag := "artifact"
+    ]
   }
 
   # Rule 2: Receptor in contamination list on non-myeloid at low expression
   has_pct <- "receptor_pct_target" %in% names(lr_results)
   if (length(contamination_genes) > 0 && has_pct) {
-    lr_results[artifact_flag == "clean" &
-               receptor %in% contamination_genes &
-               !(cell_type %in% myeloid_celltypes) &
-               receptor_pct_target < 0.05,
-               artifact_flag := "suspect"]
+    lr_results[
+      artifact_flag == "clean" &
+        receptor %in% contamination_genes &
+        !(cell_type %in% myeloid_celltypes) &
+        receptor_pct_target < 0.05,
+      artifact_flag := "suspect"
+    ]
   }
 
   # Rule 3: Very low receptor expression on non-myeloid cells
   if (has_pct) {
-    lr_results[artifact_flag == "clean" &
-               !(cell_type %in% myeloid_celltypes) &
-               receptor_pct_target < low_expr_threshold,
-               artifact_flag := "low_confidence"]
+    lr_results[
+      artifact_flag == "clean" &
+        !(cell_type %in% myeloid_celltypes) &
+        receptor_pct_target < low_expr_threshold,
+      artifact_flag := "low_confidence"
+    ]
   }
 
   # Summary
   flag_counts <- lr_results[, .N, by = artifact_flag]
   for (i in seq_len(nrow(flag_counts))) {
-    message(sprintf("  %s: %d pairs", flag_counts$artifact_flag[i],
-                    flag_counts$N[i]))
+    message(sprintf(
+      "  %s: %d pairs", flag_counts$artifact_flag[i],
+      flag_counts$N[i]
+    ))
   }
 
   lr_results[]

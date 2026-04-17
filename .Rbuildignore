@@ -6,3 +6,7 @@
 ^.*\.Rproj$
 ^CLAUDE\.md$
 ^data-raw$
+^_pkgdown\.yml$
+^docs$
+^\.gitignore$
+^paper$

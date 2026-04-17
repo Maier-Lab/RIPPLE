@@ -1,8 +1,6 @@
-#' =============================================================================
-#' RIPPLE Package Configuration
-#' =============================================================================
+#' RIPPLE package configuration
 #'
-#' Package options system using R's options() with ripple. prefix.
+#' Package options system using R's `options()` with `ripple.` prefix.
 #' Environment variables are checked as fallback for backward compatibility
 #' with SLURM scripts.
 #'
@@ -18,17 +16,17 @@ NULL
 .onLoad <- function(libname, pkgname) {
   op <- options()
   ripple_defaults <- list(
-    ripple.sample_column       = Sys.getenv("SAMPLE_COLUMN", "sample_id"),
-    ripple.condition_column    = Sys.getenv("CONDITION_COLUMN", ""),
-    ripple.condition_value     = Sys.getenv("CONDITION_VALUE", ""),
-    ripple.k_neighbors         = as.integer(Sys.getenv("K_NEIGHBORS", "1")),
-    ripple.max_distance_um     = as.numeric(Sys.getenv("MAX_DISTANCE_UM", "200")),
-    ripple.fdr_threshold       = as.numeric(Sys.getenv("FDR_THRESHOLD", "0.05")),
+    ripple.sample_column = Sys.getenv("SAMPLE_COLUMN", "sample_id"),
+    ripple.condition_column = Sys.getenv("CONDITION_COLUMN", ""),
+    ripple.condition_value = Sys.getenv("CONDITION_VALUE", ""),
+    ripple.k_neighbors = as.integer(Sys.getenv("K_NEIGHBORS", "1")),
+    ripple.max_distance_um = as.numeric(Sys.getenv("MAX_DISTANCE_UM", "200")),
+    ripple.fdr_threshold = as.numeric(Sys.getenv("FDR_THRESHOLD", "0.05")),
     ripple.min_cells_per_sample = as.integer(Sys.getenv("MIN_CELLS_PER_SAMPLE", "30")),
-    ripple.min_expr_cells      = as.integer(Sys.getenv("MIN_EXPR_CELLS", "25")),
-    ripple.min_expr_pct        = as.numeric(Sys.getenv("MIN_EXPR_PCT", "0.01")),
-    ripple.sign_consistency    = as.numeric(Sys.getenv("SIGN_CONSISTENCY_THRESHOLD", "1.0")),
-    ripple.verbose             = TRUE
+    ripple.min_expr_cells = as.integer(Sys.getenv("MIN_EXPR_CELLS", "25")),
+    ripple.min_expr_pct = as.numeric(Sys.getenv("MIN_EXPR_PCT", "0.01")),
+    ripple.sign_consistency = as.numeric(Sys.getenv("SIGN_CONSISTENCY_THRESHOLD", "1.0")),
+    ripple.verbose = TRUE
   )
   # Only set options that aren't already set
   toset <- !(names(ripple_defaults) %in% names(op))
@@ -124,6 +122,7 @@ ripple_config <- function(...) {
   }
 
   stop("Usage: ripple_config('option_name') to get, ",
-       "ripple_config(option_name = value) to set.",
-       call. = FALSE)
+    "ripple_config(option_name = value) to set.",
+    call. = FALSE
+  )
 }

@@ -25,7 +25,17 @@
       "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" -e 'library\\(Seurat\\); cat\\(\"ok\\\\n\"\\)')",
       "Bash(echo \"Exit: $?\")",
       "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" data-raw/debug_mock.R)",
-      "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" data-raw/validate_mock_data.R)"
+      "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" data-raw/validate_mock_data.R)",
+      "WebSearch",
+      "WebFetch(domain:www.biorxiv.org)",
+      "WebFetch(domain:figshare.com)",
+      "WebFetch(domain:satijalab.org)",
+      "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" data-raw/cosmx_nsclc/run_ripple_cosmx.R)",
+      "Bash(tee data-raw/cosmx_nsclc/run_log.txt)",
+      "Bash(awk -F',' 'NR>1 && $17+0 < 0.05 {ct[$1]++; total++} END {print \"Total sig:\", total; for \\(c in ct\\) print c, ct[c]}' top_gradient_genes.csv)",
+      "Bash(sort -t' ' -k2 -rn)",
+      "Bash(\"C:/Users/CMangana/AppData/Local/Programs/R/R-4.5.1/bin/Rscript.exe\" data-raw/cosmx_nsclc/run_merged_tcells.R)",
+      "Bash(tee data-raw/cosmx_nsclc/merged_tcells_log.txt)"
     ]
   }
 }

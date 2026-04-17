@@ -38,7 +38,6 @@ NULL
 plot_spatial_single <- function(data, color_var, title = NULL,
                                 palette = NULL, point_size = 0.5, alpha = 0.8,
                                 continuous = FALSE, highlight_value = NULL) {
-
   # Handle coordinate column names
   if ("spatial_x" %in% names(data) && !"x" %in% names(data)) {
     data <- data.table::copy(data)
@@ -50,7 +49,8 @@ plot_spatial_single <- function(data, color_var, title = NULL,
   if (!is.null(highlight_value)) {
     data <- data.table::copy(data)
     data[, plot_color := data.table::fifelse(
-      get(color_var) == highlight_value, highlight_value, "Other")]
+      get(color_var) == highlight_value, highlight_value, "Other"
+    )]
     data[, plot_color := factor(plot_color, levels = c(highlight_value, "Other"))]
     color_var <- "plot_color"
 
@@ -63,8 +63,10 @@ plot_spatial_single <- function(data, color_var, title = NULL,
     }
   }
 
-  p <- ggplot2::ggplot(data, ggplot2::aes(x = .data$x, y = .data$y,
-                                           color = .data[[color_var]])) +
+  p <- ggplot2::ggplot(data, ggplot2::aes(
+    x = .data$x, y = .data$y,
+    color = .data[[color_var]]
+  )) +
     ggplot2::geom_point(size = point_size, alpha = alpha) +
     ggplot2::coord_fixed() +
     ggplot2::theme_void() +
@@ -119,7 +121,6 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
                                    title = NULL, palette = NULL,
                                    point_size = 0.3, alpha = 0.6,
                                    ncol = NULL, continuous = FALSE) {
-
   # Handle coordinate column names
   if ("spatial_x" %in% names(data) && !"x" %in% names(data)) {
     data <- data.table::copy(data)
@@ -138,8 +139,10 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
   plot_list <- lapply(samples, function(samp) {
     samp_data <- data[get(sample_col) == samp]
 
-    p <- ggplot2::ggplot(samp_data, ggplot2::aes(x = .data$x, y = .data$y,
-                                                   color = .data[[color_var]])) +
+    p <- ggplot2::ggplot(samp_data, ggplot2::aes(
+      x = .data$x, y = .data$y,
+      color = .data[[color_var]]
+    )) +
       ggplot2::geom_point(size = point_size, alpha = alpha) +
       ggplot2::coord_fixed() +
       ggplot2::theme_void() +
@@ -221,12 +224,16 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
   coef_values <- plot_data[[coef_col]]
   max_score <- max(abs(coef_values), na.rm = TRUE) * 1.1
 
-  p <- ggplot2::ggplot(plot_data,
-                        ggplot2::aes(x = .data[[coef_col]], y = .data$neg_log10_fdr)) +
+  p <- ggplot2::ggplot(
+    plot_data,
+    ggplot2::aes(x = .data[[coef_col]], y = .data$neg_log10_fdr)
+  ) +
     ggplot2::geom_point(ggplot2::aes(size = .data$significant), alpha = 0.6) +
     ggplot2::scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.5), guide = "none") +
-    ggplot2::geom_hline(yintercept = -log10(fdr_threshold), linetype = "dashed",
-                         color = "grey40") +
+    ggplot2::geom_hline(
+      yintercept = -log10(fdr_threshold), linetype = "dashed",
+      color = "grey40"
+    ) +
     ggplot2::geom_vline(xintercept = 0, linetype = "solid", color = "grey60") +
     ggplot2::xlim(-max_score, max_score) +
     ggrepel::geom_text_repel(
@@ -238,8 +245,10 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
     ) +
     ggplot2::labs(
       title = if (!is.null(title)) title else "Distance-Expression Gradient Volcano",
-      subtitle = sprintf("%d genes significant (FDR < %.2f)",
-                         sum(plot_data$significant, na.rm = TRUE), fdr_threshold),
+      subtitle = sprintf(
+        "%d genes significant (FDR < %.2f)",
+        sum(plot_data$significant, na.rm = TRUE), fdr_threshold
+      ),
       x = paste0("Coefficient (negative = ", query_label, "-induced)"),
       y = "-log10(FDR)"
     ) +
@@ -293,7 +302,9 @@ plot_decay_curve <- function(bin_stats, gene_name, cell_type,
                              query_label = "Query",
                              max_distance = 200,
                              color = "#E74C3C") {
-  if (is.null(bin_stats) || nrow(bin_stats) == 0) return(NULL)
+  if (is.null(bin_stats) || nrow(bin_stats) == 0) {
+    return(NULL)
+  }
 
   # Build subtitle from meta-analysis info
   sub_text <- ""
@@ -301,15 +312,21 @@ plot_decay_curve <- function(bin_stats, gene_name, cell_type,
     sub_text <- sprintf("coef = %.4f | FDR = %.1e", meta_coef, meta_fdr)
   }
 
-  p <- ggplot2::ggplot(bin_stats, ggplot2::aes(x = .data$dist_mid,
-                                                y = .data$prop_expressing)) +
-    ggplot2::geom_ribbon(ggplot2::aes(
-      ymin = pmax(0, .data$prop_expressing - 1.96 * .data$se),
-      ymax = pmin(1, .data$prop_expressing + 1.96 * .data$se)),
-      fill = color, alpha = 0.15) +
+  p <- ggplot2::ggplot(bin_stats, ggplot2::aes(
+    x = .data$dist_mid,
+    y = .data$prop_expressing
+  )) +
+    ggplot2::geom_ribbon(
+      ggplot2::aes(
+        ymin = pmax(0, .data$prop_expressing - 1.96 * .data$se),
+        ymax = pmin(1, .data$prop_expressing + 1.96 * .data$se)
+      ),
+      fill = color, alpha = 0.15
+    ) +
     ggplot2::geom_line(color = color, linewidth = 0.8) +
     ggplot2::geom_point(ggplot2::aes(size = .data$n_cells),
-                         color = color, alpha = 0.7) +
+      color = color, alpha = 0.7
+    ) +
     ggplot2::scale_size_continuous(range = c(0.8, 3.5), guide = "none") +
     ggplot2::scale_x_continuous(breaks = seq(0, max_distance, by = 50)) +
     ggplot2::ylim(0, min(1, max(bin_stats$prop_expressing, na.rm = TRUE) * 1.3)) +
@@ -446,25 +463,41 @@ create_gradient_volcano <- function(results, cell_type, output_path,
 
   if ("decay_pattern" %in% names(plot_data)) {
     plot_data[, decay_pattern := factor(decay_pattern,
-      levels = c("linear", "exponential", "step_10um", "step_25um",
-                 "step_50um", "none", "no_variation", "insufficient_data",
-                 "not_significant", "undetermined"))]
+      levels = c(
+        "linear", "exponential", "step_10um", "step_25um",
+        "step_50um", "none", "no_variation", "insufficient_data",
+        "not_significant", "undetermined"
+      )
+    )]
   }
 
-  p <- ggplot2::ggplot(plot_data,
-                       ggplot2::aes(x = gradient_score, y = neg_log10_fdr)) +
+  p <- ggplot2::ggplot(
+    plot_data,
+    ggplot2::aes(x = gradient_score, y = neg_log10_fdr)
+  ) +
     ggplot2::geom_point(
-      ggplot2::aes(color = if ("decay_pattern" %in% names(plot_data))
-        decay_pattern else NULL,
-        size = significant),
+      ggplot2::aes(
+        color = if ("decay_pattern" %in% names(plot_data)) {
+          decay_pattern
+        } else {
+          NULL
+        },
+        size = significant
+      ),
       alpha = 0.6
     ) +
-    ggplot2::scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.5),
-                               guide = "none") +
-    ggplot2::geom_hline(yintercept = -log10(fdr_threshold),
-                        linetype = "dashed", color = "grey40") +
-    ggplot2::geom_vline(xintercept = 0, linetype = "solid",
-                        color = "grey60") +
+    ggplot2::scale_size_manual(
+      values = c("FALSE" = 1, "TRUE" = 2.5),
+      guide = "none"
+    ) +
+    ggplot2::geom_hline(
+      yintercept = -log10(fdr_threshold),
+      linetype = "dashed", color = "grey40"
+    ) +
+    ggplot2::geom_vline(
+      xintercept = 0, linetype = "solid",
+      color = "grey60"
+    ) +
     ggplot2::xlim(-max_score, max_score) +
     ggrepel::geom_text_repel(
       data = top_genes,
@@ -472,13 +505,19 @@ create_gradient_volcano <- function(results, cell_type, output_path,
       size = 3, max.overlaps = 20, box.padding = 0.5
     ) +
     ggplot2::labs(
-      title = sprintf("Distance-Expression Analysis (Poisson GLM, k=%d): %s",
-                       k_neighbors, cell_type),
-      subtitle = sprintf("%d genes significant (FDR < %.2f)",
-                         sum(plot_data$significant, na.rm = TRUE),
-                         fdr_threshold),
-      x = paste0("Log-rate coefficient (negative = ", query_label,
-                  "-induced)"),
+      title = sprintf(
+        "Distance-Expression Analysis (Poisson GLM, k=%d): %s",
+        k_neighbors, cell_type
+      ),
+      subtitle = sprintf(
+        "%d genes significant (FDR < %.2f)",
+        sum(plot_data$significant, na.rm = TRUE),
+        fdr_threshold
+      ),
+      x = paste0(
+        "Log-rate coefficient (negative = ", query_label,
+        "-induced)"
+      ),
       y = paste0("-log10(", fdr_col, ")")
     ) +
     ggplot2::theme_classic(base_size = 12) +
@@ -488,8 +527,10 @@ create_gradient_volcano <- function(results, cell_type, output_path,
     )
 
   if ("decay_pattern" %in% names(plot_data)) {
-    p <- p + ggplot2::scale_color_brewer(palette = "Set2",
-                                          name = "Decay Pattern")
+    p <- p + ggplot2::scale_color_brewer(
+      palette = "Set2",
+      name = "Decay Pattern"
+    )
   }
 
   ggplot2::ggsave(output_path, p, width = 10, height = 8)
@@ -536,7 +577,9 @@ create_gradient_volcano <- function(results, cell_type, output_path,
 create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
                                output_path, query_label = "Query") {
   valid_idx <- !is.na(coefs) & !is.na(ses) & ses > 0
-  if (sum(valid_idx) < 2) return(invisible(NULL))
+  if (sum(valid_idx) < 2) {
+    return(invisible(NULL))
+  }
 
   coefs <- coefs[valid_idx]
   ses <- ses[valid_idx]
@@ -570,31 +613,50 @@ create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
 
   n_neg <- sum(coefs < 0)
   n_pos <- sum(coefs > 0)
-  sign_text <- sprintf("%d/%d samples agree on sign",
-                        max(n_neg, n_pos), length(coefs))
+  sign_text <- sprintf(
+    "%d/%d samples agree on sign",
+    max(n_neg, n_pos), length(coefs)
+  )
 
-  i2_display <- if (is.na(meta_result$i2)) "N/A" else
+  i2_display <- if (is.na(meta_result$i2)) {
+    "N/A"
+  } else {
     sprintf("%.1f%%", meta_result$i2 * 100)
-  pval_display <- if (is.na(meta_result$combined_pval)) "N/A" else
+  }
+  pval_display <- if (is.na(meta_result$combined_pval)) {
+    "N/A"
+  } else {
     sprintf("%.2e", meta_result$combined_pval)
+  }
 
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = coef, y = sample)) +
-    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
-                        color = "grey50") +
+    ggplot2::geom_vline(
+      xintercept = 0, linetype = "dashed",
+      color = "grey50"
+    ) +
     ggplot2::geom_errorbar(ggplot2::aes(xmin = lower, xmax = upper),
-                           orientation = "y", width = 0.2) +
-    ggplot2::geom_point(ggplot2::aes(shape = is_combined,
-                                      size = is_combined)) +
-    ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 18),
-                                guide = "none") +
-    ggplot2::scale_size_manual(values = c("FALSE" = 3, "TRUE" = 5),
-                               guide = "none") +
+      orientation = "y", width = 0.2
+    ) +
+    ggplot2::geom_point(ggplot2::aes(
+      shape = is_combined,
+      size = is_combined
+    )) +
+    ggplot2::scale_shape_manual(
+      values = c("FALSE" = 16, "TRUE" = 18),
+      guide = "none"
+    ) +
+    ggplot2::scale_size_manual(
+      values = c("FALSE" = 3, "TRUE" = 5),
+      guide = "none"
+    ) +
     ggplot2::labs(
       x = "Log-rate coefficient (per um)",
       y = NULL,
       title = sprintf("%s in %s (Poisson GLM)", gene, cell_type),
-      subtitle = sprintf("p = %s, I2 = %s | %s",
-                          pval_display, i2_display, sign_text)
+      subtitle = sprintf(
+        "p = %s, I2 = %s | %s",
+        pval_display, i2_display, sign_text
+      )
     ) +
     ggplot2::theme_bw(base_size = 11) +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
@@ -647,22 +709,34 @@ create_coefficient_strips <- function(coef_results, meta_results, cell_type,
   }
 
   sig_genes <- meta_results[get(fdr_col) < fdr_threshold][
-    order(get(fdr_col))]$gene
-  if (length(sig_genes) == 0) return(invisible(NULL))
+    order(get(fdr_col))
+  ]$gene
+  if (length(sig_genes) == 0) {
+    return(invisible(NULL))
+  }
 
   genes_to_plot <- head(sig_genes, n_top)
   plot_data <- coef_results[gene %in% genes_to_plot & !is.na(coef)]
-  if (nrow(plot_data) == 0) return(invisible(NULL))
+  if (nrow(plot_data) == 0) {
+    return(invisible(NULL))
+  }
 
   gene_order <- meta_results[gene %in% genes_to_plot][
-    order(combined_coef)]$gene
+    order(combined_coef)
+  ]$gene
   plot_data[, gene := factor(gene, levels = gene_order)]
 
-  p <- ggplot2::ggplot(plot_data,
-                       ggplot2::aes(x = coef, y = gene,
-                                    color = sample_id)) +
-    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
-                        color = "grey50") +
+  p <- ggplot2::ggplot(
+    plot_data,
+    ggplot2::aes(
+      x = coef, y = gene,
+      color = sample_id
+    )
+  ) +
+    ggplot2::geom_vline(
+      xintercept = 0, linetype = "dashed",
+      color = "grey50"
+    ) +
     ggplot2::geom_errorbar(
       ggplot2::aes(xmin = coef - 1.96 * se, xmax = coef + 1.96 * se),
       orientation = "y", width = 0.2, alpha = 0.5
@@ -672,10 +746,14 @@ create_coefficient_strips <- function(coef_results, meta_results, cell_type,
     ggplot2::labs(
       x = "Log-rate coefficient (per um)",
       y = NULL,
-      title = sprintf("Per-Sample Coefficients: %s (Poisson GLM)",
-                       cell_type),
-      subtitle = sprintf("Top %d significant genes | Points = individual samples",
-                          length(genes_to_plot))
+      title = sprintf(
+        "Per-Sample Coefficients: %s (Poisson GLM)",
+        cell_type
+      ),
+      subtitle = sprintf(
+        "Top %d significant genes | Points = individual samples",
+        length(genes_to_plot)
+      )
     ) +
     ggplot2::theme_bw(base_size = 10) +
     ggplot2::theme(
@@ -684,6 +762,7 @@ create_coefficient_strips <- function(coef_results, meta_results, cell_type,
     )
 
   ggplot2::ggsave(output_path, p,
-                  width = 8, height = 0.4 * length(genes_to_plot) + 2)
+    width = 8, height = 0.4 * length(genes_to_plot) + 2
+  )
   invisible(p)
 }

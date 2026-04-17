@@ -59,9 +59,11 @@ load_metadata_only <- function(input, celltype_column = "cell_type",
 
   # Verify cell type column exists
   if (!celltype_column %in% names(meta)) {
-    stop(sprintf("Column '%s' not found in metadata.\n  Available columns: %s",
-                 celltype_column,
-                 paste(head(names(meta), 20), collapse = ", ")))
+    stop(sprintf(
+      "Column '%s' not found in metadata.\n  Available columns: %s",
+      celltype_column,
+      paste(head(names(meta), 20), collapse = ", ")
+    ))
   }
 
   message(sprintf("\nUsing %s column for cell types", celltype_column))
@@ -108,8 +110,10 @@ check_data <- function(input, celltype_column = "cell_type",
     size_mb <- file.info(input)$size / (1024 * 1024)
     message(sprintf("  Found (%.1f MB)", size_mb))
   } else {
-    message("Checking in-memory input of class: ",
-            paste(class(input), collapse = ", "))
+    message(
+      "Checking in-memory input of class: ",
+      paste(class(input), collapse = ", ")
+    )
   }
 
   data <- tryCatch(
@@ -119,7 +123,9 @@ check_data <- function(input, celltype_column = "cell_type",
       NULL
     }
   )
-  if (is.null(data)) return(invisible(FALSE))
+  if (is.null(data)) {
+    return(invisible(FALSE))
+  }
 
   message(sprintf("  Cells: %s", format(ncol(data$counts), big.mark = ",")))
   message(sprintf("  Genes: %s", format(nrow(data$counts), big.mark = ",")))
@@ -130,8 +136,10 @@ check_data <- function(input, celltype_column = "cell_type",
   key_cols <- unique(c(celltype_column, sample_column))
 
   # Check common coordinate column names
-  for (pair in list(c("spatial_x", "spatial_y"), c("x", "y"),
-                    c("x_centroid", "y_centroid"))) {
+  for (pair in list(
+    c("spatial_x", "spatial_y"), c("x", "y"),
+    c("x_centroid", "y_centroid")
+  )) {
     if (all(pair %in% meta_names)) {
       key_cols <- c(key_cols, pair)
       break

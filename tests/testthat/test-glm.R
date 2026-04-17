@@ -12,7 +12,7 @@ test_that("fit_poisson returns correct structure", {
 
   expect_type(result, "list")
   expect_named(result, c("beta", "se", "pval", "dispersion", "n_cells"))
-  expect_true(result$beta < 0)  # Should detect negative gradient
+  expect_true(result$beta < 0) # Should detect negative gradient
   expect_true(result$pval < 0.05)
 })
 

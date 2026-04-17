@@ -1,6 +1,4 @@
-#' =============================================================================
-#' RIPPLE Pipeline Entry Points
-#' =============================================================================
+#' RIPPLE pipeline entry points
 #'
 #' Main user-facing functions that wrap the RIPPLE analysis pipeline.
 #' These replace the standalone Rscript commands with callable R functions
@@ -18,9 +16,13 @@ NULL
 #' Resolve a parameter: explicit argument > package option > default
 #' @noRd
 .resolve <- function(value, option_name, default = NULL) {
-  if (!is.null(value)) return(value)
+  if (!is.null(value)) {
+    return(value)
+  }
   opt <- getOption(paste0("ripple.", option_name))
-  if (!is.null(opt) && nzchar(as.character(opt))) return(opt)
+  if (!is.null(opt) && nzchar(as.character(opt))) {
+    return(opt)
+  }
   default
 }
 
@@ -192,48 +194,60 @@ NULL
 #'     = gene is \strong{repressed} near the query cell type.
 #' }
 #'
+#' @examples
+#' \dontrun{
+#' # Minimal run using the synthetic dataset shipped with the package.
+#' # ripple_mock_data contains a planted distance-dependent gradient in T cells.
+#' data(ripple_mock_data)
+#' results <- run_ripple(
+#'   input           = ripple_mock_data,
+#'   query_celltype  = "Macrophage",
+#'   celltype_column = "cell_type",
+#'   sample_column   = "sample_id",
+#'   output_dir      = tempfile("ripple_example_")
+#' )
+#' head(results[order(fisher_fdr)])
+#' }
 #' @export
 run_ripple <- function(
-  input,
-  query_celltype,
-  celltype_column,
-  output_dir              = ".",
-  sample_column           = "sample_id",
-  condition_column        = NULL,
-  condition_value         = NULL,
-  x_column                = NULL,
-  y_column                = NULL,
-  target_celltypes        = NULL,
-  k_neighbors             = 1,
-  max_distance_um         = 200,
-  n_permutations          = 0,
-  fdr_threshold           = 0.05,
-  min_cells_per_sample    = 30,
-  min_expr_pct            = 0.01,
-  min_expr_floor          = 25,
-  priority_genes          = NULL,
-  query_signature_genes   = NULL,
-  query_label             = NULL,
-  analysis_name           = "ripple",
-  sign_consistency        = 1.0,
-  verbose                 = TRUE
-) {
-
+    input,
+    query_celltype,
+    celltype_column,
+    output_dir = ".",
+    sample_column = "sample_id",
+    condition_column = NULL,
+    condition_value = NULL,
+    x_column = NULL,
+    y_column = NULL,
+    target_celltypes = NULL,
+    k_neighbors = 1,
+    max_distance_um = 200,
+    n_permutations = 0,
+    fdr_threshold = 0.05,
+    min_cells_per_sample = 30,
+    min_expr_pct = 0.01,
+    min_expr_floor = 25,
+    priority_genes = NULL,
+    query_signature_genes = NULL,
+    query_label = NULL,
+    analysis_name = "ripple",
+    sign_consistency = 1.0,
+    verbose = TRUE) {
   # --------------------------------------------------------------------------
   # 0. Resolve defaults from package options
   # --------------------------------------------------------------------------
-  sample_column        <- .resolve(sample_column,        "sample_column",        "sample_id")
-  condition_column     <- .resolve(condition_column,      "condition_column",     NULL)
-  condition_value      <- .resolve(condition_value,       "condition_value",      NULL)
-  k_neighbors          <- .resolve(k_neighbors,           "k_neighbors",          1L)
-  max_distance_um      <- .resolve(max_distance_um,       "max_distance_um",      200)
+  sample_column <- .resolve(sample_column, "sample_column", "sample_id")
+  condition_column <- .resolve(condition_column, "condition_column", NULL)
+  condition_value <- .resolve(condition_value, "condition_value", NULL)
+  k_neighbors <- .resolve(k_neighbors, "k_neighbors", 1L)
+  max_distance_um <- .resolve(max_distance_um, "max_distance_um", 200)
 
-  fdr_threshold        <- .resolve(fdr_threshold,         "fdr_threshold",        0.05)
-  min_cells_per_sample <- .resolve(min_cells_per_sample,  "min_cells_per_sample", 30L)
-  min_expr_floor       <- .resolve(min_expr_floor,        "min_expr_cells",       25L)
-  min_expr_pct         <- .resolve(min_expr_pct,          "min_expr_pct",         0.01)
-  sign_consistency     <- .resolve(sign_consistency,      "sign_consistency",     1.0)
-  verbose              <- .resolve(verbose,               "verbose",              TRUE)
+  fdr_threshold <- .resolve(fdr_threshold, "fdr_threshold", 0.05)
+  min_cells_per_sample <- .resolve(min_cells_per_sample, "min_cells_per_sample", 30L)
+  min_expr_floor <- .resolve(min_expr_floor, "min_expr_cells", 25L)
+  min_expr_pct <- .resolve(min_expr_pct, "min_expr_pct", 0.01)
+  sign_consistency <- .resolve(sign_consistency, "sign_consistency", 1.0)
+  verbose <- .resolve(verbose, "verbose", TRUE)
 
   if (is.null(query_label)) query_label <- query_celltype
   if (is.null(priority_genes)) priority_genes <- .default_priority_genes()
@@ -248,7 +262,8 @@ run_ripple <- function(
   # --------------------------------------------------------------------------
   if (missing(input)) {
     stop("'input' is required (Seurat/SCE/SPE object or path to an .rds file)",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (missing(query_celltype) || !nzchar(query_celltype)) {
     stop("query_celltype must be a non-empty string.", call. = FALSE)
@@ -289,18 +304,22 @@ run_ripple <- function(
   rm(data)
 
   .msg("Counts verified: ", nrow(count_matrix_full), " genes x ",
-       ncol(count_matrix_full), " cells", verbose = verbose)
+    ncol(count_matrix_full), " cells",
+    verbose = verbose
+  )
 
   # Validate required columns exist in metadata
   if (!celltype_column %in% names(cell_data)) {
     stop("Cell type column '", celltype_column, "' not found in metadata. ",
-         "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
-         call. = FALSE)
+      "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
+      call. = FALSE
+    )
   }
   if (!sample_column %in% names(cell_data)) {
     stop("Sample column '", sample_column, "' not found in metadata. ",
-         "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
-         call. = FALSE)
+      "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
+      call. = FALSE
+    )
   }
 
   # Validate the query cell type exists in the data (better error than
@@ -308,19 +327,23 @@ run_ripple <- function(
   available_types <- unique(cell_data[[celltype_column]])
   if (!query_celltype %in% available_types) {
     stop("query_celltype '", query_celltype, "' not found in column '",
-         celltype_column, "'.\n  Available values: ",
-         paste(head(available_types, 20), collapse = ", "),
-         if (length(available_types) > 20) ", ..." else "",
-         call. = FALSE)
+      celltype_column, "'.\n  Available values: ",
+      paste(head(available_types, 20), collapse = ", "),
+      if (length(available_types) > 20) ", ..." else "",
+      call. = FALSE
+    )
   }
 
   # --------------------------------------------------------------------------
   # 5. Resolve coordinate columns
   # --------------------------------------------------------------------------
-  coord_cols <- get_coord_columns(cell_data, x_col = x_column,
-                                  y_col = y_column)
+  coord_cols <- get_coord_columns(cell_data,
+    x_col = x_column,
+    y_col = y_column
+  )
   .msg("Coordinate columns: ", coord_cols[1], ", ", coord_cols[2],
-       verbose = verbose)
+    verbose = verbose
+  )
 
   # --------------------------------------------------------------------------
   # 6. Resolve condition column and filter
@@ -328,7 +351,8 @@ run_ripple <- function(
   if (!is.null(condition_column) && nzchar(condition_column)) {
     if (!condition_column %in% names(cell_data)) {
       stop("Condition column '", condition_column, "' not found in metadata.",
-           call. = FALSE)
+        call. = FALSE
+      )
     }
     cell_data[, condition := get(condition_column)]
   } else {
@@ -338,32 +362,39 @@ run_ripple <- function(
   .msg("\nData summary (before filtering):", verbose = verbose)
   .msg("  Total cells: ", nrow(cell_data), verbose = verbose)
   .msg("  Samples: ", data.table::uniqueN(cell_data[[sample_column]]),
-       verbose = verbose)
+    verbose = verbose
+  )
   .msg("  Conditions: ",
-       paste(unique(cell_data$condition), collapse = ", "),
-       verbose = verbose)
+    paste(unique(cell_data$condition), collapse = ", "),
+    verbose = verbose
+  )
 
   if (!is.null(condition_value) && nzchar(condition_value)) {
     available_cond <- unique(cell_data$condition)
     if (!condition_value %in% available_cond) {
       stop("condition_value '", condition_value, "' not found in condition ",
-           "column.\n  Available values: ",
-           paste(available_cond, collapse = ", "),
-           call. = FALSE)
+        "column.\n  Available values: ",
+        paste(available_cond, collapse = ", "),
+        call. = FALSE
+      )
     }
     .msg("\nFiltering to condition == '", condition_value, "'...",
-         verbose = verbose)
+      verbose = verbose
+    )
     cell_data <- cell_data[condition == condition_value]
     if (nrow(cell_data) == 0) {
       stop("No cells remain after filtering to condition '", condition_value,
-           "'.", call. = FALSE)
+        "'.",
+        call. = FALSE
+      )
     }
   }
 
   .msg("Data summary (after filtering):", verbose = verbose)
   .msg("  Total cells: ", nrow(cell_data), verbose = verbose)
   .msg("  Samples: ", data.table::uniqueN(cell_data[[sample_column]]),
-       verbose = verbose)
+    verbose = verbose
+  )
 
   # Subset count matrix to filtered barcodes
   count_matrix <- count_matrix_full[, cell_data$barcode, drop = FALSE]
@@ -374,8 +405,10 @@ run_ripple <- function(
   total_counts <- stats::setNames(as.numeric(total_counts), cell_data$barcode)
 
   .msg("Total counts per cell: median=", round(stats::median(total_counts)),
-       ", range=[", round(min(total_counts)), "-",
-       round(max(total_counts)), "]", verbose = verbose)
+    ", range=[", round(min(total_counts)), "-",
+    round(max(total_counts)), "]",
+    verbose = verbose
+  )
 
   # Free full count matrix
   rm(count_matrix_full)
@@ -386,7 +419,8 @@ run_ripple <- function(
   # --------------------------------------------------------------------------
   .msg("\n", strrep("=", 70), verbose = verbose)
   .msg("Calculating Distances to Query Cells (k=", k_neighbors, ")",
-       verbose = verbose)
+    verbose = verbose
+  )
   .msg(strrep("=", 70), verbose = verbose)
 
   coords <- as.matrix(cell_data[, ..coord_cols])
@@ -398,14 +432,19 @@ run_ripple <- function(
 
   if (n_query < 10) {
     stop("Too few query cells for analysis (", n_query, "). ",
-         "Need at least 10.", call. = FALSE)
+      "Need at least 10.",
+      call. = FALSE
+    )
   }
 
   # Query cells per sample (for stratified permutation)
   query_per_sample_dt <- cell_data[query_mask == TRUE, .N,
-                                   by = c(sample_column)]
-  query_per_sample <- stats::setNames(query_per_sample_dt$N,
-                                      query_per_sample_dt[[sample_column]])
+    by = c(sample_column)
+  ]
+  query_per_sample <- stats::setNames(
+    query_per_sample_dt$N,
+    query_per_sample_dt[[sample_column]]
+  )
   .msg("Query cells per sample:", verbose = verbose)
   for (samp in names(query_per_sample)) {
     .msg("  ", samp, ": ", query_per_sample[samp], verbose = verbose)
@@ -429,11 +468,14 @@ run_ripple <- function(
 
   .msg("Distance distribution:", verbose = verbose)
   .msg("  Min: ", round(min(cell_data$dist_to_query), 1), " um",
-       verbose = verbose)
+    verbose = verbose
+  )
   .msg("  Median: ", round(stats::median(cell_data$dist_to_query), 1), " um",
-       verbose = verbose)
+    verbose = verbose
+  )
   .msg("  Max: ", round(max(cell_data$dist_to_query), 1), " um",
-       verbose = verbose)
+    verbose = verbose
+  )
 
   # --------------------------------------------------------------------------
   # 8. Determine target cell types
@@ -442,7 +484,9 @@ run_ripple <- function(
     all_types <- unique(cell_data[[celltype_column]])
     target_celltypes <- sort(setdiff(all_types, c(query_celltype, NA_character_)))
     .msg("Auto-detected ", length(target_celltypes), " target cell types: ",
-         paste(target_celltypes, collapse = ", "), verbose = verbose)
+      paste(target_celltypes, collapse = ", "),
+      verbose = verbose
+    )
   }
 
   # --------------------------------------------------------------------------
@@ -456,19 +500,27 @@ run_ripple <- function(
 
   # Distance distribution histogram
   p_dist <- ggplot2::ggplot(cell_data, ggplot2::aes(x = dist_to_query)) +
-    ggplot2::geom_histogram(bins = 50, fill = "steelblue", color = "white",
-                            alpha = 0.7) +
-    ggplot2::geom_vline(xintercept = 50, linetype = "dashed", color = "red",
-                        linewidth = 1) +
+    ggplot2::geom_histogram(
+      bins = 50, fill = "steelblue", color = "white",
+      alpha = 0.7
+    ) +
+    ggplot2::geom_vline(
+      xintercept = 50, linetype = "dashed", color = "red",
+      linewidth = 1
+    ) +
     ggplot2::labs(
-      title = sprintf("Distance to Nearest %s (k=%d)", query_celltype,
-                       k_neighbors),
+      title = sprintf(
+        "Distance to Nearest %s (k=%d)", query_celltype,
+        k_neighbors
+      ),
       x = "Distance (um)",
       y = "Number of Cells"
     ) +
     ggplot2::theme_bw(base_size = 12)
   ggplot2::ggsave(file.path(qc_dir, "distance_distribution.pdf"),
-                  p_dist, width = 8, height = 5)
+    p_dist,
+    width = 8, height = 5
+  )
   .msg("  Saved: qc/distance_distribution.pdf", verbose = verbose)
 
   # Per-sample summary
@@ -486,21 +538,23 @@ run_ripple <- function(
   celltype_counts <- cell_data[, .N, by = c(celltype_column)]
   data.table::setnames(celltype_counts, celltype_column, "cell_type")
   data.table::setorder(celltype_counts, -N)
-  data.table::fwrite(celltype_counts,
-                     file.path(qc_dir, "filtered_celltype_counts.csv"))
+  data.table::fwrite(
+    celltype_counts,
+    file.path(qc_dir, "filtered_celltype_counts.csv")
+  )
 
   # --------------------------------------------------------------------------
   # 10. Main analysis loop: iterate over target cell types
   # --------------------------------------------------------------------------
   .msg("\n", strrep("=", 70), verbose = verbose)
   .msg("Running Distance Correlation Analysis (Poisson GLM)",
-       verbose = verbose)
+    verbose = verbose
+  )
   .msg(strrep("=", 70), verbose = verbose)
 
   all_results <- list()
 
   for (ct_name in target_celltypes) {
-
     .msg("\n", strrep("-", 60), verbose = verbose)
     .msg("Analyzing: ", ct_name, verbose = verbose)
     .msg(strrep("-", 60), verbose = verbose)
@@ -523,16 +577,20 @@ run_ripple <- function(
     sample_counts_dt <- target_data[, .N, by = c(sample_column)]
     valid_samples <- sample_counts_dt[N >= min_cells_per_sample][[sample_column]]
     .msg("  Valid samples (>= ", min_cells_per_sample, " cells): ",
-         length(valid_samples), verbose = verbose)
+      length(valid_samples),
+      verbose = verbose
+    )
 
     if (length(valid_samples) < 2) {
       .msg("  Need at least 2 valid samples for meta-analysis",
-           verbose = verbose)
+        verbose = verbose
+      )
       next
     }
     if (length(valid_samples) == 2) {
       .msg("  WARNING: Only 2 valid samples - meta-analysis will have low power",
-           verbose = verbose)
+        verbose = verbose
+      )
     }
 
     # Target cell barcodes in valid samples
@@ -547,18 +605,24 @@ run_ripple <- function(
     # --------------------------------------------------------------------
     sample_ids_for_filter <- droplevels(as.factor(target_valid[[sample_column]]))
     cells_per_sample <- table(sample_ids_for_filter)
-    threshold_per_sample <- pmax(ceiling(cells_per_sample * min_expr_pct),
-                                 min_expr_floor)
+    threshold_per_sample <- pmax(
+      ceiling(cells_per_sample * min_expr_pct),
+      min_expr_floor
+    )
     threshold_floor <- stats::setNames(
       rep(min_expr_floor, length(cells_per_sample)),
       names(cells_per_sample)
     )
 
     .msg("  Per-sample expression thresholds (max(", min_expr_pct * 100,
-         "%, ", min_expr_floor, ")):", verbose = verbose)
+      "%, ", min_expr_floor, ")):",
+      verbose = verbose
+    )
     for (s in names(threshold_per_sample)) {
       .msg("    ", s, ": ", threshold_per_sample[s], " cells (of ",
-           cells_per_sample[s], ")", verbose = verbose)
+        cells_per_sample[s], ")",
+        verbose = verbose
+      )
     }
 
     # Count expressing cells per gene per sample
@@ -591,16 +655,19 @@ run_ripple <- function(
 
     genes_to_analyze <- union(genes_strict, genes_lenient_only)
     .msg("  Genes passing strict filter: ", length(genes_strict),
-         verbose = verbose)
+      verbose = verbose
+    )
     if (length(genes_lenient_only) > 0) {
       .msg("  Priority genes rescued by lenient filter: ",
-           length(genes_lenient_only),
-           " (", paste(head(genes_lenient_only, 10), collapse = ", "),
-           if (length(genes_lenient_only) > 10) ", ..." else "", ")",
-           verbose = verbose)
+        length(genes_lenient_only),
+        " (", paste(head(genes_lenient_only, 10), collapse = ", "),
+        if (length(genes_lenient_only) > 10) ", ..." else "", ")",
+        verbose = verbose
+      )
     }
     .msg("  Total genes to analyze: ", length(genes_to_analyze),
-         verbose = verbose)
+      verbose = verbose
+    )
 
     if (length(genes_to_analyze) < 10) {
       .msg("  Too few genes passed filtering", verbose = verbose)
@@ -611,7 +678,8 @@ run_ripple <- function(
     # Step 1: Per-sample Poisson GLM coefficients
     # --------------------------------------------------------------------
     .msg("  Step 1: Calculating per-sample Poisson coefficients...",
-         verbose = verbose)
+      verbose = verbose
+    )
 
     coef_results <- data.table::rbindlist(lapply(genes_to_analyze, function(g) {
       gene_counts <- as.numeric(target_counts[g, target_barcodes])
@@ -632,7 +700,8 @@ run_ripple <- function(
         samp_total <- total_counts[target_barcodes[samp_idx]]
 
         fit_result <- fit_poisson(samp_counts, samp_dist, samp_total,
-                                  min_cells = min_expr_cells_glm)
+          min_cells = min_expr_cells_glm
+        )
 
         if (is.null(fit_result)) {
           data.table::data.table(
@@ -655,8 +724,10 @@ run_ripple <- function(
     }), fill = TRUE)
 
     # Save per-sample coefficients
-    data.table::fwrite(coef_results,
-                       file.path(ct_output_dir, "coef_per_sample.csv"))
+    data.table::fwrite(
+      coef_results,
+      file.path(ct_output_dir, "coef_per_sample.csv")
+    )
     .msg("  Saved: coef_per_sample.csv", verbose = verbose)
 
     # --------------------------------------------------------------------
@@ -709,7 +780,8 @@ run_ripple <- function(
     # Step 2b: Fisher's combined p-value
     # --------------------------------------------------------------------
     .msg("  Step 2b: Computing Fisher's combined p-values...",
-         verbose = verbose)
+      verbose = verbose
+    )
 
     fisher_results <- data.table::rbindlist(lapply(genes_to_analyze, function(g) {
       gene_data <- coef_results[gene == g]
@@ -728,8 +800,10 @@ run_ripple <- function(
     }), fill = TRUE)
 
     fisher_results[, fisher_fdr := stats::p.adjust(fisher_pval, method = "BH")]
-    meta_results <- merge(meta_results, fisher_results, by = "gene",
-                          all.x = TRUE)
+    meta_results <- merge(meta_results, fisher_results,
+      by = "gene",
+      all.x = TRUE
+    )
     data.table::setDT(meta_results)
 
     # --------------------------------------------------------------------
@@ -737,16 +811,21 @@ run_ripple <- function(
     # --------------------------------------------------------------------
     if (n_permutations > 0) {
       .msg("  Step 2c: Running permutation tests (",
-           n_permutations, " permutations)...", verbose = verbose)
+        n_permutations, " permutations)...",
+        verbose = verbose
+      )
 
       perm_top_n <- 100
       top_by_effect <- meta_results[
-        order(-abs(combined_coef))][1:min(perm_top_n, .N)]$gene
+        order(-abs(combined_coef))
+      ][1:min(perm_top_n, .N)]$gene
       priority_in_data <- intersect(priority_genes, genes_to_analyze)
       top_genes_for_perm <- unique(c(top_by_effect, priority_in_data))
 
-      .msg(sprintf("    Permutation genes: %d total (after dedup)",
-                    length(top_genes_for_perm)), verbose = verbose)
+      .msg(sprintf(
+        "    Permutation genes: %d total (after dedup)",
+        length(top_genes_for_perm)
+      ), verbose = verbose)
 
       coords_target <- as.matrix(target_valid[, ..coord_cols])
       observed_coefs <- stats::setNames(
@@ -754,7 +833,8 @@ run_ripple <- function(
         meta_results[gene %in% top_genes_for_perm]$gene
       )
       query_per_sample_valid <- query_per_sample[
-        names(query_per_sample) %in% valid_samples]
+        names(query_per_sample) %in% valid_samples
+      ]
 
       perm_results <- run_permutation_tests(
         genes = top_genes_for_perm,
@@ -774,12 +854,16 @@ run_ripple <- function(
         total_counts_target = total_counts[target_barcodes]
       )
 
-      meta_results <- merge(meta_results, perm_results, by = "gene",
-                            all.x = TRUE)
+      meta_results <- merge(meta_results, perm_results,
+        by = "gene",
+        all.x = TRUE
+      )
       data.table::setDT(meta_results)
 
-      data.table::fwrite(perm_results,
-                         file.path(ct_output_dir, "permutation_pvals.csv"))
+      data.table::fwrite(
+        perm_results,
+        file.path(ct_output_dir, "permutation_pvals.csv")
+      )
       .msg("    Saved: permutation_pvals.csv", verbose = verbose)
     } else {
       meta_results[, perm_pval := NA_real_]
@@ -797,7 +881,9 @@ run_ripple <- function(
 
     sig_genes <- meta_results[fisher_fdr < fdr_threshold]$gene
     .msg("  Significant genes (Fisher FDR < ", fdr_threshold, "): ",
-         length(sig_genes), verbose = verbose)
+      length(sig_genes),
+      verbose = verbose
+    )
 
     if (length(sig_genes) > 0) {
       decay_patterns <- sapply(sig_genes, function(gene) {
@@ -805,7 +891,9 @@ run_ripple <- function(
 
         per_sample_patterns <- sapply(valid_samples, function(samp) {
           samp_idx <- which(target_valid[[sample_column]] == samp)
-          if (length(samp_idx) < min_cells_per_sample) return(NA_character_)
+          if (length(samp_idx) < min_cells_per_sample) {
+            return(NA_character_)
+          }
 
           samp_counts <- gene_counts[samp_idx]
           samp_dist <- target_valid[samp_idx]$dist_to_query
@@ -818,37 +906,51 @@ run_ripple <- function(
         })
 
         per_sample_patterns <- per_sample_patterns[!is.na(per_sample_patterns)]
-        if (length(per_sample_patterns) == 0) return("undetermined")
+        if (length(per_sample_patterns) == 0) {
+          return("undetermined")
+        }
         pattern_counts <- table(per_sample_patterns)
         names(pattern_counts)[which.max(pattern_counts)]
       })
 
       meta_results[, decay_pattern := "not_significant"]
-      meta_results[gene %in% sig_genes,
-                   decay_pattern := decay_patterns[match(gene, sig_genes)]]
+      meta_results[
+        gene %in% sig_genes,
+        decay_pattern := decay_patterns[match(gene, sig_genes)]
+      ]
     } else {
       meta_results[, decay_pattern := "not_significant"]
     }
 
     # Save per-celltype results
-    data.table::fwrite(meta_results,
-                       file.path(ct_output_dir, "meta_analysis_results.csv"))
+    data.table::fwrite(
+      meta_results,
+      file.path(ct_output_dir, "meta_analysis_results.csv")
+    )
     .msg("  Saved: meta_analysis_results.csv", verbose = verbose)
 
     # Gradient scores CSV
-    gradient_results <- meta_results[, .(gene, gradient_score, combined_coef,
-                                          fdr, fisher_fdr, decay_pattern,
-                                          sign_consistency,
-                                          median_dispersion)]
+    gradient_results <- meta_results[, .(
+      gene, gradient_score, combined_coef,
+      fdr, fisher_fdr, decay_pattern,
+      sign_consistency,
+      median_dispersion
+    )]
     gradient_results <- gradient_results[order(gradient_score)]
-    data.table::fwrite(gradient_results,
-                       file.path(ct_output_dir, "gradient_scores.csv"))
+    data.table::fwrite(
+      gradient_results,
+      file.path(ct_output_dir, "gradient_scores.csv")
+    )
 
     # Decay classification CSV
     decay_summary <- meta_results[fisher_fdr < fdr_threshold,
-                                  .N, by = decay_pattern]
-    data.table::fwrite(decay_summary,
-                       file.path(ct_output_dir, "decay_classification.csv"))
+      .N,
+      by = decay_pattern
+    ]
+    data.table::fwrite(
+      decay_summary,
+      file.path(ct_output_dir, "decay_classification.csv")
+    )
 
     # --------------------------------------------------------------------
     # Step 5: Visualizations
@@ -857,10 +959,11 @@ run_ripple <- function(
 
     # Volcano plot
     create_gradient_volcano(meta_results, ct_name,
-                             file.path(ct_output_dir, "gradient_volcano.pdf"),
-                             fdr_threshold = fdr_threshold,
-                             query_label = query_label,
-                             k_neighbors = k_neighbors)
+      file.path(ct_output_dir, "gradient_volcano.pdf"),
+      fdr_threshold = fdr_threshold,
+      query_label = query_label,
+      k_neighbors = k_neighbors
+    )
 
     # Forest plots and coefficient strips for top significant genes
     top_sig_genes <- head(
@@ -879,8 +982,10 @@ run_ripple <- function(
           sample_ids = gene_data[["sample_id"]],
           gene = g,
           cell_type = ct_name,
-          output_path = file.path(forest_dir,
-                                  sprintf("%s_forest.pdf", g)),
+          output_path = file.path(
+            forest_dir,
+            sprintf("%s_forest.pdf", g)
+          ),
           query_label = query_label
         )
       }
@@ -916,28 +1021,41 @@ run_ripple <- function(
 
   combined_results <- data.table::rbindlist(all_results, fill = TRUE)
 
-  data.table::fwrite(combined_results,
-                     file.path(output_base, "summary", "all_genes_results.csv"))
+  data.table::fwrite(
+    combined_results,
+    file.path(output_base, "summary", "all_genes_results.csv")
+  )
   .msg("Saved: summary/all_genes_results.csv", verbose = verbose)
 
   # Top genes by Fisher FDR
   if ("fisher_fdr" %in% names(combined_results)) {
     top_genes <- combined_results[fisher_fdr < fdr_threshold][
-      order(fisher_fdr), head(.SD, 50), by = cell_type
+      order(fisher_fdr), head(.SD, 50),
+      by = cell_type
     ]
-    data.table::fwrite(top_genes,
-                       file.path(output_base, "summary",
-                                 "top_gradient_genes.csv"))
+    data.table::fwrite(
+      top_genes,
+      file.path(
+        output_base, "summary",
+        "top_gradient_genes.csv"
+      )
+    )
     .msg("Saved: summary/top_gradient_genes.csv", verbose = verbose)
   }
 
   # Decay pattern summary
   decay_summary_all <- combined_results[fisher_fdr < fdr_threshold,
-                                        .N, by = .(cell_type, decay_pattern)]
+    .N,
+    by = .(cell_type, decay_pattern)
+  ]
   if (nrow(decay_summary_all) > 0) {
-    data.table::fwrite(decay_summary_all,
-                       file.path(output_base, "summary",
-                                 "decay_pattern_summary.csv"))
+    data.table::fwrite(
+      decay_summary_all,
+      file.path(
+        output_base, "summary",
+        "decay_pattern_summary.csv"
+      )
+    )
     .msg("Saved: summary/decay_pattern_summary.csv", verbose = verbose)
   }
 
@@ -946,9 +1064,13 @@ run_ripple <- function(
     median_dispersion = stats::median(median_dispersion, na.rm = TRUE),
     pct_overdispersed = mean(median_dispersion > 2, na.rm = TRUE) * 100
   ), by = cell_type]
-  data.table::fwrite(disp_summary,
-                     file.path(output_base, "summary",
-                               "dispersion_summary.csv"))
+  data.table::fwrite(
+    disp_summary,
+    file.path(
+      output_base, "summary",
+      "dispersion_summary.csv"
+    )
+  )
 
   # Sign consistency summary
   sign_summary <- combined_results[fisher_fdr < fdr_threshold, .(
@@ -956,9 +1078,13 @@ run_ripple <- function(
     pct_all_agree = mean(sign_consistency == 1, na.rm = TRUE) * 100,
     median_sign_consistency = stats::median(sign_consistency, na.rm = TRUE)
   ), by = cell_type]
-  data.table::fwrite(sign_summary,
-                     file.path(output_base, "summary",
-                               "sign_consistency_summary.csv"))
+  data.table::fwrite(
+    sign_summary,
+    file.path(
+      output_base, "summary",
+      "sign_consistency_summary.csv"
+    )
+  )
 
   # Print summary
   .msg("\n", strrep("=", 70), verbose = verbose)
@@ -968,12 +1094,16 @@ run_ripple <- function(
     ct_result <- all_results[[ct]]
     n_sig <- sum(ct_result$fisher_fdr < fdr_threshold, na.rm = TRUE)
     n_neg <- sum(ct_result$fisher_fdr < fdr_threshold &
-                   ct_result$gradient_score < 0, na.rm = TRUE)
+      ct_result$gradient_score < 0, na.rm = TRUE)
     n_pos <- sum(ct_result$fisher_fdr < fdr_threshold &
-                   ct_result$gradient_score > 0, na.rm = TRUE)
-    .msg(sprintf("  %s: %d significant genes (%d %s-induced, %d %s-repressed)",
-                 ct, n_sig, n_neg, query_label, n_pos, query_label),
-         verbose = verbose)
+      ct_result$gradient_score > 0, na.rm = TRUE)
+    .msg(
+      sprintf(
+        "  %s: %d significant genes (%d %s-induced, %d %s-repressed)",
+        ct, n_sig, n_neg, query_label, n_pos, query_label
+      ),
+      verbose = verbose
+    )
   }
 
   .msg("\n", strrep("=", 70), verbose = verbose)
@@ -1056,41 +1186,53 @@ run_ripple <- function(
 #'     Likely a power issue from SE inflation, not a true niche effect.}
 #' }
 #'
+#' @examples
+#' \dontrun{
+#' # Run confounder control after an initial run_ripple() completes.
+#' # Choose a control cell type that co-localises with the query but is
+#' # biologically distinct (e.g. Tregs vs. CD4 T cells).
+#' stage2 <- run_ripple_confounder(
+#'   input            = my_spe,
+#'   results_dir      = "./results/spatial_analysis_Tumor/ripple",
+#'   query_celltype   = "Tumor",
+#'   celltype_column  = "cell_type",
+#'   control_celltype = "CAF"
+#' )
+#' table(stage2$classification)
+#' }
 #' @export
 run_ripple_confounder <- function(
-  input,
-  results_dir,
-  query_celltype,
-  celltype_column,
-  control_celltype,
-  output_dir              = NULL,
-  sample_column           = "sample_id",
-  condition_column        = NULL,
-  condition_value         = NULL,
-  x_column                = NULL,
-  y_column                = NULL,
-  target_celltypes        = NULL,
-  fdr_threshold           = 0.05,
-  min_cells_per_sample    = 30,
-  min_control_cells       = 30,
-  max_distance_um         = 200,
-  sig_column              = "fisher_fdr",
-  query_label             = NULL,
-  sign_consistency        = 1.0,
-  verbose                 = TRUE
-) {
-
+    input,
+    results_dir,
+    query_celltype,
+    celltype_column,
+    control_celltype,
+    output_dir = NULL,
+    sample_column = "sample_id",
+    condition_column = NULL,
+    condition_value = NULL,
+    x_column = NULL,
+    y_column = NULL,
+    target_celltypes = NULL,
+    fdr_threshold = 0.05,
+    min_cells_per_sample = 30,
+    min_control_cells = 30,
+    max_distance_um = 200,
+    sig_column = "fisher_fdr",
+    query_label = NULL,
+    sign_consistency = 1.0,
+    verbose = TRUE) {
   # --------------------------------------------------------------------------
   # 0. Resolve defaults
   # --------------------------------------------------------------------------
-  sample_column        <- .resolve(sample_column,        "sample_column",        "sample_id")
-  condition_column     <- .resolve(condition_column,      "condition_column",     NULL)
-  condition_value      <- .resolve(condition_value,       "condition_value",      NULL)
-  fdr_threshold        <- .resolve(fdr_threshold,         "fdr_threshold",        0.05)
-  min_cells_per_sample <- .resolve(min_cells_per_sample,  "min_cells_per_sample", 30L)
-  sign_consistency     <- .resolve(sign_consistency,      "sign_consistency",     1.0)
-  max_distance_um      <- .resolve(max_distance_um,       "max_distance_um",      200)
-  verbose              <- .resolve(verbose,               "verbose",              TRUE)
+  sample_column <- .resolve(sample_column, "sample_column", "sample_id")
+  condition_column <- .resolve(condition_column, "condition_column", NULL)
+  condition_value <- .resolve(condition_value, "condition_value", NULL)
+  fdr_threshold <- .resolve(fdr_threshold, "fdr_threshold", 0.05)
+  min_cells_per_sample <- .resolve(min_cells_per_sample, "min_cells_per_sample", 30L)
+  sign_consistency <- .resolve(sign_consistency, "sign_consistency", 1.0)
+  max_distance_um <- .resolve(max_distance_um, "max_distance_um", 200)
+  verbose <- .resolve(verbose, "verbose", TRUE)
 
   if (is.null(query_label)) query_label <- query_celltype
   min_expr_cells_glm <- 5L
@@ -1102,46 +1244,57 @@ run_ripple_confounder <- function(
   # --------------------------------------------------------------------------
   if (missing(input)) {
     stop("'input' is required (Seurat/SCE/SPE object or path to an .rds file)",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (missing(control_celltype) || !nzchar(control_celltype)) {
     stop("control_celltype is required for confounder analysis.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   # --------------------------------------------------------------------------
   # 2. Load Stage 1 results
   # --------------------------------------------------------------------------
-  stage1_summary_file <- file.path(results_dir, "summary",
-                                   "all_genes_results.csv")
+  stage1_summary_file <- file.path(
+    results_dir, "summary",
+    "all_genes_results.csv"
+  )
   if (!file.exists(stage1_summary_file)) {
     stop("Stage 1 results not found: ", stage1_summary_file,
-         "\nRun run_ripple() or merge_ripple_results() first.",
-         call. = FALSE)
+      "\nRun run_ripple() or merge_ripple_results() first.",
+      call. = FALSE
+    )
   }
 
   stage1_all <- data.table::fread(stage1_summary_file)
   .msg("Loaded Stage 1 results: ", nrow(stage1_all), " gene-celltype entries",
-       verbose = verbose)
+    verbose = verbose
+  )
 
   # Verify significance column
   if (!sig_column %in% names(stage1_all)) {
     .msg("WARNING: '", sig_column, "' not found. Falling back to 'fdr'.",
-         verbose = verbose)
+      verbose = verbose
+    )
     sig_column <- "fdr"
     if (!sig_column %in% names(stage1_all)) {
       stop("Neither 'fisher_fdr' nor 'fdr' found in Stage 1 results.",
-           call. = FALSE)
+        call. = FALSE
+      )
     }
   }
 
   stage1_sig <- stage1_all[get(sig_column) < fdr_threshold]
   .msg("Stage 1 significant (", sig_column, " < ", fdr_threshold, "): ",
-       nrow(stage1_sig), " entries", verbose = verbose)
+    nrow(stage1_sig), " entries",
+    verbose = verbose
+  )
 
   if (nrow(stage1_sig) == 0) {
     .msg("No significant genes from Stage 1. Nothing to validate.",
-         verbose = verbose)
+      verbose = verbose
+    )
     return(invisible(data.table::data.table()))
   }
 
@@ -1158,7 +1311,8 @@ run_ripple_confounder <- function(
 
   .msg(strrep("=", 70), verbose = verbose)
   .msg("RIPPLE Stage 4: Confounder Control (Bivariate Poisson GLM)",
-       verbose = verbose)
+    verbose = verbose
+  )
   .msg(strrep("=", 70), verbose = verbose)
   .msg("Query cell type:   ", query_celltype, verbose = verbose)
   .msg("Control cell type: ", control_celltype, verbose = verbose)
@@ -1176,35 +1330,40 @@ run_ripple_confounder <- function(
   # Validate required columns
   if (!celltype_column %in% names(cell_data)) {
     stop("Cell type column '", celltype_column, "' not found in metadata. ",
-         "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
-         call. = FALSE)
+      "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
+      call. = FALSE
+    )
   }
   if (!sample_column %in% names(cell_data)) {
     stop("Sample column '", sample_column, "' not found in metadata. ",
-         "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
-         call. = FALSE)
+      "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
+      call. = FALSE
+    )
   }
 
   # Validate that query and control cell types exist
   available_types <- unique(cell_data[[celltype_column]])
   if (!query_celltype %in% available_types) {
     stop("query_celltype '", query_celltype, "' not found in column '",
-         celltype_column, "'.\n  Available values: ",
-         paste(head(available_types, 20), collapse = ", "),
-         call. = FALSE)
+      celltype_column, "'.\n  Available values: ",
+      paste(head(available_types, 20), collapse = ", "),
+      call. = FALSE
+    )
   }
   if (!control_celltype %in% available_types) {
     stop("control_celltype '", control_celltype, "' not found in column '",
-         celltype_column, "'.\n  Available values: ",
-         paste(head(available_types, 20), collapse = ", "),
-         call. = FALSE)
+      celltype_column, "'.\n  Available values: ",
+      paste(head(available_types, 20), collapse = ", "),
+      call. = FALSE
+    )
   }
 
   # Resolve condition
   if (!is.null(condition_column) && nzchar(condition_column)) {
     if (!condition_column %in% names(cell_data)) {
       stop("Condition column '", condition_column, "' not found.",
-           call. = FALSE)
+        call. = FALSE
+      )
     }
     cell_data[, condition := get(condition_column)]
   } else {
@@ -1216,54 +1375,67 @@ run_ripple_confounder <- function(
     available_cond <- unique(cell_data$condition)
     if (!condition_value %in% available_cond) {
       stop("condition_value '", condition_value, "' not found in condition ",
-           "column.\n  Available values: ",
-           paste(available_cond, collapse = ", "),
-           call. = FALSE)
+        "column.\n  Available values: ",
+        paste(available_cond, collapse = ", "),
+        call. = FALSE
+      )
     }
     cell_data <- cell_data[condition == condition_value]
   }
 
   .msg("Data after filtering: ", nrow(cell_data), " cells",
-       verbose = verbose)
+    verbose = verbose
+  )
 
   # --------------------------------------------------------------------------
   # 5. Calculate distances
   # --------------------------------------------------------------------------
-  coord_cols <- get_coord_columns(cell_data, x_col = x_column,
-                                    y_col = y_column)
+  coord_cols <- get_coord_columns(cell_data,
+    x_col = x_column,
+    y_col = y_column
+  )
   coords <- as.matrix(cell_data[, ..coord_cols])
 
   # Distance to query
   query_mask <- cell_data[[celltype_column]] == query_celltype
   .msg("Query cells (", query_celltype, "): ", sum(query_mask),
-       verbose = verbose)
+    verbose = verbose
+  )
   if (sum(query_mask) < 10) {
     stop("Too few query cells (", sum(query_mask), ").", call. = FALSE)
   }
   query_coords <- coords[query_mask, , drop = FALSE]
   nn_query <- RANN::nn2(query_coords, coords, k = 1)
-  cell_data[, dist_to_query := pmin(as.vector(nn_query$nn.dists),
-                                     max_distance_um)]
+  cell_data[, dist_to_query := pmin(
+    as.vector(nn_query$nn.dists),
+    max_distance_um
+  )]
 
   # Distance to control
   control_mask <- cell_data[[celltype_column]] == control_celltype
   n_control_total <- sum(control_mask)
   .msg("Control cells (", control_celltype, "): ", n_control_total,
-       verbose = verbose)
+    verbose = verbose
+  )
 
   if (n_control_total < min_control_cells) {
     stop("Too few control cells (", n_control_total, ") for reliable ",
-         "distance calculation.", call. = FALSE)
+      "distance calculation.",
+      call. = FALSE
+    )
   }
 
   control_coords <- coords[control_mask, , drop = FALSE]
   nn_control <- RANN::nn2(control_coords, coords, k = 1)
-  cell_data[, dist_to_control := pmin(as.vector(nn_control$nn.dists),
-                                       max_distance_um)]
+  cell_data[, dist_to_control := pmin(
+    as.vector(nn_control$nn.dists),
+    max_distance_um
+  )]
 
   # Per-sample control cell counts
   control_per_sample <- cell_data[control_mask == TRUE, .N,
-                                  by = c(sample_column)]
+    by = c(sample_column)
+  ]
   data.table::setnames(control_per_sample, "N", "n_control")
 
   # Collinearity check
@@ -1272,7 +1444,8 @@ run_ripple_confounder <- function(
   for (samp in samples_all) {
     samp_data <- cell_data[get(sample_column) == samp]
     cor_val <- stats::cor(samp_data$dist_to_query, samp_data$dist_to_control,
-                          use = "complete.obs", method = "pearson")
+      use = "complete.obs", method = "pearson"
+    )
     flag <- if (abs(cor_val) > 0.8) " [WARNING: high collinearity]" else ""
     .msg("  ", samp, ": r = ", round(cor_val, 3), flag, verbose = verbose)
   }
@@ -1322,7 +1495,8 @@ run_ripple_confounder <- function(
     samp_counts_dt <- target_data[, .N, by = c(sample_column)]
     valid_samples <- samp_counts_dt[N >= min_cells_per_sample][[sample_column]]
     valid_ctrl_samples <- control_per_sample[
-      n_control >= min_control_cells][[sample_column]]
+      n_control >= min_control_cells
+    ][[sample_column]]
     valid_samples <- intersect(valid_samples, valid_ctrl_samples)
 
     .msg("  Valid samples: ", length(valid_samples), verbose = verbose)
@@ -1392,8 +1566,10 @@ run_ripple_confounder <- function(
       }))
     }), fill = TRUE)
 
-    data.table::fwrite(coef_results,
-                       file.path(ct_output_dir, "coef_per_sample.csv"))
+    data.table::fwrite(
+      coef_results,
+      file.path(ct_output_dir, "coef_per_sample.csv")
+    )
 
     # Fisher's combined p-value
     .msg("  Step 2: Combining with Fisher's method...", verbose = verbose)
@@ -1415,7 +1591,9 @@ run_ripple_confounder <- function(
     }), fill = TRUE)
 
     fisher_results[, stage2_fisher_fdr := stats::p.adjust(
-      stage2_fisher_pval, method = "BH")]
+      stage2_fisher_pval,
+      method = "BH"
+    )]
 
     # Sign consistency for stage 2
     stage2_sign <- data.table::rbindlist(lapply(sig_genes, function(g) {
@@ -1427,8 +1605,10 @@ run_ripple_confounder <- function(
       sc <- if (n_v > 0) max(n_p, n_n) / n_v else NA_real_
       data.table::data.table(gene = g, stage2_sign_consistency = sc)
     }))
-    fisher_results <- merge(fisher_results, stage2_sign, by = "gene",
-                            all.x = TRUE)
+    fisher_results <- merge(fisher_results, stage2_sign,
+      by = "gene",
+      all.x = TRUE
+    )
 
     # Merge with Stage 1
     .msg("  Step 3: Comparing Stage 1 vs Stage 2...", verbose = verbose)
@@ -1450,15 +1630,19 @@ run_ripple_confounder <- function(
     ct_stage1_sub <- ct_stage1[, ..cols_needed]
     if (stage1_coef_col != "stage1_coef") {
       data.table::setnames(ct_stage1_sub, stage1_coef_col, "stage1_coef",
-                           skip_absent = TRUE)
+        skip_absent = TRUE
+      )
     }
     if (stage1_fdr_col != "stage1_fdr") {
       data.table::setnames(ct_stage1_sub, stage1_fdr_col, "stage1_fdr",
-                           skip_absent = TRUE)
+        skip_absent = TRUE
+      )
     }
 
-    comparison <- merge(ct_stage1_sub, fisher_results, by = "gene",
-                        all.x = TRUE)
+    comparison <- merge(ct_stage1_sub, fisher_results,
+      by = "gene",
+      all.x = TRUE
+    )
     data.table::setDT(comparison)
 
     # Classify genes
@@ -1479,16 +1663,20 @@ run_ripple_confounder <- function(
     )]
 
     # Detect enhanced genes
-    comparison[classification == query_specific_label &
-                 abs(stage2_median_coef) > abs(stage1_coef) * 1.1,
-               classification := "enhanced"]
+    comparison[
+      classification == query_specific_label &
+        abs(stage2_median_coef) > abs(stage1_coef) * 1.1,
+      classification := "enhanced"
+    ]
 
     comparison[, coef_ratio := NULL]
     comparison[, cell_type := ct_name]
     comparison[, control_celltype := control_celltype]
 
-    data.table::fwrite(comparison,
-                       file.path(ct_output_dir, "stage2_comparison.csv"))
+    data.table::fwrite(
+      comparison,
+      file.path(ct_output_dir, "stage2_comparison.csv")
+    )
     .msg("  Saved: stage2_comparison.csv", verbose = verbose)
 
     # Classification summary
@@ -1497,39 +1685,57 @@ run_ripple_confounder <- function(
     .msg("\n  Classification summary:", verbose = verbose)
     for (i in seq_len(nrow(class_summary))) {
       .msg("    ", class_summary$classification[i], ": ",
-           class_summary$N[i], verbose = verbose)
+        class_summary$N[i],
+        verbose = verbose
+      )
     }
 
     # Visualization: Stage 1 vs Stage 2 scatter
     plot_data <- comparison[!is.na(stage2_median_coef)]
 
     if (nrow(plot_data) > 0) {
-      max_range <- max(abs(c(plot_data$stage1_coef,
-                             plot_data$stage2_median_coef)),
-                       na.rm = TRUE) * 1.1
+      max_range <- max(
+        abs(c(
+          plot_data$stage1_coef,
+          plot_data$stage2_median_coef
+        )),
+        na.rm = TRUE
+      ) * 1.1
 
       class_colors <- stats::setNames(
         c("#E74C3C", "#8E44AD", "#3498DB", "#F1C40F", "#F39C12", "grey70"),
-        c(query_specific_label, "enhanced", "niche_driven", "underpowered",
-          "reversed", "no_stage2_result")
+        c(
+          query_specific_label, "enhanced", "niche_driven", "underpowered",
+          "reversed", "no_stage2_result"
+        )
       )
 
       label_genes <- head(plot_data[order(stage1_fdr)], 15)
 
       p_scatter <- ggplot2::ggplot(
         plot_data,
-        ggplot2::aes(x = stage1_coef, y = stage2_median_coef,
-                     color = classification)
+        ggplot2::aes(
+          x = stage1_coef, y = stage2_median_coef,
+          color = classification
+        )
       ) +
-        ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed",
-                             color = "grey50") +
-        ggplot2::geom_hline(yintercept = 0, linetype = "dotted",
-                            color = "grey70") +
-        ggplot2::geom_vline(xintercept = 0, linetype = "dotted",
-                            color = "grey70") +
+        ggplot2::geom_abline(
+          intercept = 0, slope = 1, linetype = "dashed",
+          color = "grey50"
+        ) +
+        ggplot2::geom_hline(
+          yintercept = 0, linetype = "dotted",
+          color = "grey70"
+        ) +
+        ggplot2::geom_vline(
+          xintercept = 0, linetype = "dotted",
+          color = "grey70"
+        ) +
         ggplot2::geom_point(alpha = 0.7, size = 2) +
-        ggplot2::scale_color_manual(values = class_colors,
-                                    name = "Classification") +
+        ggplot2::scale_color_manual(
+          values = class_colors,
+          name = "Classification"
+        ) +
         ggrepel::geom_text_repel(
           data = label_genes,
           ggplot2::aes(label = gene),
@@ -1539,8 +1745,10 @@ run_ripple_confounder <- function(
         ggplot2::ylim(-max_range, max_range) +
         ggplot2::labs(
           title = sprintf("Stage 1 vs Stage 2 Coefficients: %s", ct_name),
-          subtitle = sprintf("Control: %s | diagonal = no change",
-                             control_celltype),
+          subtitle = sprintf(
+            "Control: %s | diagonal = no change",
+            control_celltype
+          ),
           x = "Stage 1 coefficient (log-rate per um)",
           y = "Stage 2 coefficient (adjusted, log-rate per um)"
         ) +
@@ -1552,7 +1760,8 @@ run_ripple_confounder <- function(
 
       ggplot2::ggsave(
         file.path(ct_output_dir, "stage1_vs_stage2_scatter.pdf"),
-        p_scatter, width = 8, height = 7
+        p_scatter,
+        width = 8, height = 7
       )
       .msg("  Saved: stage1_vs_stage2_scatter.pdf", verbose = verbose)
     }
@@ -1565,18 +1774,27 @@ run_ripple_confounder <- function(
   # --------------------------------------------------------------------------
   if (length(all_stage2_results) > 0) {
     combined <- data.table::rbindlist(all_stage2_results, fill = TRUE)
-    data.table::fwrite(combined,
-                       file.path(output_dir, "summary",
-                                 "stage2_all_results.csv"))
+    data.table::fwrite(
+      combined,
+      file.path(
+        output_dir, "summary",
+        "stage2_all_results.csv"
+      )
+    )
     .msg("\nSaved: summary/stage2_all_results.csv", verbose = verbose)
 
     class_summary <- combined[, .N, by = .(cell_type, classification)]
     class_wide <- data.table::dcast(class_summary,
-                                    cell_type ~ classification,
-                                    value.var = "N", fill = 0)
-    data.table::fwrite(class_wide,
-                       file.path(output_dir, "summary",
-                                 "classification_summary.csv"))
+      cell_type ~ classification,
+      value.var = "N", fill = 0
+    )
+    data.table::fwrite(
+      class_wide,
+      file.path(
+        output_dir, "summary",
+        "classification_summary.csv"
+      )
+    )
     .msg("Saved: summary/classification_summary.csv", verbose = verbose)
 
     # Print summary
@@ -1587,21 +1805,27 @@ run_ripple_confounder <- function(
       ct_result <- all_stage2_results[[ct]]
       n_total <- nrow(ct_result)
       n_specific <- sum(ct_result$classification %in%
-                          c(query_specific_label, "enhanced"), na.rm = TRUE)
+        c(query_specific_label, "enhanced"), na.rm = TRUE)
       n_niche <- sum(ct_result$classification == "niche_driven",
-                     na.rm = TRUE)
+        na.rm = TRUE
+      )
       pct_specific <- round(n_specific / n_total * 100, 1)
-      .msg(sprintf("  %s: %d genes -> %d %s-specific (%.1f%%), %d niche-driven",
-                   ct, n_total, n_specific, query_label, pct_specific,
-                   n_niche),
-           verbose = verbose)
+      .msg(
+        sprintf(
+          "  %s: %d genes -> %d %s-specific (%.1f%%), %d niche-driven",
+          ct, n_total, n_specific, query_label, pct_specific,
+          n_niche
+        ),
+        verbose = verbose
+      )
     }
 
     return(invisible(combined))
   }
 
   .msg("No cell types had sufficient data for Stage 4 analysis.",
-       verbose = verbose)
+    verbose = verbose
+  )
   return(invisible(data.table::data.table()))
 }
 
@@ -1647,18 +1871,24 @@ run_ripple_confounder <- function(
 #'     available).}
 #' }
 #'
+#' @examples
+#' \dontrun{
+#' merged <- merge_ripple_results(
+#'   results_dir      = "./results/spatial_analysis_Tumor/ripple",
+#'   recompute_fisher = TRUE
+#' )
+#' head(merged[order(fisher_fdr), .(gene, cell_type, median_coef, fisher_fdr)])
+#' }
 #' @export
 merge_ripple_results <- function(
-  results_dir,
-  fdr_threshold    = 0.05,
-  sign_threshold   = 1.0,
-  recompute_fisher = TRUE,
-  verbose          = TRUE
-) {
-
-  fdr_threshold  <- .resolve(fdr_threshold,  "fdr_threshold",    0.05)
+    results_dir,
+    fdr_threshold = 0.05,
+    sign_threshold = 1.0,
+    recompute_fisher = TRUE,
+    verbose = TRUE) {
+  fdr_threshold <- .resolve(fdr_threshold, "fdr_threshold", 0.05)
   sign_threshold <- .resolve(sign_threshold, "sign_consistency", 1.0)
-  verbose        <- .resolve(verbose,        "verbose",          TRUE)
+  verbose <- .resolve(verbose, "verbose", TRUE)
 
   .msg(strrep("=", 70), verbose = verbose)
   .msg("Merge RIPPLE Results", verbose = verbose)
@@ -1673,7 +1903,8 @@ merge_ripple_results <- function(
 
   celltype_dirs <- list.dirs(celltype_dir, recursive = FALSE)
   .msg("\nFound ", length(celltype_dirs), " cell type directories",
-       verbose = verbose)
+    verbose = verbose
+  )
 
   # Load and combine results
   all_results <- data.table::rbindlist(lapply(celltype_dirs, function(d) {
@@ -1682,11 +1913,14 @@ merge_ripple_results <- function(
       dt <- data.table::fread(f)
       dt[, cell_type := basename(d)]
       .msg("  Loaded ", basename(d), ": ", nrow(dt), " genes",
-           verbose = verbose)
+        verbose = verbose
+      )
       return(dt)
     } else {
       .msg("  WARNING: ", basename(d),
-           " - meta_analysis_results.csv not found", verbose = verbose)
+        " - meta_analysis_results.csv not found",
+        verbose = verbose
+      )
       return(NULL)
     }
   }), fill = TRUE)
@@ -1706,7 +1940,8 @@ merge_ripple_results <- function(
       coef_file <- file.path(d, "coef_per_sample.csv")
       if (!file.exists(coef_file)) {
         .msg("  ", ct_name, ": no coef_per_sample.csv, skipping recompute",
-             verbose = verbose)
+          verbose = verbose
+        )
         next
       }
 
@@ -1739,7 +1974,9 @@ merge_ripple_results <- function(
       }
 
       .msg("  ", ct_name, ": recomputed Fisher for ", nrow(fisher_dt),
-           " genes", verbose = verbose)
+        " genes",
+        verbose = verbose
+      )
     }
   }
 
@@ -1748,35 +1985,51 @@ merge_ripple_results <- function(
   .ensure_dir(summary_dir)
 
   # All results
-  data.table::fwrite(all_results,
-                     file.path(summary_dir, "all_genes_results.csv"))
+  data.table::fwrite(
+    all_results,
+    file.path(summary_dir, "all_genes_results.csv")
+  )
   .msg("\nSaved: summary/all_genes_results.csv", verbose = verbose)
 
   # Top genes by FDR
   top_genes <- all_results[fdr < fdr_threshold][
-    order(fdr), head(.SD, 50), by = cell_type]
-  data.table::fwrite(top_genes,
-                     file.path(summary_dir, "top_gradient_genes.csv"))
+    order(fdr), head(.SD, 50),
+    by = cell_type
+  ]
+  data.table::fwrite(
+    top_genes,
+    file.path(summary_dir, "top_gradient_genes.csv")
+  )
   .msg("Saved: summary/top_gradient_genes.csv (", nrow(top_genes), " genes)",
-       verbose = verbose)
+    verbose = verbose
+  )
 
   # Top genes by Fisher FDR
   if ("fisher_fdr" %in% names(all_results)) {
     top_fisher <- all_results[fisher_fdr < fdr_threshold][
-      order(fisher_fdr), head(.SD, 50), by = cell_type]
-    data.table::fwrite(top_fisher,
-                       file.path(summary_dir, "top_gradient_genes_fisher.csv"))
+      order(fisher_fdr), head(.SD, 50),
+      by = cell_type
+    ]
+    data.table::fwrite(
+      top_fisher,
+      file.path(summary_dir, "top_gradient_genes_fisher.csv")
+    )
     .msg("Saved: summary/top_gradient_genes_fisher.csv (",
-         nrow(top_fisher), " genes)", verbose = verbose)
+      nrow(top_fisher), " genes)",
+      verbose = verbose
+    )
   }
 
   # Decay pattern summary
   if ("decay_pattern" %in% names(all_results)) {
     decay_summary <- all_results[fdr < fdr_threshold, .N,
-                                 by = .(cell_type, decay_pattern)]
+      by = .(cell_type, decay_pattern)
+    ]
     data.table::setorder(decay_summary, cell_type, -N)
-    data.table::fwrite(decay_summary,
-                       file.path(summary_dir, "decay_pattern_summary.csv"))
+    data.table::fwrite(
+      decay_summary,
+      file.path(summary_dir, "decay_pattern_summary.csv")
+    )
     .msg("Saved: summary/decay_pattern_summary.csv", verbose = verbose)
   }
 
@@ -1787,8 +2040,10 @@ merge_ripple_results <- function(
       n_perm_sig = sum(perm_pval < 0.05),
       pct_perm_sig = round(mean(perm_pval < 0.05) * 100, 1)
     ), by = cell_type]
-    data.table::fwrite(perm_summary,
-                       file.path(summary_dir, "permutation_summary.csv"))
+    data.table::fwrite(
+      perm_summary,
+      file.path(summary_dir, "permutation_summary.csv")
+    )
     .msg("Saved: summary/permutation_summary.csv", verbose = verbose)
   }
 
@@ -1801,8 +2056,13 @@ merge_ripple_results <- function(
   summary_stats <- all_results[, .(
     n_genes = .N,
     n_significant = sum(fdr < fdr_threshold, na.rm = TRUE),
-    n_fisher_sig = if (has_fisher) sum(fisher_fdr < fdr_threshold,
-                                       na.rm = TRUE) else NA_integer_,
+    n_fisher_sig = if (has_fisher) {
+      sum(fisher_fdr < fdr_threshold,
+        na.rm = TRUE
+      )
+    } else {
+      NA_integer_
+    },
     n_perm_tested = sum(!is.na(perm_pval)),
     n_perm_sig = sum(perm_pval < 0.05, na.rm = TRUE)
   ), by = cell_type]
@@ -1814,5 +2074,3 @@ merge_ripple_results <- function(
 
   return(invisible(all_results))
 }
-
-

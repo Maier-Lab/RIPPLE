@@ -94,7 +94,7 @@ test_that(".resolve_input handles SpatialExperiment input", {
   expect_true("barcode" %in% names(res$meta))
   # Spatial coordinates should have been folded into metadata
   expect_true(any(c("x", "y") %in% names(res$meta)) ||
-              any(grepl("^x|^y", names(res$meta), ignore.case = TRUE)))
+    any(grepl("^x|^y", names(res$meta), ignore.case = TRUE)))
 })
 
 test_that(".resolve_input returns normalized expression when requested", {

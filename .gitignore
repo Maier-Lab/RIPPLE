@@ -1,0 +1,21 @@
+docs/
+.Rproj.user
+*.Rproj
+.Rhistory
+.RData
+.Ruserdata
+
+# Large raw data files — never commit
+*.h5ad
+*.rds
+!inst/extdata/**/*.rds
+!data-raw/benchmarks/results/*.rds
+data-raw/cosmx_nsclc/ripple_output/
+
+# Benchmark logs (results are saved as .rds; logs are ephemeral)
+data-raw/benchmarks/results/*.log
+data-raw/benchmarks/_*.R
+data-raw/benchmarks/_*.log
+
+# Manuscript drafts — kept local only
+paper/

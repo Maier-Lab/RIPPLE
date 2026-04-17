@@ -1,0 +1,107 @@
+url: ~
+template:
+  bootstrap: 5
+  bootswatch: flatly
+
+navbar:
+  structure:
+    left:  [intro, reference, articles]
+    right: [github]
+  components:
+    github:
+      icon: fa-github
+      href: https://github.com/CMangana/RIPPLE
+
+articles:
+- title: "Getting started"
+  contents:
+  - cosmx_nsclc_walkthrough
+- title: "Background"
+  contents:
+  - methods_positioning
+- title: "Validation"
+  contents:
+  - benchmarks
+
+reference:
+- title: "Pipeline entry points"
+  desc: Main functions for running the RIPPLE analysis.
+  contents:
+  - run_ripple
+  - run_ripple_confounder
+  - merge_ripple_results
+
+- title: "Input constructors"
+  desc: Build canonical objects from raw data or CSV files.
+  contents:
+  - make_ripple_input
+  - read_ripple_csv
+
+- title: "Configuration"
+  contents:
+  - ripple_config
+
+- title: "Data"
+  contents:
+  - ripple_mock_data
+
+- title: "GLM fitting"
+  contents:
+  - fit_poisson
+  - fit_poisson_controlled
+  - classify_decay_pattern
+
+- title: "Spatial utilities"
+  contents:
+  - get_coord_columns
+  - build_knn_graph
+  - build_radius_graph
+  - calculate_distance_to_type
+  - get_neighbor_cell_types
+  - calculate_neighbor_composition
+
+- title: "Meta-analysis"
+  contents:
+  - run_meta_analysis
+  - compute_fisher_pval
+
+- title: "Permutation testing"
+  contents:
+  - run_permutation_test
+  - run_permutation_tests
+  - merge_permutation_results
+
+- title: "Enrichment & specificity"
+  contents:
+  - run_ripple_fgsea
+  - classify_gene_specificity
+  - bin_decay_data
+
+- title: "Atlas figures"
+  contents:
+  - run_ripple_atlas
+
+- title: "Ligand-receptor integration"
+  contents:
+  - run_ripple_lr
+  - classify_lr_artifacts
+
+- title: "Visualization"
+  contents:
+  - plot_spatial_single
+  - plot_spatial_by_sample
+  - plot_gradient_volcano
+  - plot_decay_curve
+  - create_gradient_volcano
+  - create_forest_plot
+  - create_coefficient_strips
+
+- title: "Helpers"
+  contents:
+  - calculate_enrichment
+  - permutation_pvalue
+
+- title: "Data loading"
+  contents:
+  - load_metadata_only
+  - check_data

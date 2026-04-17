@@ -58,40 +58,51 @@ NULL
 #' @importFrom stats glm poisson
 #' @export
 fit_poisson <- function(counts, distances, total_counts, min_cells = 25) {
-
   # Remove NAs and invalid values
   valid_idx <- !is.na(counts) & !is.na(distances) &
-               is.finite(counts) & is.finite(distances) &
-               !is.na(total_counts) & total_counts > 0
+    is.finite(counts) & is.finite(distances) &
+    !is.na(total_counts) & total_counts > 0
   counts <- counts[valid_idx]
   distances <- distances[valid_idx]
   log_total <- log(total_counts[valid_idx])
 
   # Need enough cells
-  if (length(counts) < min_cells) return(NULL)
+  if (length(counts) < min_cells) {
+    return(NULL)
+  }
 
   # Need some non-zero counts for the model to be meaningful
-  if (sum(counts > 0) < min_cells) return(NULL)
+  if (sum(counts > 0) < min_cells) {
+    return(NULL)
+  }
 
   # Poisson GLM with offset for cell size with tryCatch for robustness
-  fit <- tryCatch({
-    suppressWarnings(stats::glm(counts ~ distances + offset(log_total),
-                                family = stats::poisson()))
-  }, error = function(e) NULL)
+  fit <- tryCatch(
+    {
+      suppressWarnings(stats::glm(counts ~ distances + offset(log_total),
+        family = stats::poisson()
+      ))
+    },
+    error = function(e) NULL
+  )
 
-  if (is.null(fit) || !fit$converged) return(NULL)
+  if (is.null(fit) || !fit$converged) {
+    return(NULL)
+  }
 
   coef_summary <- summary(fit)$coefficients
-  if (!"distances" %in% rownames(coef_summary)) return(NULL)
+  if (!"distances" %in% rownames(coef_summary)) {
+    return(NULL)
+  }
 
   # Overdispersion diagnostic: residual deviance / residual df
   # Values >> 1 suggest negative binomial would be more appropriate. shouldn't really happen for Xenium at least.
   dispersion <- fit$deviance / fit$df.residual
 
   list(
-    beta = coef_summary["distances", "Estimate"],       # log-rate change per um
+    beta = coef_summary["distances", "Estimate"], # log-rate change per um
     se = coef_summary["distances", "Std. Error"],
-    pval = coef_summary["distances", "Pr(>|z|)"],       # Wald z-test
+    pval = coef_summary["distances", "Pr(>|z|)"], # Wald z-test
     dispersion = dispersion,
     n_cells = length(counts)
   )
@@ -147,36 +158,48 @@ fit_poisson_controlled <- function(counts, dist_query, dist_control, total_count
                                    min_cells = 25) {
   # Remove NAs and invalid values
   valid_idx <- !is.na(counts) & !is.na(dist_query) & !is.na(dist_control) &
-               is.finite(counts) & is.finite(dist_query) & is.finite(dist_control) &
-               !is.na(total_counts) & total_counts > 0
+    is.finite(counts) & is.finite(dist_query) & is.finite(dist_control) &
+    !is.na(total_counts) & total_counts > 0
   counts <- counts[valid_idx]
   dist_query <- dist_query[valid_idx]
   dist_control <- dist_control[valid_idx]
   log_total <- log(total_counts[valid_idx])
 
-  if (length(counts) < min_cells) return(NULL)
+  if (length(counts) < min_cells) {
+    return(NULL)
+  }
 
   # Need some non-zero counts for the model to be meaningful
-  if (sum(counts > 0) < min_cells) return(NULL)
+  if (sum(counts > 0) < min_cells) {
+    return(NULL)
+  }
 
   # Fit bivariate Poisson GLM with cell-size offset
-  fit <- tryCatch({
-    suppressWarnings(stats::glm(counts ~ dist_query + dist_control + offset(log_total),
-                                family = stats::poisson()))
-  }, error = function(e) NULL)
+  fit <- tryCatch(
+    {
+      suppressWarnings(stats::glm(counts ~ dist_query + dist_control + offset(log_total),
+        family = stats::poisson()
+      ))
+    },
+    error = function(e) NULL
+  )
 
-  if (is.null(fit) || !fit$converged) return(NULL)
+  if (is.null(fit) || !fit$converged) {
+    return(NULL)
+  }
 
   coef_summary <- summary(fit)$coefficients
-  if (!"dist_query" %in% rownames(coef_summary)) return(NULL)
+  if (!"dist_query" %in% rownames(coef_summary)) {
+    return(NULL)
+  }
 
   # Overdispersion diagnostic
   dispersion <- fit$deviance / fit$df.residual
 
   list(
-    beta = coef_summary["dist_query", "Estimate"],       # log-rate change per um
+    beta = coef_summary["dist_query", "Estimate"], # log-rate change per um
     se = coef_summary["dist_query", "Std. Error"],
-    pval = coef_summary["dist_query", "Pr(>|z|)"],       # Wald z-test
+    pval = coef_summary["dist_query", "Pr(>|z|)"], # Wald z-test
     dispersion = dispersion,
     n_cells = length(counts)
   )
@@ -220,65 +243,95 @@ fit_poisson_controlled <- function(counts, dist_query, dist_control, total_count
 #' @importFrom stats glm poisson AIC nls
 #' @export
 classify_decay_pattern <- function(counts, distances, total_counts) {
-
   valid_idx <- !is.na(counts) & !is.na(distances) &
-               is.finite(counts) & is.finite(distances) &
-               !is.na(total_counts) & total_counts > 0
+    is.finite(counts) & is.finite(distances) &
+    !is.na(total_counts) & total_counts > 0
   counts <- counts[valid_idx]
   distances <- distances[valid_idx]
   log_total <- log(total_counts[valid_idx])
 
-  if (length(counts) < 30) return("insufficient_data")
-  if (sum(counts > 0) < 5) return("no_variation")
+  if (length(counts) < 30) {
+    return("insufficient_data")
+  }
+  if (sum(counts > 0) < 5) {
+    return("no_variation")
+  }
 
   # Fit linear Poisson model with offset
-  fit_linear <- tryCatch({
-    fit <- suppressWarnings(stats::glm(counts ~ distances + offset(log_total),
-                                       family = stats::poisson()))
-    if (fit$converged) fit else NULL
-  }, error = function(e) NULL)
+  fit_linear <- tryCatch(
+    {
+      fit <- suppressWarnings(stats::glm(counts ~ distances + offset(log_total),
+        family = stats::poisson()
+      ))
+      if (fit$converged) fit else NULL
+    },
+    error = function(e) NULL
+  )
 
   # Fit step models at different thresholds with offset
-  fit_step_10 <- tryCatch({
-    fit <- suppressWarnings(stats::glm(counts ~ I(distances < 10) + offset(log_total),
-                                       family = stats::poisson()))
-    if (fit$converged) fit else NULL
-  }, error = function(e) NULL)
+  fit_step_10 <- tryCatch(
+    {
+      fit <- suppressWarnings(stats::glm(counts ~ I(distances < 10) + offset(log_total),
+        family = stats::poisson()
+      ))
+      if (fit$converged) fit else NULL
+    },
+    error = function(e) NULL
+  )
 
-  fit_step_25 <- tryCatch({
-    fit <- suppressWarnings(stats::glm(counts ~ I(distances < 25) + offset(log_total),
-                                       family = stats::poisson()))
-    if (fit$converged) fit else NULL
-  }, error = function(e) NULL)
+  fit_step_25 <- tryCatch(
+    {
+      fit <- suppressWarnings(stats::glm(counts ~ I(distances < 25) + offset(log_total),
+        family = stats::poisson()
+      ))
+      if (fit$converged) fit else NULL
+    },
+    error = function(e) NULL
+  )
 
-  fit_step_50 <- tryCatch({
-    fit <- suppressWarnings(stats::glm(counts ~ I(distances < 50) + offset(log_total),
-                                       family = stats::poisson()))
-    if (fit$converged) fit else NULL
-  }, error = function(e) NULL)
+  fit_step_50 <- tryCatch(
+    {
+      fit <- suppressWarnings(stats::glm(counts ~ I(distances < 50) + offset(log_total),
+        family = stats::poisson()
+      ))
+      if (fit$converged) fit else NULL
+    },
+    error = function(e) NULL
+  )
 
   # Fit exponential decay (approximate via binned mean rates)
-  fit_exp <- tryCatch({
-    bins <- cut(distances, breaks = seq(0, max(distances) + 10, by = 20),
-                include.lowest = TRUE)
-    bin_rates <- tapply(counts / exp(log_total), bins, mean)
-    bin_mids <- tapply(distances, bins, mean)
+  fit_exp <- tryCatch(
+    {
+      bins <- cut(distances,
+        breaks = seq(0, max(distances) + 10, by = 20),
+        include.lowest = TRUE
+      )
+      bin_rates <- tapply(counts / exp(log_total), bins, mean)
+      bin_mids <- tapply(distances, bins, mean)
 
-    valid_bins <- !is.na(bin_rates) & !is.na(bin_mids) & bin_rates > 0
-    if (sum(valid_bins) < 3) return(NULL)
+      valid_bins <- !is.na(bin_rates) & !is.na(bin_mids) & bin_rates > 0
+      if (sum(valid_bins) < 3) {
+        return(NULL)
+      }
 
-    bin_rates <- bin_rates[valid_bins]
-    bin_mids <- bin_mids[valid_bins]
-    bin_n <- tapply(counts, bins, length)[valid_bins]
+      bin_rates <- bin_rates[valid_bins]
+      bin_mids <- bin_mids[valid_bins]
+      bin_n <- tapply(counts, bins, length)[valid_bins]
 
-    log_rates <- log(bin_rates)
+      log_rates <- log(bin_rates)
 
-    stats::nls(log_rates ~ a * exp(-b * bin_mids) + c,
-               start = list(a = max(log_rates) - min(log_rates), b = 0.02,
-                            c = min(log_rates)),
-               weights = bin_n,
-               control = list(maxiter = 100, warnOnly = TRUE))
-  }, error = function(e) NULL, warning = function(w) NULL)
+      stats::nls(log_rates ~ a * exp(-b * bin_mids) + c,
+        start = list(
+          a = max(log_rates) - min(log_rates), b = 0.02,
+          c = min(log_rates)
+        ),
+        weights = bin_n,
+        control = list(maxiter = 100, warnOnly = TRUE)
+      )
+    },
+    error = function(e) NULL,
+    warning = function(w) NULL
+  )
 
   aics <- c(
     linear = if (!is.null(fit_linear)) stats::AIC(fit_linear) else Inf,
@@ -288,6 +341,8 @@ classify_decay_pattern <- function(counts, distances, total_counts) {
     step_50um = if (!is.null(fit_step_50)) stats::AIC(fit_step_50) else Inf
   )
 
-  if (all(is.infinite(aics))) return("none")
+  if (all(is.infinite(aics))) {
+    return("none")
+  }
   names(aics)[which.min(aics)]
 }

@@ -23,6 +23,28 @@ For the standalone script version (environment-variable-driven, SLURM-compatible
 
 ---
 
+## Validation
+
+RIPPLE has been benchmarked on synthetic data to characterize its error rates and power. Scripts are in `data-raw/benchmarks/` and the cached outputs are rendered in `vignettes/benchmarks.Rmd`.
+
+- **Null FDR calibration.** Across 150 null simulations (7,500 gene tests total, no planted gradient), RIPPLE reports 1 false positive at the default Fisher FDR < 0.05 threshold -- a pooled false discovery rate below 0.05%. The framework is conservative by design, driven primarily by the sign consistency gate.
+- **Power.** Power reaches 100% for true coefficients |beta| >= 0.005 with N >= 3 replicates. At the weakest effect tested (|beta| = 0.002), power scales from 55% with N = 3 to 85% with N = 10.
+- **Sign consistency tradeoff.** Relaxing the default `sign_consistency_threshold` from 1.0 to 0.75 does not meaningfully raise FDR (still < 0.1%) and is a reasonable choice for studies with N >= 6 replicates where one discordant sample is plausible.
+
+---
+
+## Vignettes
+
+Three vignettes ship with the package:
+
+- `vignettes/cosmx_nsclc_walkthrough.Rmd` -- end-to-end walkthrough on a public CosMx NSCLC dataset, using cached results bundled in `inst/extdata/` so the vignette renders without re-running the full pipeline.
+- `vignettes/methods_positioning.Rmd` -- landscape table positioning RIPPLE against Hotspot, nnSVG, MISTy, COMMOT, and BANKSY, with a focus on the distinction between co-localization tests and gradient detection.
+- `vignettes/benchmarks.Rmd` -- null FDR calibration and power curves from the synthetic benchmarks, reproducing the numbers in the Validation section above.
+
+Build locally with `devtools::build_vignettes()` or browse via `pkgdown::build_site()` using the shipped `_pkgdown.yml`.
+
+---
+
 ## Requirements
 
 - **Spatial transcriptomics data** with single-cell resolution (coordinates + counts)
@@ -45,7 +67,7 @@ devtools::install_github("CMangana/RIPPLE")
 # Core packages (CRAN)
 install.packages(c(
   "data.table", "ggplot2", "patchwork", "RANN", "meta",
-  "ggrepel", "Matrix", "scales", "rstatix", "dplyr", "tidyr"
+  "ggrepel", "Matrix", "scales", "rstatix", "dplyr", "tidyr", "spdep"
 ))
 
 # Seurat
@@ -81,6 +103,7 @@ devtools::install_github("saeyslab/nichenetr")
 | `rstatix` | CRAN | Tidy statistical tests |
 | `dplyr` | CRAN | Data wrangling |
 | `tidyr` | CRAN | Reshaping (pivot_wider/longer) |
+| `spdep` | CRAN | Moran's I for `check_spatial_autocorrelation()` |
 | `pheatmap` | CRAN | Heatmap visualization |
 | `fgsea` | Bioconductor | Fast gene set enrichment analysis |
 | `msigdbr` | Bioconductor | MSigDB gene set collections |
@@ -263,6 +286,17 @@ ggplot(meta, aes(x = nFeature, y = nCount)) +
 ```
 
 If points cluster tightly along the `y = x` line, the Poisson model with a cell-size offset is appropriate. If there is substantial spread above the line (many genes with 2+ transcripts per cell), consider a negative binomial model instead.
+
+To check the independence assumption after fitting, use `check_spatial_autocorrelation()`. This computes Moran's I on Poisson residuals per sample using `spdep`, flagging genes whose residuals remain spatially structured after accounting for distance-to-query:
+
+```r
+ac <- check_spatial_autocorrelation(
+  input           = "my_seurat.rds",
+  results_dir     = "./results/spatial_analysis_Tumor/tumor_ripple",
+  query_celltype  = "Tumor",
+  celltype_column = "cell_type"
+)
+```
 
 ### Step 1: Load data and inspect
 
@@ -582,9 +616,9 @@ RIPPLE uses a per-sample Poisson GLM framework designed for count-based spatial 
 
 ## Citation
 
-If you use RIPPLE in your research, please cite:
+A bibentry is shipped in `inst/CITATION` and will be picked up by `citation("ripple")`. The placeholder will be updated once the accompanying manuscript (skeleton in `paper/ripple_methods.Rmd`) is posted on bioRxiv.
 
-> *Citation forthcoming.*
+> *Citation forthcoming (bioRxiv preprint in preparation).*
 
 ---
 

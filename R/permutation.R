@@ -82,7 +82,6 @@ run_permutation_test <- function(counts, coords_target, coords_all,
                                  max_distance = 200,
                                  min_cells_per_sample = 30,
                                  min_expr_cells = 5) {
-
   null_coefs <- numeric(n_perms)
   unique_samples <- names(query_per_sample)
 
@@ -131,11 +130,15 @@ run_permutation_test <- function(counts, coords_target, coords_all,
         samp_log_total <- log(total_counts[idx])
 
         if (length(samp_counts) >= min_cells_per_sample &&
-            sum(samp_counts > 0) >= min_expr_cells) {
-          fit <- tryCatch({
-            suppressWarnings(stats::glm(samp_counts ~ samp_dist + offset(samp_log_total),
-                                        family = stats::poisson()))
-          }, error = function(e) NULL)
+          sum(samp_counts > 0) >= min_expr_cells) {
+          fit <- tryCatch(
+            {
+              suppressWarnings(stats::glm(samp_counts ~ samp_dist + offset(samp_log_total),
+                family = stats::poisson()
+              ))
+            },
+            error = function(e) NULL
+          )
 
           if (!is.null(fit) && fit$converged) {
             coef_summary <- summary(fit)$coefficients
@@ -233,7 +236,6 @@ run_permutation_tests <- function(genes, count_matrix, target_barcodes,
                                   n_perms, k_neighbors, max_distance_um,
                                   min_cells_per_sample, min_expr_cells,
                                   total_counts_target) {
-
   unique_samples <- names(query_per_sample)
 
   results <- lapply(genes, function(g) {
@@ -279,12 +281,15 @@ run_permutation_tests <- function(genes, count_matrix, target_barcodes,
           samp_dist <- perm_distances[idx]
           samp_log_total <- log(total_counts_target[idx])
           if (sum(samp_counts > 0) >= min_expr_cells) {
-            fit <- tryCatch({
-              suppressWarnings(stats::glm(
-                samp_counts ~ samp_dist + offset(samp_log_total),
-                family = stats::poisson
-              ))
-            }, error = function(e) NULL)
+            fit <- tryCatch(
+              {
+                suppressWarnings(stats::glm(
+                  samp_counts ~ samp_dist + offset(samp_log_total),
+                  family = stats::poisson
+                ))
+              },
+              error = function(e) NULL
+            )
             if (!is.null(fit) && fit$converged) {
               cs <- summary(fit)$coefficients
               if (nrow(cs) >= 2) {
@@ -404,8 +409,10 @@ merge_permutation_results <- function(results_dir) {
     # Save updated meta-analysis results
     data.table::fwrite(meta, meta_file)
 
-    message(sprintf("  [OK] %s: %d/%d genes with perm_pval (%d significant at p<0.05)",
-                    ct, n_tested, n_genes, n_sig))
+    message(sprintf(
+      "  [OK] %s: %d/%d genes with perm_pval (%d significant at p<0.05)",
+      ct, n_tested, n_genes, n_sig
+    ))
     n_merged <- n_merged + 1L
   }
 

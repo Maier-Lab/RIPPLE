@@ -1,0 +1,13 @@
+lr <- readRDS("C:/Users/CMangana/AppData/Local/R/cache/R/ripple/lr_network_human.rds")
+cat("class:", class(lr), "\n")
+cat("dim:", dim(lr), "\n")
+cat("names:", paste(names(lr), collapse = ", "), "\n")
+cat("head:\n")
+print(head(lr, 5))
+
+ltm <- readRDS("C:/Users/CMangana/AppData/Local/R/cache/R/ripple/ligand_target_matrix_human.rds")
+cat("\nligand_target_matrix:\n")
+cat("class:", class(ltm), "\n")
+cat("dim:", dim(ltm), "\n")
+cat("colnames[1:5]:", head(colnames(ltm), 5), "\n")
+cat("rownames[1:5]:", head(rownames(ltm), 5), "\n")

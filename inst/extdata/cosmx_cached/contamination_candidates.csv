@@ -1,0 +1,29 @@
+gene,n_celltypes,celltypes,specificity_class
+HLA-E,9,"endothelial, fibroblast, macrophage, monocyte, neutrophil, NK, T CD4 memory, T CD8 naive, Treg",contamination
+KRT19,9,"endothelial, epithelial, fibroblast, macrophage, mast, pDC, plasmablast, T CD4 memory, T CD8 memory",contamination
+MIF,9,"epithelial, fibroblast, macrophage, mast, mDC, neutrophil, plasmablast, T CD4 memory, Treg",contamination
+RPL22,8,"endothelial, fibroblast, macrophage, mast, mDC, neutrophil, NK, T CD8 memory",contamination
+HLA-DRB1,8,"epithelial, fibroblast, macrophage, monocyte, neutrophil, NK, pDC, T CD8 memory",contamination
+MALAT1,7,"B-cell, mast, neutrophil, T CD4 memory, T CD4 naive, T CD8 naive, Treg",contamination
+DUSP1,7,"endothelial, fibroblast, macrophage, mast, mDC, neutrophil, T CD4 memory",contamination
+S100A10,7,"macrophage, mDC, monocyte, neutrophil, plasmablast, T CD8 memory, Treg",contamination
+KRT17,6,"endothelial, fibroblast, macrophage, mast, neutrophil, T CD4 memory",contamination
+C1QA,6,"fibroblast, macrophage, mast, mDC, neutrophil, T CD4 memory",contamination
+HSP90AB1,6,"fibroblast, monocyte, neutrophil, plasmablast, T CD8 memory, Treg",contamination
+PSAP,6,"fibroblast, macrophage, mDC, pDC, T CD4 memory, T CD8 memory",contamination
+FOS,5,"endothelial, fibroblast, macrophage, mDC, neutrophil",contamination
+SRGN,5,"endothelial, fibroblast, mDC, T CD8 memory, T CD8 naive",contamination
+HLA-DPA1,5,"epithelial, macrophage, monocyte, pDC, T CD8 memory",contamination
+CD68,5,"fibroblast, macrophage, mDC, neutrophil, T CD4 memory",contamination
+CD74,5,"fibroblast, macrophage, NK, pDC, T CD4 naive",contamination
+CXCR4,5,"fibroblast, pDC, plasmablast, T CD4 memory, Treg",contamination
+SELENOP,5,"fibroblast, macrophage, mDC, T CD4 memory, T CD8 memory",contamination
+GAS6,4,"endothelial, macrophage, plasmablast, T CD4 memory",contamination
+RPL37,4,"endothelial, fibroblast, neutrophil, plasmablast",contamination
+CD52,4,"fibroblast, macrophage, T CD4 memory, T CD8 memory",contamination
+GSTP1,4,"fibroblast, macrophage, neutrophil, T CD8 memory",contamination
+IGKC,4,"fibroblast, mast, mDC, T CD4 memory",contamination
+RGS1,4,"fibroblast, T CD4 memory, T CD8 memory, T CD8 naive",contamination
+BTG1,4,"mast, mDC, T CD4 memory, T CD8 naive",contamination
+GLUL,4,"mDC, neutrophil, pDC, T CD8 memory",contamination
+HLA-B,4,"mDC, neutrophil, NK, T CD4 naive",contamination

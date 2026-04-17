@@ -73,7 +73,7 @@ NULL
         error = function(e) NULL
       ))
       if (is.null(expr) || identical(dim(expr), c(0L, 0L)) ||
-          (inherits(expr, "Matrix") && length(expr@x) == 0)) {
+        (inherits(expr, "Matrix") && length(expr@x) == 0)) {
         .msg("No 'data' layer found; log-normalizing counts")
         expr <- .lognormalize(counts)
       }
@@ -88,12 +88,13 @@ NULL
   # ------------------------------------------------------------------
   if (inherits(input, "SpatialExperiment")) {
     if (!requireNamespace("SpatialExperiment", quietly = TRUE) ||
-        !requireNamespace("SummarizedExperiment", quietly = TRUE)) {
+      !requireNamespace("SummarizedExperiment", quietly = TRUE)) {
       stop("Packages 'SpatialExperiment' and 'SummarizedExperiment' are ",
-           "required to use SpatialExperiment input.\n",
-           "Install with: BiocManager::install(c('SpatialExperiment', ",
-           "'SummarizedExperiment'))",
-           call. = FALSE)
+        "required to use SpatialExperiment input.\n",
+        "Install with: BiocManager::install(c('SpatialExperiment', ",
+        "'SummarizedExperiment'))",
+        call. = FALSE
+      )
     }
     .msg("Detected SpatialExperiment object")
 
@@ -119,11 +120,12 @@ NULL
   # Case 4: SingleCellExperiment (or any SummarizedExperiment)
   # ------------------------------------------------------------------
   if (inherits(input, "SingleCellExperiment") ||
-      inherits(input, "SummarizedExperiment")) {
+    inherits(input, "SummarizedExperiment")) {
     if (!requireNamespace("SummarizedExperiment", quietly = TRUE)) {
       stop("Package 'SummarizedExperiment' is required to use SCE input.\n",
-           "Install with: BiocManager::install('SummarizedExperiment')",
-           call. = FALSE)
+        "Install with: BiocManager::install('SummarizedExperiment')",
+        call. = FALSE
+      )
     }
     .msg("Detected SingleCellExperiment/SummarizedExperiment object")
 
@@ -149,10 +151,11 @@ NULL
   # Unsupported
   # ------------------------------------------------------------------
   stop("Unsupported input type: ", paste(class(input), collapse = ", "),
-       "\nExpected one of: file path (.rds), Seurat, SingleCellExperiment, ",
-       "or SpatialExperiment.\n",
-       "For plain matrices/CSVs, use make_ripple_input() first.",
-       call. = FALSE)
+    "\nExpected one of: file path (.rds), Seurat, SingleCellExperiment, ",
+    "or SpatialExperiment.\n",
+    "For plain matrices/CSVs, use make_ripple_input() first.",
+    call. = FALSE
+  )
 }
 
 # ------------------------------------------------------------------
@@ -170,7 +173,9 @@ NULL
         Seurat::GetAssayData(obj, slot = layer),
         error = function(e2) {
           stop("Could not extract '", layer, "' from Seurat object. ",
-               "Error: ", e$message, call. = FALSE)
+            "Error: ", e$message,
+            call. = FALSE
+          )
         }
       )
     }
@@ -186,8 +191,10 @@ NULL
     return(SummarizedExperiment::assay(sce, preferred))
   }
   # Fall back to first assay with a message
-  message("No '", preferred, "' assay found; using first assay: ",
-          assay_names[1])
+  message(
+    "No '", preferred, "' assay found; using first assay: ",
+    assay_names[1]
+  )
   SummarizedExperiment::assay(sce, 1)
 }
 
@@ -199,7 +206,7 @@ NULL
 
   # Ensure rownames are cell barcodes
   if (is.null(rownames(col_data)) ||
-      all(rownames(col_data) == as.character(seq_len(nrow(col_data))))) {
+    all(rownames(col_data) == as.character(seq_len(nrow(col_data))))) {
     rownames(col_data) <- colnames(sce)
   }
 

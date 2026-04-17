@@ -26,35 +26,38 @@ NULL
 .load_msigdbr_sets <- function(collection, organism = "mouse") {
   if (!requireNamespace("msigdbr", quietly = TRUE)) {
     stop("Package 'msigdbr' is required for gene set loading.\n",
-         "Install with: BiocManager::install('msigdbr')",
-         call. = FALSE)
+      "Install with: BiocManager::install('msigdbr')",
+      call. = FALSE
+    )
   }
 
-  species <- switch(
-    tolower(organism),
+  species <- switch(tolower(organism),
     "mouse" = "Mus musculus",
     "human" = "Homo sapiens",
     stop("Unsupported organism '", organism, "'. Use 'mouse' or 'human'.",
-         call. = FALSE)
+      call. = FALSE
+    )
   )
 
   # Map shorthand names to msigdbr category/subcategory
-  params <- switch(
-    tolower(collection),
+  params <- switch(tolower(collection),
     "hallmark" = list(category = "H", subcategory = NULL),
-    "kegg"     = list(category = "C2", subcategory = "CP:KEGG"),
+    "kegg" = list(category = "C2", subcategory = "CP:KEGG"),
     "reactome" = list(category = "C2", subcategory = "CP:REACTOME"),
-    "go_bp"    = list(category = "C5", subcategory = "GO:BP"),
+    "go_bp" = list(category = "C5", subcategory = "GO:BP"),
     stop("Unknown gene set collection '", collection,
-         "'. Use one of: hallmark, kegg, reactome, go_bp",
-         call. = FALSE)
+      "'. Use one of: hallmark, kegg, reactome, go_bp",
+      call. = FALSE
+    )
   )
 
   if (is.null(params$subcategory)) {
     gs_df <- msigdbr::msigdbr(species = species, category = params$category)
   } else {
-    gs_df <- msigdbr::msigdbr(species = species, category = params$category,
-                               subcategory = params$subcategory)
+    gs_df <- msigdbr::msigdbr(
+      species = species, category = params$category,
+      subcategory = params$subcategory
+    )
   }
 
   split(gs_df$gene_symbol, gs_df$gs_name)
@@ -143,22 +146,22 @@ NULL
 #' @importFrom data.table data.table rbindlist setorder copy
 #' @export
 run_ripple_fgsea <- function(results,
-                              gene_sets = "hallmark",
-                              organism = "mouse",
-                              coef_col = "median_coef",
-                              fdr_col = "fisher_fdr",
-                              fdr_threshold = 1,
-                              min_size = 15,
-                              max_size = 500,
-                              n_perm = 10000,
-                              min_genes = 100,
-                              seed = 42) {
-
+                             gene_sets = "hallmark",
+                             organism = "mouse",
+                             coef_col = "median_coef",
+                             fdr_col = "fisher_fdr",
+                             fdr_threshold = 1,
+                             min_size = 15,
+                             max_size = 500,
+                             n_perm = 10000,
+                             min_genes = 100,
+                             seed = 42) {
   # --- Validate inputs ---
   if (!requireNamespace("fgsea", quietly = TRUE)) {
     stop("Package 'fgsea' is required for pathway enrichment.\n",
-         "Install with: BiocManager::install('fgsea')",
-         call. = FALSE)
+      "Install with: BiocManager::install('fgsea')",
+      call. = FALSE
+    )
   }
 
   if (!inherits(results, "data.table")) {
@@ -169,8 +172,9 @@ run_ripple_fgsea <- function(results,
   missing <- setdiff(required_cols, names(results))
   if (length(missing) > 0) {
     stop("Missing required columns in results: ",
-         paste(missing, collapse = ", "),
-         call. = FALSE)
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
   }
 
   # --- Load gene sets ---
@@ -181,8 +185,9 @@ run_ripple_fgsea <- function(results,
     pathways <- gene_sets
   } else {
     stop("gene_sets must be a character string (e.g., 'hallmark') or ",
-         "a named list of gene vectors.",
-         call. = FALSE)
+      "a named list of gene vectors.",
+      call. = FALSE
+    )
   }
   message("  Gene sets loaded: ", length(pathways), " pathways")
 
@@ -203,8 +208,10 @@ run_ripple_fgsea <- function(results,
     stats <- sort(stats)
 
     if (length(stats) < min_genes) {
-      message("    ", ct, ": too few genes (", length(stats), " < ",
-              min_genes, "), skipping")
+      message(
+        "    ", ct, ": too few genes (", length(stats), " < ",
+        min_genes, "), skipping"
+      )
       return(NULL)
     }
 
@@ -240,16 +247,20 @@ run_ripple_fgsea <- function(results,
   }
 
   # --- Select and order output columns ---
-  out_cols <- c("cell_type", "pathway", "pathway_clean", "pval", "padj",
-                "ES", "NES", "size", "leadingEdge")
+  out_cols <- c(
+    "cell_type", "pathway", "pathway_clean", "pval", "padj",
+    "ES", "NES", "size", "leadingEdge"
+  )
   out_cols <- intersect(out_cols, names(all_fgsea))
   all_fgsea <- all_fgsea[, ..out_cols]
 
   data.table::setorder(all_fgsea, cell_type, pval)
 
   n_sig <- sum(all_fgsea$padj < 0.05, na.rm = TRUE)
-  message("  fGSEA complete: ", nrow(all_fgsea), " pathway-celltype tests, ",
-          n_sig, " significant (padj < 0.05)")
+  message(
+    "  fGSEA complete: ", nrow(all_fgsea), " pathway-celltype tests, ",
+    n_sig, " significant (padj < 0.05)"
+  )
 
   all_fgsea
 }
@@ -300,10 +311,9 @@ run_ripple_fgsea <- function(results,
 #' @importFrom data.table data.table uniqueN fifelse
 #' @export
 classify_gene_specificity <- function(results,
-                                       fdr_col = "fisher_fdr",
-                                       fdr_threshold = 0.05,
-                                       contamination_threshold = 4) {
-
+                                      fdr_col = "fisher_fdr",
+                                      fdr_threshold = 0.05,
+                                      contamination_threshold = 4) {
   if (!inherits(results, "data.table")) {
     results <- data.table::as.data.table(results)
   }
@@ -312,8 +322,9 @@ classify_gene_specificity <- function(results,
   missing <- setdiff(required_cols, names(results))
   if (length(missing) > 0) {
     stop("Missing required columns in results: ",
-         paste(missing, collapse = ", "),
-         call. = FALSE)
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
   }
 
   # Filter to significant genes
@@ -399,15 +410,16 @@ classify_gene_specificity <- function(results,
 #' library(ggplot2)
 #' ggplot(binned, aes(x = bin_center, y = prop_expressing)) +
 #'   geom_point() +
-#'   geom_errorbar(aes(ymin = prop_expressing - se_prop,
-#'                     ymax = prop_expressing + se_prop), width = 2) +
+#'   geom_errorbar(aes(
+#'     ymin = prop_expressing - se_prop,
+#'     ymax = prop_expressing + se_prop
+#'   ), width = 2) +
 #'   labs(x = "Distance to query", y = "Proportion expressing")
 #' }
 #'
 #' @importFrom data.table data.table
 #' @export
 bin_decay_data <- function(counts, distances, n_bins = 20, max_distance = 200) {
-
   if (length(counts) != length(distances)) {
     stop("counts and distances must have the same length.", call. = FALSE)
   }
@@ -436,7 +448,9 @@ bin_decay_data <- function(counts, distances, n_bins = 20, max_distance = 200) {
     mask <- bin_idx == i
     n <- sum(mask)
 
-    if (n == 0) return(NULL)
+    if (n == 0) {
+      return(NULL)
+    }
 
     bin_counts <- counts[mask]
     n_expr <- sum(bin_counts > 0)
