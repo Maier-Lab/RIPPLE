@@ -766,3 +766,174 @@ create_coefficient_strips <- function(coef_results, meta_results, cell_type,
   )
   invisible(p)
 }
+
+
+#' Plot k-selection diagnostics for choosing k_neighbors
+#'
+#' Generates two diagnostic plots to help users choose an appropriate k value
+#' for the \code{k_neighbors} parameter in \code{\link{run_ripple}}:
+#' \enumerate{
+#'   \item Mean distance to the k nearest query cells vs k, per target cell type
+#'   \item Standard deviation of that distance vs k, per target cell type
+#' }
+#'
+#' At low k, the distance to the nearest query cell is noisy (sensitive to
+#' one stray query cell). As k increases, the mean distance stabilizes. The
+#' "elbow" where the SD flattens suggests a reasonable k choice. Cell types
+#' closer to the query population will have lower mean distances at all k.
+#'
+#' @param input A Seurat, SCE, or SpatialExperiment object, or a path to an
+#'   \code{.rds} file.
+#' @param query_celltype Character. Query cell type label.
+#' @param celltype_column Character. Cell type column name.
+#' @param sample_column Character. Sample column (default: \code{"sample_id"}).
+#'   Diagnostics are computed per-sample then averaged.
+#' @param k_range Integer vector of k values to evaluate (default: \code{1:10}).
+#' @param max_distance_um Numeric. Distance cap (default: 200).
+#' @param x_column Character or NULL. X coordinate column (default: auto-detect).
+#' @param y_column Character or NULL. Y coordinate column (default: auto-detect).
+#' @param verbose Logical. Print progress (default: TRUE).
+#'
+#' @return A \code{patchwork} object with two panels. The underlying summary
+#'   data is returned invisibly as a \code{data.table} with columns: k,
+#'   cell_type, mean_dist, sd_dist.
+#'
+#' @examples
+#' \dontrun{
+#' data(ripple_mock_data)
+#' plot_k_diagnostics(
+#'   ripple_mock_data,
+#'   query_celltype = "Tumor",
+#'   celltype_column = "cell_type"
+#' )
+#' }
+#'
+#' @importFrom data.table data.table rbindlist
+#' @importFrom ggplot2 ggplot aes geom_line geom_point labs theme_bw
+#'   scale_x_continuous
+#' @importFrom patchwork wrap_plots plot_annotation
+#' @importFrom RANN nn2
+#' @export
+plot_k_diagnostics <- function(input,
+                               query_celltype,
+                               celltype_column,
+                               sample_column = "sample_id",
+                               k_range = 1:10,
+                               max_distance_um = 200,
+                               x_column = NULL,
+                               y_column = NULL,
+                               verbose = TRUE) {
+  .msg <- function(...) if (isTRUE(verbose)) message(...)
+
+  # Load data
+  data <- .resolve_input(input, require_expr = FALSE, verbose = verbose)
+  cell_data <- data$meta
+  rm(data)
+
+  coord_cols <- get_coord_columns(cell_data, x_col = x_column, y_col = y_column)
+  coords <- as.matrix(cell_data[, ..coord_cols])
+
+  if (!celltype_column %in% names(cell_data)) {
+    stop("celltype_column '", celltype_column, "' not found.", call. = FALSE)
+  }
+
+  query_mask <- cell_data[[celltype_column]] == query_celltype
+  if (sum(query_mask) < 1) {
+    stop("No query cells found for '", query_celltype, "'.", call. = FALSE)
+  }
+  query_coords <- coords[query_mask, , drop = FALSE]
+
+  # Target cell types (everything except query)
+  all_types <- unique(cell_data[[celltype_column]])
+  target_types <- setdiff(all_types, c(query_celltype, NA_character_))
+
+  max_k <- max(k_range)
+  .msg("Computing distances for k = 1 to ", max_k, "...")
+
+  # One nn2 call with max k
+  effective_k <- min(max_k, nrow(query_coords))
+  if (effective_k < max_k) {
+    .msg("  Only ", nrow(query_coords), " query cells; capping k_range at ",
+      effective_k)
+    k_range <- k_range[k_range <= effective_k]
+  }
+
+  nn <- RANN::nn2(query_coords, coords, k = effective_k)
+
+  # Compute per-k, per-cell-type stats
+  .msg("Computing per-cell-type distance statistics...")
+  summary_list <- lapply(k_range, function(k) {
+    if (k == 1) {
+      dists <- as.vector(nn$nn.dists[, 1])
+    } else {
+      dists <- rowMeans(nn$nn.dists[, 1:k, drop = FALSE])
+    }
+    dists <- pmin(dists, max_distance_um)
+
+    data.table::rbindlist(lapply(target_types, function(ct) {
+      ct_mask <- cell_data[[celltype_column]] == ct
+      ct_dists <- dists[ct_mask]
+      data.table::data.table(
+        k = k,
+        cell_type = ct,
+        mean_dist = mean(ct_dists, na.rm = TRUE),
+        sd_dist = stats::sd(ct_dists, na.rm = TRUE),
+        n_cells = sum(ct_mask)
+      )
+    }))
+  })
+
+  summary_dt <- data.table::rbindlist(summary_list)
+
+  # Plot 1: Mean distance vs k
+  p1 <- ggplot2::ggplot(
+    summary_dt,
+    ggplot2::aes(
+      x = .data$k, y = .data$mean_dist,
+      color = .data$cell_type
+    )
+  ) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::geom_point(size = 2) +
+    ggplot2::scale_x_continuous(breaks = k_range) +
+    ggplot2::labs(
+      title = "Mean distance to query vs k",
+      x = "k (number of nearest query cells)",
+      y = "Mean distance (um)",
+      color = "Cell type"
+    ) +
+    ggplot2::theme_bw(base_size = 11) +
+    ggplot2::theme(legend.position = "bottom")
+
+  # Plot 2: SD of distance vs k
+  p2 <- ggplot2::ggplot(
+    summary_dt,
+    ggplot2::aes(
+      x = .data$k, y = .data$sd_dist,
+      color = .data$cell_type
+    )
+  ) +
+    ggplot2::geom_line(linewidth = 0.8) +
+    ggplot2::geom_point(size = 2) +
+    ggplot2::scale_x_continuous(breaks = k_range) +
+    ggplot2::labs(
+      title = "SD of distance to query vs k",
+      subtitle = "Elbow = distance estimate stabilizes",
+      x = "k (number of nearest query cells)",
+      y = "SD of distance (um)",
+      color = "Cell type"
+    ) +
+    ggplot2::theme_bw(base_size = 11) +
+    ggplot2::theme(legend.position = "bottom")
+
+  combined <- patchwork::wrap_plots(p1, p2, ncol = 2) +
+    patchwork::plot_annotation(
+      title = paste0("k-selection diagnostics (query: ", query_celltype, ")"),
+      theme = ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold", size = 13)
+      )
+    )
+
+  print(combined)
+  invisible(summary_dt)
+}

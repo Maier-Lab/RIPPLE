@@ -464,7 +464,16 @@ run_ripple <- function(
   }
 
   # Cap distances
+  pct_beyond <- mean(cell_data$dist_to_query > max_distance_um) * 100
   cell_data[dist_to_query > max_distance_um, dist_to_query := max_distance_um]
+
+  if (pct_beyond > 20) {
+    .msg("  WARNING: ", round(pct_beyond), "% of cells are beyond the distance ",
+      "cap (", max_distance_um, " um). Consider increasing max_distance_um ",
+      "or checking for tissue boundary effects.",
+      verbose = verbose
+    )
+  }
 
   .msg("Distance distribution:", verbose = verbose)
   .msg("  Min: ", round(min(cell_data$dist_to_query), 1), " um",

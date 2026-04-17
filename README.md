@@ -174,6 +174,35 @@ Per-sample coefficients are combined via Fisher's combined p-value. The sign-con
 
 ---
 
+## Recommended QC workflow
+
+After running `run_ripple()` and `merge_ripple_results()`, always check for contamination before interpreting individual genes:
+
+```r
+# 1. Classify gene specificity — do this FIRST
+specificity <- classify_gene_specificity(all_results, fdr_threshold = 0.05)
+table(specificity$specificity_class)
+#   specific  moderate  ubiquitous  contamination
+#       412       187          45             23
+
+# 2. Exclude contamination genes (significant in too many cell types)
+contam_genes <- specificity[specificity_class == "contamination"]$gene
+clean_results <- all_results[!gene %in% contam_genes]
+
+# 3. THEN look at individual genes
+plot_gradient_volcano(clean_results[cell_type == "CD8_T"], query_label = "Tumor")
+```
+
+Genes flagged as "contamination" are significant in many cell types simultaneously, which usually indicates segmentation artifacts (query cell transcripts leaking into neighboring cells) rather than genuine biology.
+
+For k-selection, use `plot_k_diagnostics()` before running the full pipeline to choose an appropriate `k_neighbors` value:
+
+```r
+plot_k_diagnostics(my_spe, query_celltype = "Tumor", celltype_column = "cell_type")
+```
+
+---
+
 ## Citation
 
 A bibentry is shipped in `inst/CITATION` and can be retrieved with `citation("ripple")`. The placeholder entry will be replaced once the accompanying manuscript is posted on bioRxiv.
