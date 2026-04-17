@@ -17,10 +17,9 @@ For the standalone script version (environment-variable-driven, SLURM-compatible
 **Supported platforms:** Xenium, MERFISH, CosMx, CODEX. In theory, any platform that provides single-cell resolved spatial coordinates and count data.
 
 **Use cases:**
-- Tumor border effects on neighboring immune and stromal cells
+- Tumor cell effects on specific immune and stromal cell types
 - Inflammatory myeloid cell influence on tissue microenvironment
-- CAF-mediated remodeling of the tumor niche
-- Treg-mediated immunosuppression in tissue
+- Treg-mediated immunosuppression in cell type Y
 
 ---
 
