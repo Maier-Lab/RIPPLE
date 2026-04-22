@@ -115,7 +115,7 @@ including proximity to a specific cell type. Key differences:
 | | MISTy | RIPPLE |
 |---|---|---|
 | **Statistical framework** | Random Forest variable importance | Poisson GLM with offset |
-| **Output** | Importance score (unitless) | Coefficient (log-rate change per µm) |
+| **Output** | Importance score (unitless) | Gradient score (log-rate change per µm) |
 | **Direction** | Not directly available | Signed (induced vs. repressed) |
 | **Replicate handling** | Pool or run per-sample independently | Fisher's combined p + sign-consistency gate |
 | **FDR control** | Not formally calibrated | Validated under null simulation |

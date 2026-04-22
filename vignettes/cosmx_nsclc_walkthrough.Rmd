@@ -230,7 +230,7 @@ ggplot(fib, aes(x = median_coef, y = neg_log10_fdr)) +
     size = 3, max.overlaps = 20, seed = 42
   ) +
   labs(
-    x = "Median coefficient (log-rate change per µm)",
+    x = "Median gradient score (per µm)",
     y = expression(-log[10] ~ "Fisher FDR"),
     title = "Fibroblasts: tumor-proximity gene gradients"
   ) +
@@ -275,9 +275,9 @@ ggplot(mif, aes(x = coef, y = sample_id)) +
   ) +
   geom_vline(xintercept = 0, linetype = "dashed") +
   labs(
-    x = "Coefficient (log-rate change per µm)",
+    x = "Gradient score (per µm)",
     y = NULL,
-    title = "MIF in fibroblasts: per-patient coefficients"
+    title = "MIF in fibroblasts: per-patient gradient scores"
   ) +
   theme_minimal()
 ```
@@ -312,7 +312,7 @@ ggplot(mac, aes(x = median_coef, y = neg_log10_fdr)) +
     size = 3, max.overlaps = 20, seed = 42
   ) +
   labs(
-    x = "Median coefficient (log-rate change per µm)",
+    x = "Median gradient score (per µm)",
     y = expression(-log[10] ~ "Fisher FDR"),
     title = "Macrophages: tumor-proximity gene gradients"
   ) +

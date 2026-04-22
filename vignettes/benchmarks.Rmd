@@ -123,7 +123,7 @@ if (file.exists(power_path)) {
     ) +
     scale_x_log10(labels = scales::label_number()) +
     labs(
-      x = expression("|" * beta * "| (log-rate change per µm)"),
+      x = expression("|" * beta * "| (gradient score, per µm)"),
       y = "Power (sensitivity)",
       color = "N (replicates)",
       title = "Power to detect gradient genes"

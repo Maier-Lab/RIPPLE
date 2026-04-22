@@ -13,7 +13,7 @@ utils::globalVariables(c(
   "gene", "gene_safe", "gradient_score",
   "is_combined", "is_contamination", "is_sig", "is_target",
   "leadingEdge", "ligand", "ligand_pct_query", "lower",
-  "mean_nes", "median_coef", "median_dispersion", "median_per_sample_score", "morans_i",
+  "mean_abs_nes", "mean_nes", "median_coef", "median_dispersion", "median_per_sample_score", "morans_i",
   "n_celltypes", "n_control", "n_overlap", "n_query_cells",
   "neg_log10_fdr", "neg_log10_fdr_capped", "neg_log10_padj",
   "nichenet_activity",

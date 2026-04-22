@@ -525,7 +525,7 @@ run_ripple <- function(
       x = "Distance (um)",
       y = "Number of Cells"
     ) +
-    ggplot2::theme_bw(base_size = 12)
+    theme_ripple(base_size = 12)
   ggplot2::ggsave(file.path(qc_dir, "distance_distribution.pdf"),
     p_dist,
     width = 8, height = 5
@@ -1759,15 +1759,15 @@ run_ripple_confounder <- function(
         ggplot2::xlim(-max_range, max_range) +
         ggplot2::ylim(-max_range, max_range) +
         ggplot2::labs(
-          title = sprintf("Stage 1 vs Stage 2 Coefficients: %s", ct_name),
+          title = sprintf("Stage 1 vs Stage 2 Gradient Scores: %s", ct_name),
           subtitle = sprintf(
             "Control: %s | diagonal = no change",
             control_celltype
           ),
-          x = "Stage 1 coefficient (log-rate per um)",
-          y = "Stage 2 coefficient (adjusted, log-rate per um)"
+          x = "Stage 1 gradient score (per um)",
+          y = "Stage 2 gradient score (adjusted, per um)"
         ) +
-        ggplot2::theme_bw(base_size = 12) +
+        theme_ripple(base_size = 12) +
         ggplot2::theme(
           plot.title = ggplot2::element_text(face = "bold"),
           aspect.ratio = 1

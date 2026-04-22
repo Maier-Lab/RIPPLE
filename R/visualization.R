@@ -6,6 +6,52 @@
 #' @name visualization
 NULL
 
+#' RIPPLE default ggplot theme
+#'
+#' A minimal ggplot theme used across all RIPPLE plotting functions:
+#' no panel border (the "black box" around the plot is removed), no minor
+#' grid lines, visible axis lines and ticks, and readable axis text sizes.
+#' Derived from \code{ggplot2::theme_bw()}.
+#'
+#' @param base_size Numeric. Base font size in points (default: 12).
+#' @param base_family Character. Base font family (default: "").
+#'
+#' @return A ggplot2 theme object.
+#'
+#' @examples
+#' \dontrun{
+#' ggplot2::ggplot(mtcars, ggplot2::aes(mpg, wt)) +
+#'   ggplot2::geom_point() +
+#'   theme_ripple()
+#' }
+#'
+#' @importFrom ggplot2 theme_bw theme element_line element_blank element_text
+#'   element_rect
+#' @export
+theme_ripple <- function(base_size = 12, base_family = "") {
+  ggplot2::theme_bw(base_size = base_size, base_family = base_family) +
+    ggplot2::theme(
+      panel.border = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(
+        color = "grey92", linewidth = 0.3
+      ),
+      axis.line = ggplot2::element_line(color = "grey30", linewidth = 0.4),
+      axis.ticks = ggplot2::element_line(color = "grey30", linewidth = 0.4),
+      axis.text = ggplot2::element_text(
+        size = ggplot2::rel(0.9), color = "grey20"
+      ),
+      axis.title = ggplot2::element_text(
+        size = ggplot2::rel(1.0), color = "grey20"
+      ),
+      strip.background = ggplot2::element_rect(
+        fill = "grey95", color = NA
+      ),
+      strip.text = ggplot2::element_text(face = "bold")
+    )
+}
+
+
 #' Single-sample spatial plot
 #'
 #' Creates a clean spatial plot for a single sample using \code{theme_void()}
@@ -252,7 +298,7 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
       x = paste0("Coefficient (negative = ", query_label, "-induced)"),
       y = "-log10(FDR)"
     ) +
-    ggplot2::theme_classic(base_size = 12) +
+    theme_ripple(base_size = 12) +
     ggplot2::theme(
       legend.position = "right",
       plot.title = ggplot2::element_text(hjust = 0.5, face = "bold")
@@ -265,16 +311,28 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #' Decay curve plot
 #'
 #' Creates a decay curve showing the proportion of expressing cells as a
-#' function of distance from query cells. Combines per-sample thin lines
-#' with a pooled mean and 95\% CI ribbon.
+#' function of distance from query cells, with a 95\% CI ribbon on the
+#' pooled mean. The gene's meta-analysis gradient score and FDR are shown
+#' in the subtitle.
 #'
 #' @param bin_stats A \code{data.table} with binned decay statistics. Must
 #'   contain columns \code{dist_mid}, \code{prop_expressing}, \code{n_cells},
 #'   and \code{se}.
 #' @param gene_name Character. Gene name for the plot title.
-#' @param cell_type Character. Cell type name for context.
-#' @param meta_coef Numeric or NULL. Meta-analysis coefficient for annotation.
-#' @param meta_fdr Numeric or NULL. Meta-analysis FDR for annotation.
+#' @param cell_type Character. Cell type name for context and for looking up
+#'   the meta-analysis row when \code{results} is passed.
+#' @param gradient_score Numeric or NULL. Per-gene meta-analysis gradient
+#'   score (a.k.a. \code{median_coef} / \code{combined_coef}). Shown in the
+#'   subtitle. If \code{NULL} and \code{results} is supplied, looked up
+#'   automatically from \code{results}.
+#' @param fdr Numeric or NULL. Per-gene Fisher FDR. Shown in the subtitle.
+#'   If \code{NULL} and \code{results} is supplied, looked up automatically.
+#' @param results Optional \code{data.table} of RIPPLE results (e.g. output of
+#'   \code{merge_ripple_results()}). If supplied and \code{gradient_score} /
+#'   \code{fdr} are \code{NULL}, the row matching \code{gene_name} and
+#'   \code{cell_type} is used. Must contain \code{gene}, \code{cell_type},
+#'   and one of \code{median_coef} / \code{gradient_score} /
+#'   \code{combined_coef}, and one of \code{fisher_fdr} / \code{fdr}.
 #' @param query_label Character. Display label for the query cell type
 #'   (default: "Query").
 #' @param max_distance Numeric. Maximum distance for x-axis (default: 200).
@@ -284,12 +342,21 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #'
 #' @examples
 #' \dontrun{
+#' # Pass stats explicitly
 #' plot_decay_curve(
 #'   bin_stats = binned_data,
 #'   gene_name = "Cxcl12",
 #'   cell_type = "LEC",
-#'   meta_coef = -0.005,
-#'   meta_fdr = 0.001
+#'   gradient_score = -0.005,
+#'   fdr = 0.001
+#' )
+#'
+#' # Or let it look them up from a results table
+#' plot_decay_curve(
+#'   bin_stats = binned_data,
+#'   gene_name = "Cxcl12",
+#'   cell_type = "LEC",
+#'   results = merged_results
 #' )
 #' }
 #'
@@ -298,7 +365,8 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #'   element_text
 #' @export
 plot_decay_curve <- function(bin_stats, gene_name, cell_type,
-                             meta_coef = NULL, meta_fdr = NULL,
+                             gradient_score = NULL, fdr = NULL,
+                             results = NULL,
                              query_label = "Query",
                              max_distance = 200,
                              color = "#E74C3C") {
@@ -306,10 +374,32 @@ plot_decay_curve <- function(bin_stats, gene_name, cell_type,
     return(NULL)
   }
 
-  # Build subtitle from meta-analysis info
+  # Auto-lookup from results table if stats not provided directly
+  if ((is.null(gradient_score) || is.null(fdr)) && !is.null(results)) {
+    res <- data.table::as.data.table(results)
+    target_ct <- cell_type
+    target_gene <- gene_name
+    row <- res[gene == target_gene & cell_type == target_ct]
+    if (nrow(row) >= 1) {
+      if (is.null(gradient_score)) {
+        coef_col <- intersect(
+          c("median_coef", "gradient_score", "combined_coef"),
+          names(row)
+        )[1]
+        if (!is.na(coef_col)) gradient_score <- row[[coef_col]][1]
+      }
+      if (is.null(fdr)) {
+        fdr_col <- intersect(c("fisher_fdr", "fdr"), names(row))[1]
+        if (!is.na(fdr_col)) fdr <- row[[fdr_col]][1]
+      }
+    }
+  }
+
   sub_text <- ""
-  if (!is.null(meta_coef) && !is.null(meta_fdr)) {
-    sub_text <- sprintf("coef = %.4f | FDR = %.1e", meta_coef, meta_fdr)
+  if (!is.null(gradient_score) && !is.null(fdr)) {
+    sub_text <- sprintf(
+      "Gradient score = %.4f  |  FDR = %.1e", gradient_score, fdr
+    )
   }
 
   p <- ggplot2::ggplot(bin_stats, ggplot2::aes(
@@ -336,13 +426,169 @@ plot_decay_curve <- function(bin_stats, gene_name, cell_type,
       x = paste0("Distance to ", query_label, " (um)"),
       y = "P(expressing)"
     ) +
-    ggplot2::theme_bw(base_size = 9) +
+    theme_ripple(base_size = 11) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold.italic", size = 11),
-      plot.subtitle = ggplot2::element_text(size = 7, color = "grey40")
+      plot.subtitle = ggplot2::element_text(
+        size = 9, color = "grey20", face = "bold"
+      )
     )
 
   return(p)
+}
+
+
+#' fGSEA dot plot
+#'
+#' Dotplot summary of fGSEA pathway enrichment across cell types. Each
+#' point represents a (pathway, cell type) pair: dot size encodes
+#' -log10(padj) and dot color encodes the normalized enrichment score (NES)
+#' on a diverging red-blue scale. This is the companion visualization to
+#' \code{plot_fgsea_heatmap()} / the heatmap in \code{run_ripple_atlas()};
+#' the heatmap shows a filled NES grid, while the dotplot additionally
+#' conveys significance.
+#'
+#' @param fgsea_results A \code{data.table} of fGSEA results, typically
+#'   \code{fgsea_all_celltypes.csv} written by \code{run_ripple_atlas()}
+#'   or the output of \code{run_ripple_fgsea()}. Must contain columns
+#'   \code{cell_type}, \code{pathway_clean} (or \code{pathway}), \code{NES},
+#'   and \code{padj}.
+#' @param padj_threshold Numeric. Only pathways reaching this padj in at
+#'   least one cell type are shown (default: 0.05). Set to 1 to show all
+#'   pathways.
+#' @param pathways Optional character vector to subset to specific pathways
+#'   (matched against \code{pathway_clean} or \code{pathway}). If NULL, all
+#'   pathways passing \code{padj_threshold} are shown.
+#' @param top_n Integer or NULL. If set, limits to the top N pathways by
+#'   mean absolute NES across cell types (useful when the heatmap has many
+#'   rows).
+#' @param title Character or NULL. Plot title (default: auto-generated).
+#' @param subtitle Character or NULL. Plot subtitle (default: auto-generated).
+#'
+#' @return A \code{ggplot} object. Plot height scales with the number of
+#'   pathways; a reasonable \code{ggsave} height is
+#'   \code{max(5, n_pathways * 0.3 + 2)}.
+#'
+#' @examples
+#' \dontrun{
+#' fgsea_dt <- data.table::fread("ripple_atlas/fgsea_all_celltypes.csv")
+#' plot_fgsea_dotplot(fgsea_dt)
+#' plot_fgsea_dotplot(fgsea_dt, top_n = 20)
+#' plot_fgsea_dotplot(fgsea_dt, pathways = c("HALLMARK_HYPOXIA",
+#'                                           "HALLMARK_GLYCOLYSIS"))
+#' }
+#'
+#' @importFrom ggplot2 ggplot aes geom_point scale_color_gradientn
+#'   scale_size_continuous labs theme_bw theme element_text
+#' @importFrom data.table as.data.table copy
+#' @export
+plot_fgsea_dotplot <- function(fgsea_results,
+                               padj_threshold = 0.05,
+                               pathways = NULL,
+                               top_n = NULL,
+                               title = NULL,
+                               subtitle = NULL) {
+  dt <- data.table::as.data.table(data.table::copy(fgsea_results))
+
+  if (!"pathway_clean" %in% names(dt)) {
+    if ("pathway" %in% names(dt)) {
+      dt[, pathway_clean := pathway]
+    } else {
+      stop("fgsea_results must contain a 'pathway_clean' or 'pathway' column.",
+        call. = FALSE
+      )
+    }
+  }
+
+  required <- c("cell_type", "pathway_clean", "NES", "padj")
+  missing <- setdiff(required, names(dt))
+  if (length(missing) > 0) {
+    stop("fgsea_results is missing required columns: ",
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  if (!is.null(pathways)) {
+    dt <- dt[pathway_clean %in% pathways | pathway %in% pathways]
+  } else {
+    sig_pw <- dt[padj < padj_threshold, unique(pathway_clean)]
+    dt <- dt[pathway_clean %in% sig_pw]
+  }
+
+  if (nrow(dt) == 0) {
+    stop(
+      "No pathways pass padj_threshold = ", padj_threshold,
+      ". Try relaxing the threshold or passing a `pathways` vector.",
+      call. = FALSE
+    )
+  }
+
+  pw_order <- dt[, .(mean_abs_nes = mean(abs(NES), na.rm = TRUE)),
+    by = pathway_clean
+  ][order(-mean_abs_nes)]
+
+  if (!is.null(top_n) && is.numeric(top_n) && top_n > 0) {
+    keep <- pw_order$pathway_clean[seq_len(min(top_n, nrow(pw_order)))]
+    dt <- dt[pathway_clean %in% keep]
+    pw_order <- pw_order[pathway_clean %in% keep]
+  }
+
+  # Order: strongest mean absolute NES at the top
+  dt[, pathway_clean := factor(pathway_clean, levels = rev(pw_order$pathway_clean))]
+
+  dt[, neg_log10_padj := -log10(pmax(padj, 1e-20))]
+  dt[, is_sig := padj < padj_threshold]
+
+  nes_lim <- max(abs(dt$NES), na.rm = TRUE)
+  if (!is.finite(nes_lim) || nes_lim == 0) nes_lim <- 1
+
+  diverging_palette <- grDevices::colorRampPalette(
+    c("#2166AC", "#4393C3", "#92C5DE", "#D1E5F0",
+      "#F7F7F7",
+      "#FDDBC7", "#F4A582", "#D6604D", "#B2182B")
+  )
+
+  if (is.null(title)) title <- "Pathway enrichment per cell type"
+  if (is.null(subtitle)) {
+    subtitle <- sprintf(
+      "Pathways with padj < %s in ≥ 1 cell type   |   dot size = -log10(padj), color = NES",
+      format(padj_threshold)
+    )
+  }
+
+  ggplot2::ggplot(
+    dt,
+    ggplot2::aes(x = .data$cell_type, y = .data$pathway_clean)
+  ) +
+    ggplot2::geom_point(ggplot2::aes(
+      size = .data$neg_log10_padj, color = .data$NES,
+      alpha = .data$is_sig
+    )) +
+    ggplot2::scale_color_gradientn(
+      colors = diverging_palette(100),
+      limits = c(-nes_lim, nes_lim),
+      name = "NES"
+    ) +
+    ggplot2::scale_size_continuous(
+      range = c(1.5, 6),
+      name = expression(-log[10](padj))
+    ) +
+    ggplot2::scale_alpha_manual(
+      values = c("TRUE" = 1, "FALSE" = 0.35),
+      guide = "none"
+    ) +
+    ggplot2::labs(
+      title = title,
+      subtitle = subtitle,
+      x = NULL, y = NULL
+    ) +
+    theme_ripple(base_size = 11) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+      plot.title = ggplot2::element_text(face = "bold", size = 12),
+      plot.subtitle = ggplot2::element_text(size = 9, color = "grey40")
+    )
 }
 
 
@@ -470,7 +716,7 @@ plot_gene_category_dotplot <- function(results,
   }
   if (is.null(subtitle)) {
     subtitle <- paste0(
-      "Negative coefficient = higher expression rate near ", query_label,
+      "Negative gradient score = higher expression rate near ", query_label,
       " | Black border = FDR < ", format(fdr_threshold, nsmall = 0)
     )
   }
@@ -492,7 +738,7 @@ plot_gene_category_dotplot <- function(results,
     ggplot2::scale_fill_gradientn(
       colors = diverging_palette(100),
       limits = c(-coef_lim, coef_lim),
-      name = "Log-rate\ncoefficient"
+      name = "Gradient\nscore"
     ) +
     ggplot2::scale_color_manual(
       values = c("TRUE" = "black", "FALSE" = "grey70"),
@@ -507,10 +753,10 @@ plot_gene_category_dotplot <- function(results,
     ggplot2::labs(
       title = title,
       subtitle = subtitle,
-      x = "Log-rate coefficient (per um)",
+      x = "Gradient score (per um)",
       y = NULL
     ) +
-    ggplot2::theme_bw(base_size = 10) +
+    theme_ripple(base_size = 11) +
     ggplot2::theme(
       axis.text.y = ggplot2::element_text(size = 9, face = "italic"),
       strip.text.y = ggplot2::element_text(size = 8, face = "bold", angle = 0),
@@ -693,12 +939,12 @@ create_gradient_volcano <- function(results, cell_type, output_path,
         fdr_threshold
       ),
       x = paste0(
-        "Log-rate coefficient (negative = ", query_label,
+        "Gradient score (negative = ", query_label,
         "-induced)"
       ),
       y = paste0("-log10(", fdr_col, ")")
     ) +
-    ggplot2::theme_classic(base_size = 12) +
+    theme_ripple(base_size = 12) +
     ggplot2::theme(
       legend.position = "right",
       plot.title = ggplot2::element_text(hjust = 0.5, face = "bold")
@@ -828,7 +1074,7 @@ create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
       guide = "none"
     ) +
     ggplot2::labs(
-      x = "Log-rate coefficient (per um)",
+      x = "Gradient score (per um)",
       y = NULL,
       title = sprintf("%s in %s (Poisson GLM)", gene, cell_type),
       subtitle = sprintf(
@@ -836,7 +1082,7 @@ create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
         pval_display, i2_display, sign_text
       )
     ) +
-    ggplot2::theme_bw(base_size = 11) +
+    theme_ripple(base_size = 12) +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
 
   ggplot2::ggsave(output_path, p, width = 6, height = 4)
@@ -922,10 +1168,10 @@ create_coefficient_strips <- function(coef_results, meta_results, cell_type,
     ggplot2::geom_point(size = 2.5, alpha = 0.8) +
     ggplot2::scale_color_brewer(palette = "Set1", name = "Sample") +
     ggplot2::labs(
-      x = "Log-rate coefficient (per um)",
+      x = "Gradient score (per um)",
       y = NULL,
       title = sprintf(
-        "Per-Sample Coefficients: %s (Poisson GLM)",
+        "Per-Sample Gradient Scores: %s (Poisson GLM)",
         cell_type
       ),
       subtitle = sprintf(
@@ -933,7 +1179,7 @@ create_coefficient_strips <- function(coef_results, meta_results, cell_type,
         length(genes_to_plot)
       )
     ) +
-    ggplot2::theme_bw(base_size = 12) +
+    theme_ripple(base_size = 13) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold"),
       legend.position = "bottom"
@@ -1081,7 +1327,7 @@ plot_k_diagnostics <- function(input,
       y = "Mean distance (um)",
       color = "Cell type"
     ) +
-    ggplot2::theme_bw(base_size = 11) +
+    theme_ripple(base_size = 12) +
     ggplot2::theme(legend.position = "bottom")
 
   # Plot 2: SD of distance vs k
@@ -1102,7 +1348,7 @@ plot_k_diagnostics <- function(input,
       y = "SD of distance (um)",
       color = "Cell type"
     ) +
-    ggplot2::theme_bw(base_size = 11) +
+    theme_ripple(base_size = 12) +
     ggplot2::theme(legend.position = "bottom")
 
   combined <- patchwork::wrap_plots(p1, p2, ncol = 2) +
@@ -1243,7 +1489,7 @@ plot_gene_counts_by_celltype <- function(results,
         "FDR < %g | faded = potential contamination (significant in >= %d cell types)",
         fdr_threshold, contamination_threshold)
     ) +
-    ggplot2::theme_bw(base_size = 12) +
+    theme_ripple(base_size = 13) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold"),
       plot.subtitle = ggplot2::element_text(size = 9, colour = "grey40"),
@@ -1345,7 +1591,7 @@ plot_specificity_breakdown <- function(results,
         "FDR < %g | 'specific' + 'moderate' = likely real biology, 'contamination' >= %d cell types",
         fdr_threshold, contamination_threshold)
     ) +
-    ggplot2::theme_bw(base_size = 12) +
+    theme_ripple(base_size = 13) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold"),
       plot.subtitle = ggplot2::element_text(size = 9, colour = "grey40"),

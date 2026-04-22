@@ -78,7 +78,7 @@ NULL
       ),
       x = NULL, y = "Number of significant genes"
     ) +
-    ggplot2::theme_bw(base_size = 11) +
+    theme_ripple(base_size = 12) +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
       plot.title = ggplot2::element_text(face = "bold", size = 12),
@@ -125,7 +125,7 @@ NULL
     ggplot2::scale_color_gradientn(
       colors = palette,
       limits = c(-coef_limit, coef_limit),
-      name = "Log-rate\ncoefficient"
+      name = "Gradient\nscore"
     ) +
     ggplot2::scale_size_continuous(
       range = c(0.5, 5),
@@ -141,7 +141,7 @@ NULL
       ),
       x = NULL, y = NULL
     ) +
-    ggplot2::theme_bw(base_size = 10) +
+    theme_ripple(base_size = 11) +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
       axis.text.y = ggplot2::element_text(size = 7),
@@ -231,7 +231,7 @@ NULL
       ),
       y = expression(-log[10](FDR))
     ) +
-    ggplot2::theme_bw(base_size = 9) +
+    theme_ripple(base_size = 11) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold", size = 12),
       plot.subtitle = ggplot2::element_text(size = 9, color = "grey40"),
@@ -681,52 +681,14 @@ run_ripple_atlas <- function(results_dir,
               )
             }
 
-            # Pathway dotplot (significant pathways only)
+            # Pathway dotplot (significant pathways only) — delegates to
+            # plot_fgsea_dotplot() for the actual ggplot construction.
             sig_pw_names <- fgsea_results[padj < 0.05, unique(pathway)]
-            dotplot_data <- fgsea_results[pathway %in% sig_pw_names]
-            if (nrow(dotplot_data) > 0) {
-              dotplot_data[, neg_log10_padj := -log10(pmax(padj, 1e-20))]
-              pw_order <- dotplot_data[
-                , .(mean_nes = mean(NES, na.rm = TRUE)),
-                by = pathway_clean
-              ][order(mean_nes)]$pathway_clean
-              dotplot_data[, pathway_clean := factor(pathway_clean,
-                levels = pw_order
-              )]
-              nes_lim <- max(abs(dotplot_data$NES), na.rm = TRUE)
-
-              p9 <- ggplot2::ggplot(
-                dotplot_data[padj < 0.05],
-                ggplot2::aes(x = .data$cell_type, y = .data$pathway_clean)
-              ) +
-                ggplot2::geom_point(ggplot2::aes(
-                  size = .data$neg_log10_padj, color = .data$NES
-                )) +
-                ggplot2::scale_color_gradientn(
-                  colors = .diverging_palette(100),
-                  limits = c(-nes_lim, nes_lim), name = "NES"
-                ) +
-                ggplot2::scale_size_continuous(
-                  range = c(1.5, 6),
-                  name = expression(-log[10](padj))
-                ) +
-                ggplot2::labs(
-                  title = "Pathway Enrichment per Cell Type",
-                  subtitle = paste0(
-                    "Pathways significant in >= 1 cell type",
-                    " (padj < 0.05)"
-                  ),
-                  x = NULL, y = NULL
-                ) +
-                ggplot2::theme_bw(base_size = 10) +
-                ggplot2::theme(
-                  axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-                  plot.title = ggplot2::element_text(face = "bold", size = 12),
-                  plot.subtitle = ggplot2::element_text(
-                    size = 9,
-                    color = "grey40"
-                  )
-                )
+            if (length(sig_pw_names) > 0) {
+              p9 <- plot_fgsea_dotplot(
+                fgsea_results,
+                padj_threshold = 0.05
+              )
 
               n_pw <- length(sig_pw_names)
               f9 <- file.path(output_dir, "fgsea_dotplot.pdf")
@@ -793,7 +755,7 @@ run_ripple_atlas <- function(results_dir,
               ),
               x = NULL, y = "Number of Stage 1 significant genes"
             ) +
-            ggplot2::theme_bw(base_size = 11) +
+            theme_ripple(base_size = 12) +
             ggplot2::theme(
               axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
               plot.title = ggplot2::element_text(face = "bold", size = 12),
