@@ -11,6 +11,7 @@ docs/
 !inst/extdata/**/*.rds
 !data-raw/benchmarks/results/*.rds
 data-raw/cosmx_nsclc/ripple_output/
+data-raw/xenium_tdln/cell_type_assignment_L2.csv
 
 # Benchmark logs (results are saved as .rds; logs are ephemeral)
 data-raw/benchmarks/results/*.log
