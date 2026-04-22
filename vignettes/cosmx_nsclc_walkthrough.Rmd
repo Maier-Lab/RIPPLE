@@ -71,6 +71,45 @@ The resulting object has `r formatC(765771, big.mark = ",")` cells, 980 genes,
 18 cell types (including the merged tumor class), and 5 biological replicates
 (patients).
 
+## Choosing `k_neighbors`
+
+The `k_neighbors` parameter controls how "distance to the query cell type"
+is defined. `k = 1` uses the distance to the single nearest query cell
+(most sensitive to local geometry, the default). Larger `k` uses the mean
+distance to the `k` nearest query cells, which smooths local noise. The
+right choice depends on how abundant and spatially distributed the query
+cells are.
+
+RIPPLE ships with `plot_k_diagnostics()` to help users pick a value before
+committing to a full run. For each target cell type and a range of `k`,
+it computes per-cell distance to the `k`-th nearest query cell and reports
+how the mean and standard deviation evolve with `k`. A plateau (elbow)
+in the standard deviation curve indicates the point where adding more
+neighbours no longer changes the distance distribution meaningfully,
+suggesting a reasonable `k` choice.
+
+```{r k-diagnostics, eval = FALSE}
+kdiag <- plot_k_diagnostics(
+  input           = spe,
+  query_celltype  = "tumor",
+  celltype_column = "cell_type",
+  sample_column   = "patient",
+  k_range         = 1:10,
+  max_distance_um = 200
+)
+print(kdiag)
+```
+
+For abundant, well-distributed query populations (such as tumor cells in a
+CosMx FFPE core, 765,771 cells across 5 patients), the mean distance
+stabilises quickly and `k = 1` is adequate. For sparse query populations
+(for example, rare stromal subtypes with a few hundred cells per sample),
+larger `k` (commonly 3 to 5) reduces noise by averaging over a small
+neighbourhood. If `plot_k_diagnostics()` shows no clear elbow, the query
+cells are likely too sparse for robust distance estimation and the
+analysis may benefit from either a coarser query annotation or more
+replicates.
+
 ## Running RIPPLE
 
 ```{r run-ripple, eval = FALSE}
@@ -93,8 +132,9 @@ results <- run_ripple(
 
 Key parameter choices:
 
-- **`k_neighbors = 1`**: distance to the single nearest tumor cell — the
-  default for paracrine signaling range.
+- **`k_neighbors = 1`**: distance to the single nearest tumor cell, the
+  default for paracrine signaling range. See the previous section for
+  guidance on choosing `k` via `plot_k_diagnostics()`.
 - **`max_distance_um = 200`**: cells beyond 200 µm are excluded from the
   model. This captures the typical range of secreted factor gradients while
   excluding cells too distant for meaningful interaction.
@@ -199,16 +239,19 @@ ggplot(fib, aes(x = median_coef, y = neg_log10_fdr)) +
 
 **Key fibroblast hits:**
 
-- **MIF** (negative coef = induced near tumor): macrophage migration inhibitory
-  factor — a known tumor-derived cytokine that activates CAFs.
-- **IGFBP5** (negative coef = induced): insulin-like growth factor binding
-  protein 5, involved in stromal remodeling.
+- **IGFBP5** (negative coef = induced near tumor): insulin-like growth factor
+  binding protein 5, involved in stromal remodeling.
 - **CXCL12** (positive coef = repressed near tumor): a chemokine normally
   expressed by quiescent fibroblasts; its repression near tumor reflects
   phenotypic switching to a CAF state.
-- **IGKC, JCHAIN, IGHG2** (positive coef = repressed): immunoglobulin genes
-  detected in fibroblasts — these are likely ambient RNA contamination from
-  nearby plasma cells (see contamination check below).
+- **MIF** (negative coef = induced): macrophage migration inhibitory factor,
+  a well-known tumor-derived cytokine. *However*, MIF is also flagged by
+  RIPPLE's contamination check (significant in 9 cell types). In this dataset
+  MIF is plausibly both genuinely induced by paracrine signaling *and*
+  contaminated by ambient RNA from highly MIF-expressing tumor cells — see
+  the contamination section below for how to handle this.
+- **IGKC** (positive coef = repressed): immunoglobulin light-chain gene
+  detected in fibroblasts — likely ambient RNA from nearby plasma cells.
 
 ## Per-replicate consistency
 
@@ -227,8 +270,8 @@ mif[, sample_id := paste0("Patient ", seq_len(.N))]
 
 ggplot(mif, aes(x = coef, y = sample_id)) +
   geom_point(size = 3) +
-  geom_errorbarh(aes(xmin = coef - 1.96 * se, xmax = coef + 1.96 * se),
-    height = 0.2
+  geom_errorbar(aes(xmin = coef - 1.96 * se, xmax = coef + 1.96 * se),
+    width = 0.2
   ) +
   geom_vline(xintercept = 0, linetype = "dashed") +
   labs(
@@ -239,11 +282,13 @@ ggplot(mif, aes(x = coef, y = sample_id)) +
   theme_minimal()
 ```
 
-All five patients show a consistent negative coefficient — MIF expression
-increases near tumor cells in every replicate. This reproducibility across
+All five patients show a consistent negative coefficient — MIF RNA counts
+increase near tumor cells in every replicate. This reproducibility across
 independent biological replicates, enforced by RIPPLE's sign-consistency gate,
-gives confidence that MIF induction is a genuine biological signal rather than
-a technical artifact.
+rules out single-sample artifacts. Note that reproducibility alone does not
+distinguish paracrine induction from systematic ambient RNA, since both can be
+consistent across replicates — this is why the contamination check is a
+separate QC step.
 
 ## Macrophage deep-dive
 
@@ -292,9 +337,13 @@ contam <- fread(contam_path)
 knitr::kable(contam[1:10], caption = "Top contamination candidates")
 ```
 
-Genes like **IGKC**, **HLA-E**, **KRT19**, and **RPL22** appear significant
-across 8-9 cell types — a hallmark of ambient RNA. When interpreting results,
-these should be deprioritised or validated independently (e.g., by RNA FISH).
+Genes like **HLA-E**, **KRT19**, **MIF**, and **RPL22** appear significant
+across 8-9 cell types — a hallmark of ambient RNA. Notice that **MIF** appears
+here despite being a top hit in fibroblasts and macrophages above. This is the
+kind of case where contamination flagging is essential: MIF may be genuinely
+induced by tumor paracrine signaling *and* inflated by ambient RNA from
+high-expressing tumor cells. Genes on this list should be deprioritised or
+validated independently (e.g., by RNA FISH) before biological interpretation.
 
 ## Pathway enrichment (fGSEA)
 
@@ -361,10 +410,12 @@ This CosMx NSCLC analysis demonstrates RIPPLE's ability to detect biologically
 interpretable spatial gradients in a multi-patient dataset:
 
 1. **Fibroblasts** show the strongest tumor-proximity remodeling (129 genes),
-   dominated by CAF activation markers (MIF, IGFBP5, THBS1) and ECM genes.
+   including CAF activation markers (IGFBP5, THBS1) and ECM genes. Several
+   top hits (MIF, KRT19) are flagged as contamination and should be validated
+   independently.
 2. **Macrophages** show a polarized response (94 genes), with tumor-proximity
-   induction of antigen presentation (CD74, HLA-DRA) and suppression of
-   inflammatory programs.
+   induction of antigen presentation (HLA-DRA, HLA-DPA1) and cytoskeletal
+   remodeling (TUBB, S100A6).
 3. **T cell subsets** (CD4 memory: 55 genes, CD8 memory: 27 genes, Tregs: 23
    genes) each show distinct gradient signatures, suggesting spatial
    organisation of the adaptive immune response around tumor nests.

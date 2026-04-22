@@ -299,7 +299,10 @@ classify_decay_pattern <- function(counts, distances, total_counts) {
     error = function(e) NULL
   )
 
-  # Fit exponential decay (approximate via binned mean rates)
+  # Fit exponential decay (approximate via binned mean rates).
+  # NOTE: the {...} block below must NOT use return() because return()
+  # exits the enclosing function (classify_decay_pattern), not the
+  # tryCatch. Use NULL as the final value to signal "fit unavailable".
   fit_exp <- tryCatch(
     {
       bins <- cut(distances,
@@ -311,23 +314,23 @@ classify_decay_pattern <- function(counts, distances, total_counts) {
 
       valid_bins <- !is.na(bin_rates) & !is.na(bin_mids) & bin_rates > 0
       if (sum(valid_bins) < 3) {
-        return(NULL)
+        NULL
+      } else {
+        bin_rates <- bin_rates[valid_bins]
+        bin_mids <- bin_mids[valid_bins]
+        bin_n <- tapply(counts, bins, length)[valid_bins]
+
+        log_rates <- log(bin_rates)
+
+        stats::nls(log_rates ~ a * exp(-b * bin_mids) + c,
+          start = list(
+            a = max(log_rates) - min(log_rates), b = 0.02,
+            c = min(log_rates)
+          ),
+          weights = bin_n,
+          control = list(maxiter = 100, warnOnly = TRUE)
+        )
       }
-
-      bin_rates <- bin_rates[valid_bins]
-      bin_mids <- bin_mids[valid_bins]
-      bin_n <- tapply(counts, bins, length)[valid_bins]
-
-      log_rates <- log(bin_rates)
-
-      stats::nls(log_rates ~ a * exp(-b * bin_mids) + c,
-        start = list(
-          a = max(log_rates) - min(log_rates), b = 0.02,
-          c = min(log_rates)
-        ),
-        weights = bin_n,
-        control = list(maxiter = 100, warnOnly = TRUE)
-      )
     },
     error = function(e) NULL,
     warning = function(w) NULL

@@ -908,10 +908,16 @@ run_ripple <- function(
           samp_dist <- target_valid[samp_idx]$dist_to_query
           samp_total <- total_counts[target_barcodes[samp_idx]]
 
-          tryCatch(
+          res <- tryCatch(
             classify_decay_pattern(samp_counts, samp_dist, samp_total),
             error = function(e) NA_character_
           )
+          # Guard against NULL or non-scalar returns from
+          # classify_decay_pattern. Always coerce to a single character.
+          if (is.null(res) || length(res) != 1) {
+            return(NA_character_)
+          }
+          as.character(res)
         })
 
         per_sample_patterns <- per_sample_patterns[!is.na(per_sample_patterns)]

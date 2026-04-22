@@ -346,6 +346,184 @@ plot_decay_curve <- function(bin_stats, gene_name, cell_type,
 }
 
 
+#' Gene category dot plot
+#'
+#' Faceted dot plot of gradient coefficients for a curated gene panel
+#' organized into biological categories. Each category occupies its own
+#' horizontal strip (facet). Dot size encodes -log10(FDR), dot fill encodes
+#' coefficient sign and magnitude on a diverging scale, and a black border
+#' marks genes passing the FDR threshold.
+#'
+#' This is the visualization used for signature-level summaries
+#' (e.g. CD8 exhaustion panel, macrophage polarization panel) in the RIPPLE
+#' manuscript and companion analyses.
+#'
+#' @param results A \code{data.table} or \code{data.frame} of RIPPLE results
+#'   containing, at minimum, \code{gene}, a coefficient column, and an FDR
+#'   column. Typically the output of \code{merge_ripple_results()} filtered
+#'   to a single cell type.
+#' @param gene_categories Named list mapping category label to a character
+#'   vector of gene symbols. Category names become facet strip labels; their
+#'   order in the list becomes the facet order (top to bottom) unless
+#'   \code{category_order} is supplied. Genes appearing in multiple categories
+#'   are assigned to the first match.
+#' @param coef_col Character. Coefficient column (default: \code{"median_coef"}).
+#' @param fdr_col Character. FDR column (default: \code{"fisher_fdr"}).
+#' @param fdr_threshold Numeric. Significance threshold used for the black
+#'   border (default: 0.05).
+#' @param query_label Character. Display label for the query cell type,
+#'   used in subtitle (default: \code{"Query"}).
+#' @param category_order Character vector or NULL. Explicit category order
+#'   (top to bottom). If NULL, uses the order of \code{gene_categories}.
+#' @param max_neg_log10_fdr Numeric. Cap for the -log10(FDR) size aesthetic
+#'   so a single extreme gene does not dominate the size scale
+#'   (default: 20).
+#' @param title Character or NULL. Plot title. If NULL, auto-generated.
+#' @param subtitle Character or NULL. Plot subtitle. If NULL, auto-generated.
+#' @param size_breaks Numeric vector. Legend breaks for the dot-size scale
+#'   (default: \code{c(2, 5, 10, 20)}).
+#'
+#' @return A \code{ggplot} object. Height scales with the number of genes;
+#'   a reasonable \code{ggsave} height is \code{max(5, n_genes * 0.28 + 2.5)}.
+#'
+#' @examples
+#' \dontrun{
+#' exhaustion_panel <- list(
+#'   "Inhibitory receptors" = c("Pdcd1", "Lag3", "Havcr2", "Tigit", "Ctla4"),
+#'   "Transcription factors" = c("Tox", "Eomes", "Tbx21", "Tcf7"),
+#'   "Effector molecules" = c("Gzmb", "Gzma", "Prf1", "Ifng", "Tnf"),
+#'   "Tpex markers" = c("Slamf6", "Xcl1", "Il7r", "Cxcr5")
+#' )
+#' cd8 <- all_results[cell_type == "CD8_T_cells"]
+#' plot_gene_category_dotplot(cd8, exhaustion_panel, query_label = "Tumor")
+#' }
+#'
+#' @importFrom ggplot2 ggplot aes geom_vline geom_point scale_fill_gradientn
+#'   scale_color_manual scale_size_continuous facet_grid labs theme_bw theme
+#'   element_text element_rect element_blank unit
+#' @importFrom data.table as.data.table copy setorderv
+#' @export
+plot_gene_category_dotplot <- function(results,
+                                       gene_categories,
+                                       coef_col = "median_coef",
+                                       fdr_col = "fisher_fdr",
+                                       fdr_threshold = 0.05,
+                                       query_label = "Query",
+                                       category_order = NULL,
+                                       max_neg_log10_fdr = 20,
+                                       title = NULL,
+                                       subtitle = NULL,
+                                       size_breaks = c(2, 5, 10, 20)) {
+  if (!is.list(gene_categories) || is.null(names(gene_categories)) ||
+    any(names(gene_categories) == "")) {
+    stop("`gene_categories` must be a named list of character vectors.",
+      call. = FALSE
+    )
+  }
+
+  plot_data <- data.table::as.data.table(data.table::copy(results))
+  for (col in c("gene", coef_col, fdr_col)) {
+    if (!col %in% names(plot_data)) {
+      stop("Required column not found in results: ", col, call. = FALSE)
+    }
+  }
+
+  gene_to_cat <- character()
+  for (cat_name in names(gene_categories)) {
+    new_genes <- setdiff(gene_categories[[cat_name]], names(gene_to_cat))
+    gene_to_cat[new_genes] <- cat_name
+  }
+
+  plot_data <- plot_data[plot_data$gene %in% names(gene_to_cat)]
+  if (nrow(plot_data) == 0) {
+    stop("None of the genes in `gene_categories` were found in `results`.",
+      call. = FALSE
+    )
+  }
+
+  plot_data[, category := gene_to_cat[as.character(gene)]]
+
+  if (is.null(category_order)) {
+    category_order <- names(gene_categories)
+  }
+  category_order <- intersect(category_order, unique(plot_data$category))
+  plot_data[, category := factor(category, levels = category_order)]
+
+  plot_data[, neg_log10_fdr := -log10(pmax(get(fdr_col), 1e-300))]
+  plot_data[, neg_log10_fdr_capped := pmin(neg_log10_fdr, max_neg_log10_fdr)]
+  plot_data[, is_sig := get(fdr_col) < fdr_threshold]
+
+  data.table::setorderv(plot_data, c("category", coef_col))
+  plot_data[, gene := factor(gene, levels = unique(gene))]
+
+  coef_lim <- max(abs(plot_data[[coef_col]]), na.rm = TRUE)
+  if (!is.finite(coef_lim) || coef_lim == 0) coef_lim <- 1e-4
+
+  diverging_palette <- grDevices::colorRampPalette(
+    c("#B2182B", "#D6604D", "#F4A582", "#FDDBC7",
+      "#F7F7F7",
+      "#D1E5F0", "#92C5DE", "#4393C3", "#2166AC")
+  )
+
+  if (is.null(title)) {
+    title <- "Gene category gradient dot plot"
+  }
+  if (is.null(subtitle)) {
+    subtitle <- paste0(
+      "Negative coefficient = higher expression rate near ", query_label,
+      " | Black border = FDR < ", format(fdr_threshold, nsmall = 0)
+    )
+  }
+
+  ggplot2::ggplot(plot_data, ggplot2::aes(
+    x = .data[[coef_col]], y = .data$gene
+  )) +
+    ggplot2::geom_vline(
+      xintercept = 0, linetype = "dashed", color = "grey50"
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(
+        size = .data$neg_log10_fdr_capped,
+        fill = .data[[coef_col]],
+        color = .data$is_sig
+      ),
+      shape = 21, stroke = 0.6
+    ) +
+    ggplot2::scale_fill_gradientn(
+      colors = diverging_palette(100),
+      limits = c(-coef_lim, coef_lim),
+      name = "Log-rate\ncoefficient"
+    ) +
+    ggplot2::scale_color_manual(
+      values = c("TRUE" = "black", "FALSE" = "grey70"),
+      guide = "none"
+    ) +
+    ggplot2::scale_size_continuous(
+      range = c(1.5, 6),
+      name = expression(-log[10](FDR)),
+      breaks = size_breaks
+    ) +
+    ggplot2::facet_grid(category ~ ., scales = "free_y", space = "free_y") +
+    ggplot2::labs(
+      title = title,
+      subtitle = subtitle,
+      x = "Log-rate coefficient (per um)",
+      y = NULL
+    ) +
+    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme(
+      axis.text.y = ggplot2::element_text(size = 9, face = "italic"),
+      strip.text.y = ggplot2::element_text(size = 8, face = "bold", angle = 0),
+      strip.background = ggplot2::element_rect(fill = "grey95"),
+      plot.title = ggplot2::element_text(face = "bold", size = 11),
+      plot.subtitle = ggplot2::element_text(size = 8, color = "grey40"),
+      panel.grid.major.y = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.key.size = ggplot2::unit(0.4, "cm")
+    )
+}
+
+
 #' Ensure directory exists
 #'
 #' Creates a directory (and all parent directories) if it does not already exist.
@@ -755,7 +933,7 @@ create_coefficient_strips <- function(coef_results, meta_results, cell_type,
         length(genes_to_plot)
       )
     ) +
-    ggplot2::theme_bw(base_size = 10) +
+    ggplot2::theme_bw(base_size = 12) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(face = "bold"),
       legend.position = "bottom"
@@ -937,4 +1115,241 @@ plot_k_diagnostics <- function(input,
 
   print(combined)
   invisible(summary_dt)
+}
+
+
+#' Stacked bar of gene counts per cell type, split by specificity
+#'
+#' Builds a stacked bar chart of significant gene counts per target cell type,
+#' split by direction (induced vs repressed) and by specificity class
+#' (specific + moderate = cell-type-restricted signal; ubiquitous + contamination
+#' = potentially ambient RNA / segmentation artefacts).
+#'
+#' Matches the stacked barplot used in the original HyMy / TDLN analysis and
+#' extends the plain induced/repressed bar chart by surfacing the
+#' contamination-flagged portion of each bar.
+#'
+#' @param results \code{data.table} or data.frame with columns \code{gene},
+#'   \code{cell_type}, a significance column, and a coefficient column.
+#'   Typically the output of \code{\link{run_ripple}} or
+#'   \code{\link{merge_ripple_results}} (i.e. \code{all_genes_results.csv}).
+#' @param fdr_col Character. Significance column name (default:
+#'   \code{"fisher_fdr"}).
+#' @param coef_col Character. Coefficient column name (default:
+#'   \code{"median_coef"}).
+#' @param fdr_threshold Numeric. FDR cutoff (default: \code{0.05}).
+#' @param contamination_threshold Integer. Number of cell types at or above
+#'   which a gene is flagged as "contamination" (default: \code{4}).
+#' @param query_label Character. Display label for the query cell type
+#'   (default: \code{"Query"}). Used in legend entries like
+#'   "Query-induced (specific)".
+#' @param cell_type_order Character vector or \code{NULL}. Optional ordering
+#'   of cell types along the x axis; \code{NULL} means order by total
+#'   significant genes, most to fewest.
+#'
+#' @return A \code{ggplot2} object.
+#'
+#' @examples
+#' \dontrun{
+#' results <- fread("all_genes_results.csv")
+#' plot_gene_counts_by_celltype(results, query_label = "Tumor")
+#' }
+#'
+#' @importFrom data.table copy fifelse melt
+#' @importFrom ggplot2 ggplot aes geom_col scale_fill_manual labs theme_bw
+#'   theme element_text
+#' @export
+plot_gene_counts_by_celltype <- function(results,
+                                         fdr_col = "fisher_fdr",
+                                         coef_col = "median_coef",
+                                         fdr_threshold = 0.05,
+                                         contamination_threshold = 4,
+                                         query_label = "Query",
+                                         cell_type_order = NULL) {
+  if (!inherits(results, "data.table")) {
+    results <- data.table::as.data.table(results)
+  }
+
+  spec <- classify_gene_specificity(
+    results,
+    fdr_col = fdr_col,
+    fdr_threshold = fdr_threshold,
+    contamination_threshold = contamination_threshold
+  )
+  if (nrow(spec) == 0) {
+    return(
+      ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5,
+                          label = "No significant genes at the chosen threshold") +
+        ggplot2::theme_void()
+    )
+  }
+
+  sig <- results[!is.na(get(fdr_col)) & get(fdr_col) < fdr_threshold]
+  sig <- merge(sig, spec[, .(gene, specificity_class)], by = "gene",
+               all.x = TRUE)
+  sig[, direction := data.table::fifelse(
+    get(coef_col) < 0,
+    paste0(query_label, "-induced"),
+    paste0(query_label, "-repressed")
+  )]
+  sig[, type := data.table::fifelse(
+    specificity_class %in% c("specific", "moderate"),
+    "specific", "contamination"
+  )]
+
+  count_by_dir <- sig[, .N, by = .(cell_type, direction, type)]
+  setnames(count_by_dir, "N", "count")
+
+  if (is.null(cell_type_order)) {
+    ct_totals <- sig[, .N, by = cell_type][order(-N), cell_type]
+    cell_type_order <- as.character(ct_totals)
+  }
+  count_by_dir[, cell_type := factor(cell_type, levels = cell_type_order)]
+
+  induced_label <- paste0(query_label, "-induced")
+  repressed_label <- paste0(query_label, "-repressed")
+
+  fill_keys <- c(
+    paste0("specific.", induced_label),
+    paste0("contamination.", induced_label),
+    paste0("specific.", repressed_label),
+    paste0("contamination.", repressed_label)
+  )
+  fill_colours <- stats::setNames(
+    c("#B2182B", "#F4A582", "#2166AC", "#92C5DE"),
+    fill_keys
+  )
+  fill_labels <- stats::setNames(
+    c(paste0(induced_label, " (specific)"),
+      paste0(induced_label, " (ubiquitous/contam)"),
+      paste0(repressed_label, " (specific)"),
+      paste0(repressed_label, " (ubiquitous/contam)")),
+    fill_keys
+  )
+
+  ggplot2::ggplot(
+    count_by_dir,
+    ggplot2::aes(x = cell_type, y = count,
+                 fill = interaction(type, direction))
+  ) +
+    ggplot2::geom_col(position = "stack", width = 0.7) +
+    ggplot2::scale_fill_manual(values = fill_colours,
+                               labels = fill_labels, name = NULL) +
+    ggplot2::labs(
+      x = NULL, y = "Significant genes",
+      title = "Gradient genes per cell type",
+      subtitle = sprintf(
+        "FDR < %g | faded = potential contamination (significant in >= %d cell types)",
+        fdr_threshold, contamination_threshold)
+    ) +
+    ggplot2::theme_bw(base_size = 12) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold"),
+      plot.subtitle = ggplot2::element_text(size = 9, colour = "grey40"),
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+      legend.position = "bottom",
+      legend.text = ggplot2::element_text(size = 8)
+    )
+}
+
+
+#' Summary bar of gene counts by specificity class
+#'
+#' Produces a compact bar chart of significant genes, one bar per specificity
+#' class (specific, moderate, ubiquitous, contamination). Designed for the
+#' "breakdown" figure used in the TDLN analysis: it shows at a glance how much
+#' of the significant-gene pool is cell-type-restricted versus shared across
+#' many cell types (i.e., plausible contamination).
+#'
+#' @inheritParams plot_gene_counts_by_celltype
+#'
+#' @return A \code{ggplot2} object.
+#'
+#' @examples
+#' \dontrun{
+#' results <- fread("all_genes_results.csv")
+#' plot_specificity_breakdown(results, contamination_threshold = 5)
+#' }
+#'
+#' @importFrom ggplot2 ggplot aes geom_col geom_text scale_fill_manual labs
+#'   theme_bw theme element_text
+#' @export
+plot_specificity_breakdown <- function(results,
+                                       fdr_col = "fisher_fdr",
+                                       fdr_threshold = 0.05,
+                                       contamination_threshold = 4) {
+  if (!inherits(results, "data.table")) {
+    results <- data.table::as.data.table(results)
+  }
+
+  spec <- classify_gene_specificity(
+    results,
+    fdr_col = fdr_col,
+    fdr_threshold = fdr_threshold,
+    contamination_threshold = contamination_threshold
+  )
+  if (nrow(spec) == 0) {
+    return(
+      ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5,
+                          label = "No significant genes at the chosen threshold") +
+        ggplot2::theme_void()
+    )
+  }
+
+  # At threshold = 4 the "ubiquitous" range (4..threshold-1) is empty, so we
+  # drop that class from the plot. At threshold >= 5 it becomes meaningful.
+  has_ubiquitous <- contamination_threshold > 4L
+  class_levels <- if (has_ubiquitous) {
+    c("specific", "moderate", "ubiquitous", "contamination")
+  } else {
+    c("specific", "moderate", "contamination")
+  }
+  counts <- spec[, .(n_genes = .N), by = specificity_class]
+  counts <- counts[specificity_class %in% class_levels]
+  counts[, specificity_class := factor(specificity_class, levels = class_levels)]
+  counts <- counts[order(specificity_class)]
+
+  all_colours <- c(specific = "#1B7837", moderate = "#7FBC41",
+                   ubiquitous = "#F4A582", contamination = "#B2182B")
+  class_colours <- all_colours[class_levels]
+
+  ubiquitous_label <- if (has_ubiquitous) {
+    sprintf("Ubiquitous (4 to %d)", contamination_threshold - 1L)
+  } else {
+    "Ubiquitous"
+  }
+  all_labels <- c(
+    specific      = "Specific (1 cell type)",
+    moderate      = "Moderate (2-3 cell types)",
+    ubiquitous    = ubiquitous_label,
+    contamination = sprintf("Contamination (>= %d cell types)",
+                            contamination_threshold)
+  )
+  class_labels <- all_labels[class_levels]
+
+  ggplot2::ggplot(counts,
+                  ggplot2::aes(x = specificity_class, y = n_genes,
+                               fill = specificity_class)) +
+    ggplot2::geom_col(width = 0.7) +
+    ggplot2::geom_text(ggplot2::aes(label = n_genes), vjust = -0.4, size = 3.5) +
+    ggplot2::scale_fill_manual(values = class_colours,
+                               labels = class_labels, name = NULL,
+                               drop = FALSE) +
+    ggplot2::scale_x_discrete(labels = class_labels, drop = FALSE) +
+    ggplot2::labs(
+      x = NULL, y = "Number of significant genes",
+      title = "Gene specificity breakdown",
+      subtitle = sprintf(
+        "FDR < %g | 'specific' + 'moderate' = likely real biology, 'contamination' >= %d cell types",
+        fdr_threshold, contamination_threshold)
+    ) +
+    ggplot2::theme_bw(base_size = 12) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold"),
+      plot.subtitle = ggplot2::element_text(size = 9, colour = "grey40"),
+      axis.text.x = ggplot2::element_text(angle = 20, hjust = 1),
+      legend.position = "none"
+    )
 }

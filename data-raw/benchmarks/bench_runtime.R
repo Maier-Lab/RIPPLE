@@ -1,14 +1,17 @@
 # ============================================================================
 # Runtime and scalability benchmark
 # ============================================================================
-# Measures wall-clock time and peak memory for run_ripple across dataset sizes.
+# Measures wall-clock time (via bench::mark) and peak R memory (via gc()
+# max-used Mb column) for run_ripple across three dataset sizes.
 #
 # Dataset sizes reflect realistic spatial transcriptomics workloads:
-#   Small:  ~3k  cells  x 100 genes x 3 samples
-#   Medium: ~50k cells  x 300 genes x 5 samples
+#   Small:  ~3k   cells x 100 genes x 3 samples
+#   Medium: ~50k  cells x 300 genes x 5 samples
 #   Large:  ~250k cells x 500 genes x 5 samples
 #
-# Each size is run 3 times to get a stable mean / SD.
+# bench::mark is used for timing with a single iteration per configuration
+# (results are per-config; loop provides cross-size comparison). An outer
+# rep loop (n_reps = 3) gives cross-run variability for the summary.
 #
 # Run with:
 #   Rscript data-raw/benchmarks/bench_runtime.R
@@ -19,6 +22,7 @@
 
 suppressPackageStartupMessages({
   library(data.table)
+  library(bench)
   devtools::load_all(quiet = TRUE)
 })
 source("data-raw/benchmarks/benchmark_helpers.R")
@@ -44,7 +48,7 @@ size_configs <- list(
 n_reps <- 3
 base_seed <- 12345
 
-cat("=== Runtime Benchmark ===\n")
+cat("=== Runtime Benchmark (bench::mark + gc Mb) ===\n")
 for (s in names(size_configs)) {
   cfg <- size_configs[[s]]
   total_cells <- sum(unlist(cfg$cells)) * cfg$n_samples
@@ -54,50 +58,65 @@ for (s in names(size_configs)) {
     cfg$n_genes, cfg$n_samples
   ))
 }
-cat(sprintf(
-  "  %d reps per size = %d total runs\n\n",
-  n_reps, n_reps * length(size_configs)
-))
+cat(sprintf("  %d reps per size = %d total runs\n\n",
+            n_reps, n_reps * length(size_configs)))
 
 # ---------------------------------------------------------------------------
-# Benchmark function
+# gc_peak_mb: sum of max-used Mb across Ncells and Vcells
+# ---------------------------------------------------------------------------
+gc_peak_mb <- function() {
+  g <- gc()
+  # gc() returns 6 columns: used, (Mb), gc trigger, (Mb), max used, (Mb)
+  # We want the last column (max used in Mb) summed across Ncells + Vcells rows.
+  sum(g[, ncol(g)])
+}
+
+# ---------------------------------------------------------------------------
+# measure_one_run: uses bench::mark for time (1 iteration, just to get its
+# precise timing + memory allocation tracking) and gc() for peak resident.
 # ---------------------------------------------------------------------------
 measure_one_run <- function(cfg, seed) {
-  # Reset memory tracking
   gc(reset = TRUE, full = TRUE)
-  mem_before <- sum(gc()[, "used"]) # MB (approx, ncells column is in KB-ish units)
 
-  t_gen_start <- proc.time()
-  spe <- generate_benchmark_data(
-    n_samples        = cfg$n_samples,
-    n_gradient_neg   = 0,
-    n_gradient_pos   = 0,
-    n_background     = cfg$n_genes,
-    cells_per_sample = cfg$cells,
-    seed             = seed
+  # Data generation time measured separately (not the main benchmark target)
+  t_gen <- system.time({
+    spe <- generate_benchmark_data(
+      n_samples        = cfg$n_samples,
+      n_gradient_neg   = 0,
+      n_gradient_pos   = 0,
+      n_background     = cfg$n_genes,
+      cells_per_sample = cfg$cells,
+      seed             = seed
+    )
+  })[3]
+
+  # Reset memory tracking before the RIPPLE run so peak reflects RIPPLE only
+  gc(reset = TRUE, full = TRUE)
+
+  # bench::mark with a single iteration. memory = FALSE because run_ripple
+  # internally parallelises (bench's memory profiler cannot track that);
+  # peak memory is captured via gc() immediately after the run instead.
+  bm <- bench::mark(
+    run_ripple_quiet(spe),
+    iterations = 1,
+    check      = FALSE,
+    memory     = FALSE,
+    time_unit  = "s",
+    filter_gc  = FALSE
   )
-  t_gen <- (proc.time() - t_gen_start)[3]
 
-  t_run_start <- proc.time()
-  res <- run_ripple_quiet(spe)
-  t_run <- (proc.time() - t_run_start)[3]
+  t_ripple <- as.numeric(bm$median)
+  peak_mb  <- gc_peak_mb()
 
-  # Peak memory from gc() max-used tracking
-  gc_info <- gc()
-  peak_mb <- sum(gc_info[, "max used"] * c(56, 8) / 1024 / 1024)
-
-  # n_cells is the total cells across all samples
   total_cells <- sum(unlist(cfg$cells)) * cfg$n_samples
 
   list(
-    n_cells     = total_cells,
-    n_genes     = cfg$n_genes,
-    n_samples   = cfg$n_samples,
-    t_generate  = as.numeric(t_gen),
-    t_ripple    = as.numeric(t_run),
-    t_total     = as.numeric(t_gen + t_run),
-    peak_mb     = peak_mb,
-    n_results   = nrow(res)
+    n_cells    = total_cells,
+    n_genes    = cfg$n_genes,
+    n_samples  = cfg$n_samples,
+    t_generate = as.numeric(t_gen),
+    t_ripple   = t_ripple,
+    peak_mb    = peak_mb
   )
 }
 
@@ -125,17 +144,14 @@ for (size in names(size_configs)) {
     )
 
     if (!is.null(result)) {
-      cat(sprintf(
-        "%.1fs (RIPPLE: %.1fs), %.0f MB peak\n",
-        result$t_total, result$t_ripple, result$peak_mb
-      ))
+      cat(sprintf("RIPPLE %.1fs, peak %.0f MB\n",
+                  result$t_ripple, result$peak_mb))
       result$size <- size
-      result$rep <- rep
+      result$rep  <- rep
       result$seed <- seed
       all_results[[counter]] <- as.data.table(result)
     }
 
-    # Force garbage collection between runs
     rm(result)
     gc(reset = TRUE, full = TRUE)
   }
@@ -148,13 +164,13 @@ results_dt <- rbindlist(all_results)
 # ---------------------------------------------------------------------------
 cat("\n=== Summary ===\n")
 summary_dt <- results_dt[, .(
-  n_reps = .N,
-  n_cells = mean(n_cells),
-  n_genes = mean(n_genes),
-  n_samples = mean(n_samples),
+  n_reps        = .N,
+  n_cells       = mean(n_cells),
+  n_genes       = mean(n_genes),
+  n_samples     = mean(n_samples),
   mean_t_ripple = mean(t_ripple),
-  sd_t_ripple = sd(t_ripple),
-  mean_peak_mb = mean(peak_mb)
+  sd_t_ripple   = sd(t_ripple),
+  mean_peak_mb  = mean(peak_mb)
 ), by = size]
 print(summary_dt)
 
