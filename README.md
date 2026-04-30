@@ -205,9 +205,9 @@ plot_k_diagnostics(my_spe, query_celltype = "Tumor", celltype_column = "cell_typ
 
 ## Citation
 
-A bibentry is shipped in `inst/CITATION` and can be retrieved with `citation("ripple")`. The placeholder entry will be replaced once the accompanying manuscript is posted on bioRxiv.
+A bibentry is shipped in `inst/CITATION` and can be retrieved with `citation("ripple")`. This will be replaced once the accompanying manuscript is posted on bioRxiv.
 
-> *Citation forthcoming (bioRxiv preprint in preparation).*
+> *Citation  (bioRxiv preprint in preparation).*
 
 ---
 
