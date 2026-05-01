@@ -1,6 +1,15 @@
 # RIPPLE
 
-**Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation**
+
+<p align="center">
+    <picture align="center">
+    <img width="200" alt="ripple logo" src="https://github.com/user-attachments/assets/5aaab8a9-bb66-4117-b378-3f33dc13ea3c" />
+    </picture>
+</p>
+<p align="center">
+  <b>Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation</b>
+</p>
+
 
 RIPPLE is an R package that detects distance-dependent gene expression gradients from a chosen query cell type in spatial transcriptomics data.
 
