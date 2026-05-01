@@ -21,7 +21,7 @@ RIPPLE is an R package that detects distance-dependent gene expression gradients
 
 Given a spatial transcriptomics dataset with cell type annotations and biological replicates, RIPPLE fits a per-sample Poisson GLM for each gene in each target cell type, using Euclidean distance to the nearest query cell as the predictor and `log(total_counts)` as an offset. Per-sample coefficients are combined across replicates via Fisher's combined p-value with a sign-consistency gate. The result is a ranked list of genes with signed, interpretable gradient coefficients, calibrated FDR, and per-sample reproducibility.
 
-**Supported platforms:** Xenium, MERFISH, CosMx, CODEX -- any imaging-based platform with single-cell resolved coordinates and raw integer counts.
+**Supported platforms:** Xenium, MERFISH, CosMx. Ideal for any imaging-based platform with single-cell resolved coordinates and quasi-binary profile of raw integer counts.
 
 For a standalone SLURM-driven script version, see [HyMy-distance-correlation-analysis](https://github.com/CMangana/HyMy-distance-correlation-analysis).
 
