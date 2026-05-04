@@ -168,12 +168,15 @@ before reporting. The
 [CosMx walkthrough](cosmx_nsclc_walkthrough.html) shows a side-by-side
 comparison.
 
-> **Note on `contamination_threshold`.** The default of `4` (gene
-> significant in ≥ 4 cell types) is illustrative — it suits a ~10-20
-> cell-type panel. With ~3-5 cell types the cutoff is barely
-> reachable; with ~30+ fine subtypes it is too lenient. **Pick a value
-> appropriate to your dataset and report it in the methods.** See
-> `?classify_gene_specificity` for the full discussion.
+> **Note on the contamination dials.** `classify_gene_specificity()`
+> has two: `contamination_threshold` (how many cell types — default
+> `4`, illustrative for a ~10-20 cell-type panel; tune for your data)
+> and `contamination_sig_threshold` (how strictly significant each
+> "hit" must be — default `NULL`, which means any `*` hit counts; pass
+> `"**"` or `"***"` to require stricter significance and flag fewer
+> genes). **Pick values appropriate to your dataset and report them in
+> the methods.** See `?classify_gene_specificity` for the full
+> discussion.
 
 ## QC dashboard
 

@@ -51,6 +51,72 @@ test_that("classify_gene_specificity classifies genes by cell-type breadth", {
   expect_equal(spec[gene == "CONTAM_D"]$n_celltypes, 5L)
 })
 
+test_that("classify_gene_specificity respects contamination_sig_threshold", {
+  # Gene SHARED is significant in 4 cell types at FDR < 0.05 (default
+  # contamination call), but only at strong significance (FDR < 0.001) in
+  # ONE of those 4 cell types. Tightening the significance bar should
+  # therefore demote it from "contamination" to a non-contamination class.
+  results <- data.table::data.table(
+    gene = c(
+      "SHARED", "SHARED", "SHARED", "SHARED",
+      "SPECIFIC_A"
+    ),
+    cell_type = c("CT1", "CT2", "CT3", "CT4", "CT1"),
+    fisher_fdr = c(
+      1e-5,   # CT1: ** + *** + **** all hit
+      0.02,   # CT2: only * hits
+      0.03,   # CT3: only * hits
+      0.04,   # CT4: only * hits
+      1e-6    # specific control
+    )
+  )
+
+  # Default behaviour (any * counts) -> SHARED hits 4 cell types -> contamination
+  spec_default <- classify_gene_specificity(
+    results, fdr_threshold = 0.05, contamination_threshold = 4
+  )
+  expect_equal(spec_default[gene == "SHARED"]$specificity_class,
+               "contamination")
+  expect_equal(spec_default[gene == "SHARED"]$n_celltypes, 4L)
+  expect_equal(spec_default[gene == "SHARED"]$n_celltypes_strict, 4L)
+
+  # Tighten to ** (FDR < 0.01) -> SHARED only hits CT1 strictly -> NOT
+  # contamination; classified by loose count (4 -> "ubiquitous" since
+  # n_celltypes >= 4 and not contam).
+  spec_strict <- classify_gene_specificity(
+    results, fdr_threshold = 0.05,
+    contamination_threshold = 4,
+    contamination_sig_threshold = "**"
+  )
+  expect_equal(spec_strict[gene == "SHARED"]$specificity_class,
+               "ubiquitous")
+  expect_equal(spec_strict[gene == "SHARED"]$n_celltypes,        4L)
+  expect_equal(spec_strict[gene == "SHARED"]$n_celltypes_strict, 1L)
+
+  # Numeric threshold matches the star convention
+  spec_numeric <- classify_gene_specificity(
+    results, fdr_threshold = 0.05,
+    contamination_threshold = 4,
+    contamination_sig_threshold = 0.01
+  )
+  expect_equal(spec_numeric[gene == "SHARED"]$specificity_class,
+               spec_strict[gene == "SHARED"]$specificity_class)
+
+  # Bad string -> error
+  expect_error(
+    classify_gene_specificity(results,
+                              contamination_sig_threshold = "bogus"),
+    "must be NULL"
+  )
+
+  # Looser sig_threshold than fdr_threshold -> warning
+  expect_warning(
+    classify_gene_specificity(results, fdr_threshold = 0.01,
+                              contamination_sig_threshold = 0.05),
+    "MORE aggressive"
+  )
+})
+
 test_that("classify_gene_specificity handles empty input gracefully", {
   empty <- data.table::data.table(
     gene = character(), cell_type = character(), fisher_fdr = numeric()

@@ -8,7 +8,8 @@ classify_gene_specificity(
   results,
   fdr_col = "fisher_fdr",
   fdr_threshold = 0.05,
-  contamination_threshold = 4
+  contamination_threshold = 4,
+  contamination_sig_threshold = NULL
 )
 }
 \arguments{
@@ -18,24 +19,45 @@ significance column specified by \code{fdr_col}.}
 \item{fdr_col}{Character. Column name for the significance measure.
 Default: "fisher_fdr".}
 
-\item{fdr_threshold}{Numeric. Significance cutoff. Default: 0.05.}
+\item{fdr_threshold}{Numeric. Loose significance cutoff used to decide
+what counts as "significant in a cell type" for the
+specific/moderate/ubiquitous classes and for the
+\code{n_celltypes} count. Default: 0.05.}
 
 \item{contamination_threshold}{Integer. Genes significant in at least this
-many cell types are flagged as "contamination". Default: \code{4}.
-\strong{This default is illustrative, not universal -- you should pick a
-value appropriate to your dataset.} See "Choosing
-\code{contamination_threshold}" below.}
+many cell types (at \code{contamination_sig_threshold}) are flagged
+as "contamination". Default: \code{4}. \strong{This default is
+illustrative, not universal -- you should pick a value appropriate
+to your dataset.} See "Choosing \code{contamination_threshold}"
+below.}
+
+\item{contamination_sig_threshold}{Numeric or character. Stricter
+significance cutoff used \emph{only} for the contamination flag. Lets
+you require, e.g., \code{**} significance (FDR < 0.01) before a gene
+counts toward the contamination tally, while still allowing \code{*}
+(FDR < 0.05) for the broader specific/moderate/ubiquitous classes.
+Accepts a numeric FDR (e.g. \code{0.01}) or a star string:
+\code{"*"} -> 0.05, \code{"**"} -> 0.01, \code{"***"} -> 0.001,
+\code{"****"} -> 1e-4. Default \code{NULL} -> use \code{fdr_threshold}
+(back-compat: any "*"-significant gene contributes). Tightening this
+makes the contamination filter \strong{looser} (fewer genes flagged)
+because each cell-type "hit" must clear a higher bar.}
 }
 \value{
 A \code{data.table} with columns:
 \describe{
 \item{gene}{Character. Gene name.}
 \item{n_celltypes}{Integer. Number of cell types where the gene is
-significant.}
-\item{celltypes}{Character. Comma-separated list of cell type names.}
+significant at \code{fdr_threshold} (the loose cutoff).}
+\item{n_celltypes_strict}{Integer. Number of cell types where the gene
+is significant at \code{contamination_sig_threshold}. Equal to
+\code{n_celltypes} when the two thresholds match (the default).}
+\item{celltypes}{Character. Comma-separated list of cell type names
+(using the loose \code{fdr_threshold}).}
 \item{specificity_class}{Character. One of: "specific" (1 cell type),
 "moderate" (2-3 cell types), "ubiquitous" (4+ but below contamination
-threshold), or "contamination" (>= contamination_threshold).}
+threshold), or "contamination" (\code{n_celltypes_strict >=
+    contamination_threshold}).}
 }
 }
 \description{
@@ -79,6 +101,26 @@ to plot \code{n_celltypes} as a histogram across all significant
 genes -- the cutoff should sit in the right tail, separating clear
 multi-cell-type genes from cell-type-specific signal. Whatever value
 you choose, report it explicitly in the methods.
+}
+
+\section{Tuning \code{contamination_sig_threshold} (the significance bar)}{
+
+The contamination flag has \emph{two} dials:
+\itemize{
+\item \code{contamination_threshold} -- how many cell types
+(default \code{4}).
+\item \code{contamination_sig_threshold} -- how strictly significant
+each "hit" must be (default \code{NULL} -> uses
+\code{fdr_threshold}, i.e. any \code{*} gene counts).
+}
+Tightening the significance bar (e.g. \code{"**"} for FDR < 0.01)
+makes the filter \strong{looser overall} -- a gene only counts as a
+"hit" in cell types where the signal is unambiguous, so fewer genes
+reach the cell-type tally and fewer are flagged. Use this when the
+default flags genes you believe are real biology, or when you want
+the contamination class to capture only the most blatant ambient-RNA
+offenders. Conversely, leave it at the default (or use \code{NULL})
+to be more aggressive about flagging.
 }
 
 \examples{

@@ -18,6 +18,7 @@ run_ripple_fgsea(
   seed = 42,
   exclude_contamination = FALSE,
   contamination_threshold = 4L,
+  contamination_sig_threshold = NULL,
   exclude_specificity_class = NULL
 )
 }
@@ -61,14 +62,21 @@ with \code{contamination_threshold} to compute it. Default \code{FALSE}.
 See "Limitations" below before turning this on.}
 
 \item{contamination_threshold}{Integer. Minimum number of cell types in
-which a gene must be significant (at \code{fdr_col} < 0.05) to be
-classified as contamination. Used only when
-\code{exclude_contamination = TRUE} and \code{specificity_class} is
-not already present. Default: \code{4L} -- this is illustrative
-only; the right cutoff depends on how many cell types are in your
-panel and how fine the annotation is. See "Choosing
-\code{contamination_threshold}" in
-\code{\link{classify_gene_specificity}} for guidance.}
+which a gene must be significant (at
+\code{contamination_sig_threshold}) to be classified as
+contamination. Used only when \code{exclude_contamination = TRUE}
+and \code{specificity_class} is not already present. Default:
+\code{4L} -- illustrative; tune to your panel size and annotation
+granularity (see "Choosing \code{contamination_threshold}" in
+\code{\link{classify_gene_specificity}}).}
+
+\item{contamination_sig_threshold}{Numeric or character. Stricter
+significance bar for the contamination tally. \code{NULL} (default)
+uses \code{fdr_col} < 0.05 (any "*" hit counts). Pass \code{"**"}
+(FDR < 0.01), \code{"***"} (FDR < 0.001), or a numeric to require a
+higher significance bar -- this makes the filter \strong{looser}
+(fewer genes flagged). See \code{\link{classify_gene_specificity}}
+for the full discussion.}
 
 \item{exclude_specificity_class}{Optional character vector of
 specificity-class labels (e.g. \code{"contamination"}) to drop from the

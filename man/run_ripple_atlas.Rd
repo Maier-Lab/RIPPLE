@@ -12,6 +12,7 @@ run_ripple_atlas(
   sig_col = "fisher_fdr",
   fdr_threshold = 0.05,
   contamination_threshold = 4,
+  contamination_sig_threshold = NULL,
   top_per_celltype = 5,
   run_fgsea = TRUE,
   gene_sets = "hallmark",
@@ -48,6 +49,12 @@ this many cell types as potential contamination. Default: \code{4}
 annotation granularity. See "Choosing
 \code{contamination_threshold}" in
 \code{\link{classify_gene_specificity}} for guidance.}
+
+\item{contamination_sig_threshold}{Numeric or character. Stricter
+significance bar for the contamination tally (e.g. \code{"**"} for
+FDR < 0.01). \code{NULL} (default) keeps the back-compat behaviour
+(any \code{*} hit counts). See \code{\link{classify_gene_specificity}}
+for details.}
 
 \item{top_per_celltype}{Integer. Number of top genes per cell type in the
 dotplot. Default: 5.}

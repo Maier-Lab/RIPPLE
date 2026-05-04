@@ -339,6 +339,11 @@ NULL
 #'   annotation granularity. See "Choosing
 #'   \code{contamination_threshold}" in
 #'   \code{\link{classify_gene_specificity}} for guidance.
+#' @param contamination_sig_threshold Numeric or character. Stricter
+#'   significance bar for the contamination tally (e.g. \code{"**"} for
+#'   FDR < 0.01). \code{NULL} (default) keeps the back-compat behaviour
+#'   (any \code{*} hit counts). See \code{\link{classify_gene_specificity}}
+#'   for details.
 #' @param top_per_celltype Integer. Number of top genes per cell type in the
 #'   dotplot. Default: 5.
 #' @param run_fgsea Logical. Whether to run pathway enrichment (requires
@@ -406,6 +411,7 @@ run_ripple_atlas <- function(results_dir,
                              sig_col = "fisher_fdr",
                              fdr_threshold = 0.05,
                              contamination_threshold = 4,
+                             contamination_sig_threshold = NULL,
                              top_per_celltype = 5,
                              run_fgsea = TRUE,
                              gene_sets = "hallmark",
@@ -488,8 +494,10 @@ run_ripple_atlas <- function(results_dir,
   .msg("Classifying gene specificity...")
   gene_spec <- classify_gene_specificity(
     all_results,
-    fdr_col = sig_col, fdr_threshold = fdr_threshold,
-    contamination_threshold = contamination_threshold
+    fdr_col                     = sig_col,
+    fdr_threshold               = fdr_threshold,
+    contamination_threshold     = contamination_threshold,
+    contamination_sig_threshold = contamination_sig_threshold
   )
 
   # Merge specificity into results
@@ -633,12 +641,13 @@ run_ripple_atlas <- function(results_dir,
         {
           fgsea_results <- run_ripple_fgsea(
             all_results,
-            gene_sets               = gene_sets, organism = organism,
-            coef_col                = coef_col,  fdr_col  = sig_col,
-            min_genes               = fgsea_min_genes,
-            seed                    = fgsea_seed,
-            exclude_contamination   = fgsea_exclude_contamination,
-            contamination_threshold = contamination_threshold
+            gene_sets                   = gene_sets, organism = organism,
+            coef_col                    = coef_col,  fdr_col  = sig_col,
+            min_genes                   = fgsea_min_genes,
+            seed                        = fgsea_seed,
+            exclude_contamination       = fgsea_exclude_contamination,
+            contamination_threshold     = contamination_threshold,
+            contamination_sig_threshold = contamination_sig_threshold
           )
 
           if (nrow(fgsea_results) > 0) {

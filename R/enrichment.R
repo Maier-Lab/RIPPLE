@@ -124,14 +124,20 @@ NULL
 #'   with \code{contamination_threshold} to compute it. Default \code{FALSE}.
 #'   See "Limitations" below before turning this on.
 #' @param contamination_threshold Integer. Minimum number of cell types in
-#'   which a gene must be significant (at \code{fdr_col} < 0.05) to be
-#'   classified as contamination. Used only when
-#'   \code{exclude_contamination = TRUE} and \code{specificity_class} is
-#'   not already present. Default: \code{4L} -- this is illustrative
-#'   only; the right cutoff depends on how many cell types are in your
-#'   panel and how fine the annotation is. See "Choosing
-#'   \code{contamination_threshold}" in
-#'   \code{\link{classify_gene_specificity}} for guidance.
+#'   which a gene must be significant (at
+#'   \code{contamination_sig_threshold}) to be classified as
+#'   contamination. Used only when \code{exclude_contamination = TRUE}
+#'   and \code{specificity_class} is not already present. Default:
+#'   \code{4L} -- illustrative; tune to your panel size and annotation
+#'   granularity (see "Choosing \code{contamination_threshold}" in
+#'   \code{\link{classify_gene_specificity}}).
+#' @param contamination_sig_threshold Numeric or character. Stricter
+#'   significance bar for the contamination tally. \code{NULL} (default)
+#'   uses \code{fdr_col} < 0.05 (any "*" hit counts). Pass \code{"**"}
+#'   (FDR < 0.01), \code{"***"} (FDR < 0.001), or a numeric to require a
+#'   higher significance bar -- this makes the filter \strong{looser}
+#'   (fewer genes flagged). See \code{\link{classify_gene_specificity}}
+#'   for the full discussion.
 #' @param exclude_specificity_class Optional character vector of
 #'   specificity-class labels (e.g. \code{"contamination"}) to drop from the
 #'   ranked list. Lower-level alternative to \code{exclude_contamination}
@@ -215,6 +221,7 @@ run_ripple_fgsea <- function(results,
                              seed = 42,
                              exclude_contamination = FALSE,
                              contamination_threshold = 4L,
+                             contamination_sig_threshold = NULL,
                              exclude_specificity_class = NULL) {
   # --- Validate inputs ---
   if (!requireNamespace("fgsea", quietly = TRUE)) {
@@ -263,19 +270,28 @@ run_ripple_fgsea <- function(results,
     if (!"specificity_class" %in% names(dt)) {
       spec_dt <- classify_gene_specificity(
         dt,
-        fdr_col                 = fdr_col,
-        fdr_threshold           = 0.05,
-        contamination_threshold = contamination_threshold
+        fdr_col                     = fdr_col,
+        fdr_threshold               = 0.05,
+        contamination_threshold     = contamination_threshold,
+        contamination_sig_threshold = contamination_sig_threshold
       )
       contam_genes <- spec_dt[
         specificity_class == "contamination", unique(gene)
       ]
       n_before <- nrow(dt)
       dt <- dt[!gene %in% contam_genes]
+      sig_label <- if (is.null(contamination_sig_threshold)) {
+        "FDR < 0.05"
+      } else if (is.character(contamination_sig_threshold)) {
+        paste0("significance ", contamination_sig_threshold)
+      } else {
+        paste0("FDR < ", contamination_sig_threshold)
+      }
       message(
         "  exclude_contamination: dropped ", length(contam_genes),
         " gene(s) flagged as contamination ",
-        "(>= ", contamination_threshold, " cell types at FDR < 0.05); ",
+        "(>= ", contamination_threshold, " cell types at ",
+        sig_label, "); ",
         n_before - nrow(dt), " row(s) removed; ",
         nrow(dt), " row(s) remain"
       )
@@ -398,22 +414,42 @@ run_ripple_fgsea <- function(results,
 #'   significance column specified by \code{fdr_col}.
 #' @param fdr_col Character. Column name for the significance measure.
 #'   Default: "fisher_fdr".
-#' @param fdr_threshold Numeric. Significance cutoff. Default: 0.05.
+#' @param fdr_threshold Numeric. Loose significance cutoff used to decide
+#'   what counts as "significant in a cell type" for the
+#'   specific/moderate/ubiquitous classes and for the
+#'   \code{n_celltypes} count. Default: 0.05.
 #' @param contamination_threshold Integer. Genes significant in at least this
-#'   many cell types are flagged as "contamination". Default: \code{4}.
-#'   \strong{This default is illustrative, not universal -- you should pick a
-#'   value appropriate to your dataset.} See "Choosing
-#'   \code{contamination_threshold}" below.
+#'   many cell types (at \code{contamination_sig_threshold}) are flagged
+#'   as "contamination". Default: \code{4}. \strong{This default is
+#'   illustrative, not universal -- you should pick a value appropriate
+#'   to your dataset.} See "Choosing \code{contamination_threshold}"
+#'   below.
+#' @param contamination_sig_threshold Numeric or character. Stricter
+#'   significance cutoff used \emph{only} for the contamination flag. Lets
+#'   you require, e.g., \code{**} significance (FDR < 0.01) before a gene
+#'   counts toward the contamination tally, while still allowing \code{*}
+#'   (FDR < 0.05) for the broader specific/moderate/ubiquitous classes.
+#'   Accepts a numeric FDR (e.g. \code{0.01}) or a star string:
+#'   \code{"*"} -> 0.05, \code{"**"} -> 0.01, \code{"***"} -> 0.001,
+#'   \code{"****"} -> 1e-4. Default \code{NULL} -> use \code{fdr_threshold}
+#'   (back-compat: any "*"-significant gene contributes). Tightening this
+#'   makes the contamination filter \strong{looser} (fewer genes flagged)
+#'   because each cell-type "hit" must clear a higher bar.
 #'
 #' @return A \code{data.table} with columns:
 #' \describe{
 #'   \item{gene}{Character. Gene name.}
 #'   \item{n_celltypes}{Integer. Number of cell types where the gene is
-#'     significant.}
-#'   \item{celltypes}{Character. Comma-separated list of cell type names.}
+#'     significant at \code{fdr_threshold} (the loose cutoff).}
+#'   \item{n_celltypes_strict}{Integer. Number of cell types where the gene
+#'     is significant at \code{contamination_sig_threshold}. Equal to
+#'     \code{n_celltypes} when the two thresholds match (the default).}
+#'   \item{celltypes}{Character. Comma-separated list of cell type names
+#'     (using the loose \code{fdr_threshold}).}
 #'   \item{specificity_class}{Character. One of: "specific" (1 cell type),
 #'     "moderate" (2-3 cell types), "ubiquitous" (4+ but below contamination
-#'     threshold), or "contamination" (>= contamination_threshold).}
+#'     threshold), or "contamination" (\code{n_celltypes_strict >=
+#'     contamination_threshold}).}
 #' }
 #'
 #' @section Choosing \code{contamination_threshold}:
@@ -447,6 +483,24 @@ run_ripple_fgsea <- function(results,
 #' multi-cell-type genes from cell-type-specific signal. Whatever value
 #' you choose, report it explicitly in the methods.
 #'
+#' @section Tuning \code{contamination_sig_threshold} (the significance bar):
+#' The contamination flag has \emph{two} dials:
+#' \itemize{
+#'   \item \code{contamination_threshold} -- how many cell types
+#'     (default \code{4}).
+#'   \item \code{contamination_sig_threshold} -- how strictly significant
+#'     each "hit" must be (default \code{NULL} -> uses
+#'     \code{fdr_threshold}, i.e. any \code{*} gene counts).
+#' }
+#' Tightening the significance bar (e.g. \code{"**"} for FDR < 0.01)
+#' makes the filter \strong{looser overall} -- a gene only counts as a
+#' "hit" in cell types where the signal is unambiguous, so fewer genes
+#' reach the cell-type tally and fewer are flagged. Use this when the
+#' default flags genes you believe are real biology, or when you want
+#' the contamination class to capture only the most blatant ambient-RNA
+#' offenders. Conversely, leave it at the default (or use \code{NULL})
+#' to be more aggressive about flagging.
+#'
 #' @examples
 #' \dontrun{
 #' results <- data.table::fread("all_genes_results.csv")
@@ -461,7 +515,8 @@ run_ripple_fgsea <- function(results,
 classify_gene_specificity <- function(results,
                                       fdr_col = "fisher_fdr",
                                       fdr_threshold = 0.05,
-                                      contamination_threshold = 4) {
+                                      contamination_threshold = 4,
+                                      contamination_sig_threshold = NULL) {
   if (!inherits(results, "data.table")) {
     results <- data.table::as.data.table(results)
   }
@@ -475,30 +530,73 @@ classify_gene_specificity <- function(results,
     )
   }
 
-  # Filter to significant genes
+  # Resolve contamination_sig_threshold:
+  #   NULL -> use fdr_threshold (back-compat)
+  #   "*" / "**" / "***" / "****" -> 0.05 / 0.01 / 0.001 / 1e-4
+  #   numeric -> as-is
+  if (is.null(contamination_sig_threshold)) {
+    cs_thr <- fdr_threshold
+  } else if (is.character(contamination_sig_threshold)) {
+    star_map <- c(`*` = 0.05, `**` = 0.01, `***` = 0.001, `****` = 1e-4)
+    if (!contamination_sig_threshold %in% names(star_map)) {
+      stop(
+        "contamination_sig_threshold must be NULL, a numeric FDR, or one ",
+        "of '*', '**', '***', '****'.", call. = FALSE
+      )
+    }
+    cs_thr <- unname(star_map[contamination_sig_threshold])
+  } else if (is.numeric(contamination_sig_threshold) &&
+             length(contamination_sig_threshold) == 1) {
+    cs_thr <- contamination_sig_threshold
+  } else {
+    stop(
+      "contamination_sig_threshold must be NULL, a single numeric FDR, ",
+      "or one of '*', '**', '***', '****'.", call. = FALSE
+    )
+  }
+  if (cs_thr > fdr_threshold) {
+    warning(
+      "contamination_sig_threshold (", cs_thr, ") is looser than ",
+      "fdr_threshold (", fdr_threshold, "); contamination flag will be ",
+      "MORE aggressive than the overall significance gate.",
+      call. = FALSE
+    )
+  }
+
+  # Loose set: significant at fdr_threshold (drives n_celltypes,
+  # specific/moderate/ubiquitous classes, and the celltypes string).
   sig <- results[!is.na(get(fdr_col)) & get(fdr_col) < fdr_threshold]
 
   if (nrow(sig) == 0) {
     message("No significant genes at FDR < ", fdr_threshold)
     return(data.table::data.table(
       gene = character(), n_celltypes = integer(),
+      n_celltypes_strict = integer(),
       celltypes = character(), specificity_class = character()
     ))
   }
 
-  # Count cell types per gene
   gene_counts <- sig[, .(
     n_celltypes = data.table::uniqueN(cell_type),
-    celltypes = paste(sort(unique(as.character(cell_type))), collapse = ", ")
+    celltypes   = paste(sort(unique(as.character(cell_type))), collapse = ", ")
   ), by = gene]
 
-  # Classify
+  # Strict set: significant at contamination_sig_threshold (drives the
+  # contamination flag only).
+  strict <- results[!is.na(get(fdr_col)) & get(fdr_col) < cs_thr,
+                    .(n_celltypes_strict = data.table::uniqueN(cell_type)),
+                    by = gene]
+  gene_counts <- merge(gene_counts, strict, by = "gene", all.x = TRUE)
+  gene_counts[is.na(n_celltypes_strict), n_celltypes_strict := 0L]
+
+  # Classify: contamination first (uses strict count), then
+  # specific/moderate/ubiquitous (uses loose count).
   gene_counts[, specificity_class := data.table::fifelse(
-    n_celltypes == 1, "specific",
+    n_celltypes_strict >= contamination_threshold, "contamination",
     data.table::fifelse(
-      n_celltypes <= 3, "moderate",
+      n_celltypes == 1, "specific",
       data.table::fifelse(
-        n_celltypes >= contamination_threshold, "contamination",
+        n_celltypes <= 3, "moderate",
         "ubiquitous"
       )
     )
