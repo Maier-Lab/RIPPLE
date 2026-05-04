@@ -2,79 +2,21 @@
 % Please edit documentation in R/visualization.R
 \name{plot_decay_curve}
 \alias{plot_decay_curve}
-\title{Decay curve plot}
+\title{Decay curve plot (deprecated)}
 \usage{
-plot_decay_curve(
-  bin_stats,
-  gene_name,
-  cell_type,
-  gradient_score = NULL,
-  fdr = NULL,
-  results = NULL,
-  query_label = "Query",
-  max_distance = 200,
-  color = "#E74C3C"
-)
+plot_decay_curve(...)
 }
 \arguments{
-\item{bin_stats}{A \code{data.table} with binned decay statistics. Must
-contain columns \code{dist_mid}, \code{prop_expressing}, \code{n_cells},
-and \code{se}.}
-
-\item{gene_name}{Character. Gene name for the plot title.}
-
-\item{cell_type}{Character. Cell type name for context and for looking up
-the meta-analysis row when \code{results} is passed.}
-
-\item{gradient_score}{Numeric or NULL. Per-gene meta-analysis gradient
-score (a.k.a. \code{median_coef} / \code{combined_coef}). Shown in the
-subtitle. If \code{NULL} and \code{results} is supplied, looked up
-automatically from \code{results}.}
-
-\item{fdr}{Numeric or NULL. Per-gene Fisher FDR. Shown in the subtitle.
-If \code{NULL} and \code{results} is supplied, looked up automatically.}
-
-\item{results}{Optional \code{data.table} of RIPPLE results (e.g. output of
-\code{merge_ripple_results()}). If supplied and \code{gradient_score} /
-\code{fdr} are \code{NULL}, the row matching \code{gene_name} and
-\code{cell_type} is used. Must contain \code{gene}, \code{cell_type},
-and one of \code{median_coef} / \code{gradient_score} /
-\code{combined_coef}, and one of \code{fisher_fdr} / \code{fdr}.}
-
-\item{query_label}{Character. Display label for the query cell type
-(default: "Query").}
-
-\item{max_distance}{Numeric. Maximum distance for x-axis (default: 200).}
-
-\item{color}{Character. Line/ribbon color (default: "#E74C3C").}
+\item{...}{Arguments passed to \code{\link{plot_gradient_curve}}.}
 }
 \value{
-A \code{ggplot} object, or NULL if bin_stats is NULL or empty.
+A \code{ggplot} object.
 }
 \description{
-Creates a decay curve showing the proportion of expressing cells as a
-function of distance from query cells, with a 95\\% CI ribbon on the
-pooled mean. The gene's meta-analysis gradient score and FDR are shown
-in the subtitle.
+Deprecated alias for \code{\link{plot_gradient_curve}}. Renamed because
+"decay" is misleading — many gradient curves are not monotonically
+decaying (positive coefficients show the inverse pattern, and biphasic
+curves are common). Calls through to \code{plot_gradient_curve()} with
+the same arguments.
 }
-\examples{
-\dontrun{
-# Pass stats explicitly
-plot_decay_curve(
-  bin_stats = binned_data,
-  gene_name = "Cxcl12",
-  cell_type = "LEC",
-  gradient_score = -0.005,
-  fdr = 0.001
-)
-
-# Or let it look them up from a results table
-plot_decay_curve(
-  bin_stats = binned_data,
-  gene_name = "Cxcl12",
-  cell_type = "LEC",
-  results = merged_results
-)
-}
-
-}
+\keyword{internal}

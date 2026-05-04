@@ -11,7 +11,8 @@ plot_gradient_volcano(
   fdr_threshold = 0.05,
   query_label = "Query",
   n_label = 20,
-  title = NULL
+  title = NULL,
+  exclude_specificity_class = NULL
 )
 }
 \arguments{
@@ -32,6 +33,16 @@ minimum a coefficient column and an FDR column.}
 \item{n_label}{Integer. Maximum number of genes to label (default: 20).}
 
 \item{title}{Character or NULL. Plot title. If NULL, auto-generated.}
+
+\item{exclude_specificity_class}{Optional character vector. Specificity-class
+labels to exclude from the \emph{label-selection pool only} (genes still
+appear as dots, just without text labels). Typical use:
+\code{exclude_specificity_class = "contamination"} to skip ambient-RNA /
+query-signature genes that the cross-cell-type heuristic flagged. If set,
+the input \code{results} must carry a \code{specificity_class} column
+(produced by \code{classify_gene_specificity()} or
+\code{run_ripple_atlas()}). Default \code{NULL} preserves the prior
+labelling behaviour.}
 }
 \value{
 A \code{ggplot} object.
@@ -47,6 +58,12 @@ plot_gradient_volcano(
   coef_col = "median_coef",
   fdr_col = "fisher_fdr",
   query_label = "Tumor"
+)
+
+# Skip contamination-flagged genes when picking labels:
+plot_gradient_volcano(
+  results,
+  exclude_specificity_class = "contamination"
 )
 }
 

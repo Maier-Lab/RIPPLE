@@ -1,8 +1,8 @@
 ---
-title: "RIPPLE applied to CosMx NSCLC: Tumor-proximity gene expression gradients"
+title: "RIPPLE applied to CosMx NSCLC: reproducing paper Figure 4"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RIPPLE applied to CosMx NSCLC: Tumor-proximity gene expression gradients}
+  %\VignetteIndexEntry{RIPPLE applied to CosMx NSCLC: reproducing paper Figure 4}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -22,28 +22,34 @@ library(ripple)
 library(data.table)
 library(ggplot2)
 library(ggrepel)
+library(patchwork)
 ```
 
 ## Overview
 
-This vignette demonstrates RIPPLE on a real spatial transcriptomics dataset:
-the **CosMx SMI NSCLC dataset** from [He et al. (2022)](https://doi.org/10.1038/s41587-022-01483-z),
-comprising 765,771 cells across 5 patients with non-small cell lung cancer.
+This vignette walks through RIPPLE on the **CosMx SMI NSCLC dataset**
+from [He et al. (2022)](https://doi.org/10.1038/s41587-022-01483-z) —
+765,771 cells, 980 genes, 17 cell types, 5 NSCLC patients (each treated
+as a biological replicate). Tumor cells are the query; we ask which
+genes in the surrounding cell types change expression as a function of
+distance to the nearest tumor cell, reproducibly across all 5 patients.
 
-We use **tumor cells** as the query population and ask: *which genes in the
-surrounding cell types change expression as a function of physical distance
-to the nearest tumor cell?*
+The analysis recovers **516 significant gradient hits** at Fisher
+FDR < 0.05 across 17 target cell types, with fibroblasts (129) and
+macrophages (94) showing the strongest tumor-proximity remodelling.
 
-The analysis reveals 516 significant distance-dependent gene gradients across
-17 target cell types, with fibroblasts (129 genes) and macrophages (94 genes)
-showing the strongest tumor-proximity transcriptional remodeling.
+This vignette is structured to **directly reproduce panels A–E of
+paper Figure 4**. Each panel uses cached results bundled with the
+package; running the analysis from scratch on the raw 2.6 GB h5ad takes
+~6 hours on a 16-core machine and is shown but not executed.
 
-## Dataset preparation
+> **Note:** for a 1-minute end-to-end on the synthetic mock dataset
+> (no download needed), see
+> `vignette("getting_started", package = "ripple")` first.
 
-The CosMx NSCLC data is publicly available as an h5ad file. The preparation
-involves loading the data, merging patient-specific tumor subtype labels into
-a single "tumor" class, and building a `SpatialExperiment` object. This step
-is shown but not executed here (the raw data is 2.6 GB).
+## Dataset preparation (skipped here)
+
+Building the canonical `SpatialExperiment`:
 
 ```{r data-prep, eval = FALSE}
 library(zellkonverter)
@@ -51,14 +57,13 @@ library(SpatialExperiment)
 
 sce <- readH5AD("cosmx_nsclc.h5ad")
 
-# Merge per-patient tumor subtype labels
+# Merge per-patient tumor subtype labels into a single "tumor" class
 ct <- as.character(colData(sce)$cell_type)
 ct[grepl("^tumor", ct)] <- "tumor"
 
-# Build a SpatialExperiment with clean metadata
 spe <- SpatialExperiment(
-  assays = list(counts = assay(sce, "counts")),
-  colData = DataFrame(
+  assays        = list(counts = assay(sce, "counts")),
+  colData       = DataFrame(
     cell_type = ct,
     patient   = colData(sce)$patient,
     sample    = colData(sce)$sample
@@ -67,29 +72,16 @@ spe <- SpatialExperiment(
 )
 ```
 
-The resulting object has `r formatC(765771, big.mark = ",")` cells, 980 genes,
-18 cell types (including the merged tumor class), and 5 biological replicates
-(patients).
+## Choosing `k_neighbors` with `plot_k_diagnostics()`
 
-## Choosing `k_neighbors`
-
-The `k_neighbors` parameter controls how "distance to the query cell type"
-is defined. `k = 1` uses the distance to the single nearest query cell
-(most sensitive to local geometry, the default). Larger `k` uses the mean
-distance to the `k` nearest query cells, which smooths local noise. The
-right choice depends on how abundant and spatially distributed the query
-cells are.
-
-RIPPLE ships with `plot_k_diagnostics()` to help users pick a value before
-committing to a full run. For each target cell type and a range of `k`,
-it computes per-cell distance to the `k`-th nearest query cell and reports
-how the mean and standard deviation evolve with `k`. A plateau (elbow)
-in the standard deviation curve indicates the point where adding more
-neighbours no longer changes the distance distribution meaningfully,
-suggesting a reasonable `k` choice.
+For abundant, well-distributed query populations (~150 K tumor cells
+across 5 patients) the mean per-cell distance to the nearest tumor cell
+stabilises immediately, and `k = 1` is adequate. For sparse query
+populations (a few hundred cells per sample), larger `k` (3–5) reduces
+noise. `plot_k_diagnostics()` gives a quick visual answer:
 
 ```{r k-diagnostics, eval = FALSE}
-kdiag <- plot_k_diagnostics(
+plot_k_diagnostics(
   input           = spe,
   query_celltype  = "tumor",
   celltype_column = "cell_type",
@@ -97,24 +89,14 @@ kdiag <- plot_k_diagnostics(
   k_range         = 1:10,
   max_distance_um = 200
 )
-print(kdiag)
 ```
 
-For abundant, well-distributed query populations (such as tumor cells in a
-CosMx FFPE core, 765,771 cells across 5 patients), the mean distance
-stabilises quickly and `k = 1` is adequate. For sparse query populations
-(for example, rare stromal subtypes with a few hundred cells per sample),
-larger `k` (commonly 3 to 5) reduces noise by averaging over a small
-neighbourhood. If `plot_k_diagnostics()` shows no clear elbow, the query
-cells are likely too sparse for robust distance estimation and the
-analysis may benefit from either a coarser query annotation or more
-replicates.
+If no clear elbow appears, the query is too sparse for robust per-cell
+distance estimation; consider a coarser annotation or more replicates.
 
 ## Running RIPPLE
 
 ```{r run-ripple, eval = FALSE}
-library(ripple)
-
 results <- run_ripple(
   input                = spe,
   query_celltype       = "tumor",
@@ -132,133 +114,224 @@ results <- run_ripple(
 
 Key parameter choices:
 
-- **`k_neighbors = 1`**: distance to the single nearest tumor cell, the
-  default for paracrine signaling range. See the previous section for
-  guidance on choosing `k` via `plot_k_diagnostics()`.
+- **`k_neighbors = 1`**: distance to the single nearest tumor cell;
+  appropriate for paracrine signalling range.
 - **`max_distance_um = 200`**: cells beyond 200 µm are excluded from the
-  model. This captures the typical range of secreted factor gradients while
-  excluding cells too distant for meaningful interaction.
-- **`sample_column = "patient"`**: each patient is one biological replicate
-  (N = 5). Per-patient coefficients are combined via Fisher's method with
-  sign-consistency gating.
-- **`n_permutations = 0`**: permutation testing skipped in this run; can be
-  added later with `run_permutation_tests()`.
+  GLM. Captures typical secreted-factor gradients without long-range
+  dilution.
+- **`sample_column = "patient"`**: each patient is one biological
+  replicate (N = 5). Per-patient coefficients are combined via Fisher's
+  combined p-value with sign-consistency gating.
+- **`n_permutations = 0`**: permutation testing skipped here; can be
+  added later via `run_permutation_tests()` (or the GPU script in
+  `inst/python/`).
 
 ## Loading cached results
 
-The pre-computed results are bundled with the package. In your own analysis,
-replace these paths with your `output_dir`.
+The pre-computed outputs are bundled. In your own analysis, replace
+these paths with files under your `output_dir/<analysis_name>/`.
 
 ```{r load-results}
 results_path <- system.file("extdata/cosmx_cached/all_genes_results.csv",
-  package = "ripple"
-)
+                            package = "ripple")
 results <- fread(results_path)
 
 cat(nrow(results), "gene x cell_type combinations tested\n")
-cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at FDR < 0.05\n")
+cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0.05\n")
 ```
 
-## Summary of significant hits
+## Pre-flight: contamination check (run this early!)
 
-```{r sig-summary, fig.height = 5}
-sig <- results[fisher_fdr < 0.05]
+> **Strongly recommended:** run the contamination check **before** any
+> downstream interpretation, top-hit listing, or pathway enrichment.
+> Cross-cell-type "contamination" genes — genes that come up significant
+> in many cell types simultaneously, typically ribosomal genes, MHC
+> housekeeping, and ambient RNA from highly expressed query markers —
+> will otherwise dominate every "top hits" table and every fGSEA leading
+> edge, masking the cell-type-specific biology that RIPPLE is designed
+> to surface.
 
-sig_by_ct <- sig[, .(
-  n_induced   = sum(median_coef < 0),
-  n_repressed = sum(median_coef > 0)
-), by = cell_type]
-sig_by_ct[, n_total := n_induced + n_repressed]
-sig_by_ct <- sig_by_ct[order(-n_total)]
+`classify_gene_specificity()` returns one row per significant gene with
+the number of cell types it appears in and a four-level class
+(`specific`, `moderate`, `ubiquitous`, `contamination`). We compute it
+**once**, here, and reuse it everywhere downstream.
 
-plot_data <- melt(sig_by_ct,
-  id.vars = "cell_type",
-  measure.vars = c("n_induced", "n_repressed"),
-  variable.name = "direction", value.name = "count"
+```{r preflight-contam}
+spec <- classify_gene_specificity(
+  results,
+  fdr_threshold           = 0.05,
+  contamination_threshold = 4   # significant in >= 4 cell types -> contamination
 )
-plot_data[, direction := fifelse(
-  direction == "n_induced",
-  "Induced (near tumor)", "Repressed (near tumor)"
-)]
-plot_data[, cell_type := factor(cell_type, levels = sig_by_ct$cell_type)]
 
-ggplot(plot_data, aes(x = cell_type, y = count, fill = direction)) +
-  geom_col() +
-  scale_fill_manual(values = c(
-    "Induced (near tumor)" = "#D55E00",
-    "Repressed (near tumor)" = "#0072B2"
-  )) +
-  labs(
-    x = NULL, y = "Number of significant genes",
-    title = "Tumor-proximity gene gradients per cell type",
-    fill = "Direction"
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+table(spec$specificity_class)
+
+# Genes flagged as contamination — to be deprioritised in top-hit lists
+contam_genes <- spec[specificity_class == "contamination", unique(gene)]
+cat("Contamination-flagged genes:", length(contam_genes), "\n")
+head(spec[specificity_class == "contamination"][order(-n_celltypes)], 10)
 ```
 
-Fibroblasts and macrophages are the most transcriptionally remodeled cell types
-near tumor cells, consistent with their established roles in the tumor
-microenvironment. Notably, the majority of significant genes in fibroblasts are
-**induced** near tumor cells — reflecting activation of cancer-associated
-fibroblast (CAF) programs.
+```{r preflight-clean}
+# Filtered copy used downstream when picking labels / top-hit lists.
+# Plots that show *all* genes as background (volcanos, fGSEA) still use
+# `results`; only the curated label / top-hit selections come from
+# `results_clean`. This way a flagged gene like MIF is still visible as
+# a dot on the volcano, but it does NOT crowd out the cell-type-specific
+# hits in the labelled set.
+results_clean <- results[!gene %in% contam_genes]
+cat(nrow(results),       "rows in `results` (unfiltered)\n")
+cat(nrow(results_clean), "rows in `results_clean` (contamination removed)\n")
+```
 
-## Gradient volcano plot
+> **⚠ Limitations of contamination filtering — read before reporting
+> filtered results:**
+>
+> - **Loses real biology when contamination + induction co-occur.**
+>   A gene can be both genuinely induced near the query *and* contaminated
+>   by ambient RNA from query cells (MIF in this dataset is a textbook
+>   example). Filtering removes the gene from every cell type's ranking,
+>   including those where the induction is real. Always inspect the
+>   contamination list and decide case-by-case.
+> - **The threshold is panel-dependent.** Default
+>   `contamination_threshold = 4` assumes ~10-20 cell types in the panel.
+>   With 3 cell types the cutoff is unreachable; with 30 fine subtypes
+>   it is too lenient. Re-tune for your annotation granularity.
+> - **Removes genes globally, not per cell type.** A gene flagged
+>   dataset-wide is dropped from every column. A gene that's
+>   contamination across most cell types may still be a real signal in
+>   the one cell type that biologically expresses it.
+> - **Multi-cell-type biology is not contamination.** Cytokines, MHC
+>   class II genes, and stress-response programs are legitimately
+>   expressed across many cell types — the heuristic cannot tell them
+>   apart from ambient RNA on its own.
+> - **Rank-based tests are panel-size sensitive.** Dropping genes shifts
+>   the ranks of all remaining genes; NES values from filtered and
+>   unfiltered fGSEA runs are not directly comparable. Always report
+>   whether the filter was applied and ideally show both.
+>
+> **Recommended workflow:** classify upfront (this section), keep both
+> `results` (full) and `results_clean` (filtered) in scope, plot all
+> genes as background but label / report top hits from `results_clean`,
+> and run fGSEA both with and without `exclude_contamination = TRUE`
+> (Panel D below).
 
-The gradient volcano shows effect size (median coefficient across patients) vs.
-significance (Fisher's combined FDR). Negative coefficients mean gene expression
-**increases** near tumor cells (induced); positive coefficients mean it
-**decreases** (repressed).
+# Reproducing paper Figure 4
 
-```{r volcano-fibroblast, fig.width = 8, fig.height = 6}
-fib <- results[cell_type == "fibroblast"]
+The full multi-panel figure is rendered by `paper/render_figures.R`
+(saves to `paper/figures/fig_4_cosmx.{pdf,png}`). Here we walk through
+each panel with the same cached inputs.
+
+## Panel A — Gradients per target cell type
+
+```{r fig4-A, fig.width = 9, fig.height = 5}
+plot_gene_counts_by_celltype(
+  results,
+  query_label             = "Tumor",
+  contamination_threshold = 4
+)
+```
+
+Each bar is split into two pieces by direction (induced near tumor vs
+repressed near tumor) AND by specificity class — the faded portion is
+the "ubiquitous / contamination" fraction (genes significant in ≥ 4
+cell types). This separation is the key QC view: a tall bar is only
+biologically interesting if its solid portion dominates. Fibroblasts
+and macrophages are the most transcriptionally remodelled cell types
+near tumor; both show a healthy specific-to-contamination ratio.
+
+## Panel B — Fibroblast gradient volcano
+
+The default `plot_gradient_volcano()` works well as a quick look:
+
+```{r fig4-B-quick, fig.width = 8, fig.height = 6}
+plot_gradient_volcano(
+  results[cell_type == "fibroblast"],
+  query_label = "Tumor",
+  n_label     = 15
+)
+```
+
+For the published figure we emphasise direction with red/blue colouring
+and label a curated gene set. Note the labelling strategy: **all** genes
+are still plotted as background dots (so the contamination-flagged
+genes remain visible for interpretation), but the labelled set is
+restricted to genes that are NOT in the contamination list, with a
+couple of contamination genes (MIF, IGKC) kept explicitly so we can
+discuss them.
+
+```{r fig4-B-paper, fig.width = 8, fig.height = 6}
+fib <- results[cell_type == "fibroblast"]    # all genes for the scatter
 fib[, neg_log10_fdr := -log10(pmax(fisher_fdr, 1e-300))]
-fib[, significant := fisher_fdr < 0.05]
+fib[, direction := fifelse(
+  fisher_fdr < 0.05 & median_coef < 0, "Induced near tumor",
+  fifelse(fisher_fdr < 0.05 & median_coef > 0, "Repressed near tumor",
+          "Not significant"))]
 
-top_genes <- fib[fisher_fdr < 0.05][order(fisher_fdr)][1:20]
+# Cell-type-specific top hits — pulled from `results_clean` so that
+# ambient RNA does not crowd out the cell-type-specific biology.
+top_clean_fib <- results_clean[
+  cell_type == "fibroblast" & fisher_fdr < 0.05
+][order(fisher_fdr)][1:12]$gene
+
+# Plus a couple of contamination-flagged genes we want to discuss
+# explicitly (see "Key fibroblast hits" below).
+discuss_contam <- c("MIF", "IGKC", "JCHAIN", "RPL22")
+
+label_fib <- unique(c(top_clean_fib, discuss_contam))
+fib[, to_label := gene %in% label_fib & fisher_fdr < 0.05]
 
 ggplot(fib, aes(x = median_coef, y = neg_log10_fdr)) +
-  geom_point(aes(color = significant), size = 1.2, alpha = 0.6) +
-  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "grey50") +
-  scale_color_manual(
-    values = c("TRUE" = "#D55E00", "FALSE" = "grey70"),
-    guide = "none"
+  geom_point(aes(colour = direction), size = 0.9, alpha = 0.6) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", colour = "grey50") +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey70") +
+  geom_text_repel(
+    data = fib[to_label == TRUE], aes(label = gene),
+    size = 3.5, max.overlaps = 20, box.padding = 0.3, seed = 1
   ) +
-  ggrepel::geom_text_repel(
-    data = top_genes,
-    aes(label = gene),
-    size = 3, max.overlaps = 20, seed = 42
-  ) +
+  scale_colour_manual(values = c(
+    "Induced near tumor"   = "#B2182B",
+    "Repressed near tumor" = "#2166AC",
+    "Not significant"      = "grey75"
+  ), name = NULL) +
   labs(
-    x = "Median gradient score (per µm)",
+    x = "Gradient score (per um)",
     y = expression(-log[10] ~ "Fisher FDR"),
     title = "Fibroblasts: tumor-proximity gene gradients"
   ) +
-  theme_minimal()
+  theme_ripple(base_size = 12) +
+  theme(legend.position = "bottom")
 ```
 
-**Key fibroblast hits:**
+**Key fibroblast hits (from `results_clean`):**
 
-- **IGFBP5** (negative coef = induced near tumor): insulin-like growth factor
-  binding protein 5, involved in stromal remodeling.
-- **CXCL12** (positive coef = repressed near tumor): a chemokine normally
-  expressed by quiescent fibroblasts; its repression near tumor reflects
-  phenotypic switching to a CAF state.
-- **MIF** (negative coef = induced): macrophage migration inhibitory factor,
-  a well-known tumor-derived cytokine. *However*, MIF is also flagged by
-  RIPPLE's contamination check (significant in 9 cell types). In this dataset
-  MIF is plausibly both genuinely induced by paracrine signaling *and*
-  contaminated by ambient RNA from highly MIF-expressing tumor cells — see
-  the contamination section below for how to handle this.
-- **IGKC** (positive coef = repressed): immunoglobulin light-chain gene
-  detected in fibroblasts — likely ambient RNA from nearby plasma cells.
+- **IGFBP5** (induced): IGF-binding protein involved in stromal
+  remodelling; consistent with cancer-associated fibroblast (CAF)
+  activation.
+- **CXCL12** (repressed): chemokine normally expressed by quiescent
+  fibroblasts; its repression near tumor reflects phenotypic switching
+  to a CAF state.
 
-## Per-replicate consistency
+**Contamination-flagged hits (kept on the plot, excluded from the
+clean top-hit list):**
 
-A key feature of RIPPLE is per-replicate fitting. Here we show the per-patient
-coefficients for MIF in fibroblasts:
+- **MIF** (induced): macrophage migration inhibitory factor — a
+  well-known tumor-derived cytokine. *However*, MIF also appears as
+  significant in 9 cell types and is flagged by the contamination
+  check. This is the canonical "contamination + induction" case from
+  the limitations note above: MIF is plausibly both a real fibroblast
+  signal AND inflated by ambient RNA from highly MIF-expressing tumor
+  cells. We still show it on the plot, but we did not let it compete
+  for label slots with cell-type-specific hits.
+- **IGKC / JCHAIN / RPL22**: immunoglobulin and ribosomal genes
+  detected in fibroblasts at high significance — almost certainly
+  ambient RNA from nearby plasma cells / leakage.
 
-```{r forest-mif, fig.width = 7, fig.height = 3.5}
+## Panel C — Per-patient consistency for MIF
+
+A key feature of RIPPLE is per-replicate fitting. The forest plot below
+shows per-patient gradient scores ± 95 % CI for MIF in fibroblasts:
+
+```{r fig4-C, fig.width = 7, fig.height = 3.5}
 coef_path <- system.file(
   "extdata/cosmx_cached/per_celltype/fibroblast/coef_per_sample.csv",
   package = "ripple"
@@ -266,91 +339,33 @@ coef_path <- system.file(
 coef_data <- fread(coef_path)
 
 mif <- coef_data[gene == "MIF"]
-mif[, sample_id := paste0("Patient ", seq_len(.N))]
+mif[, ci_lo := coef - 1.96 * se]
+mif[, ci_hi := coef + 1.96 * se]
 
-ggplot(mif, aes(x = coef, y = sample_id)) +
+ggplot(mif, aes(x = coef, y = sample_id, colour = sample_id)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbar(aes(xmin = ci_lo, xmax = ci_hi),
+                orientation = "y", width = 0.25, alpha = 0.7) +
   geom_point(size = 3) +
-  geom_errorbar(aes(xmin = coef - 1.96 * se, xmax = coef + 1.96 * se),
-    width = 0.2
-  ) +
-  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_colour_brewer(palette = "Set2", guide = "none") +
   labs(
-    x = "Gradient score (per µm)",
+    x = "Per-patient gradient score for MIF (per um)",
     y = NULL,
     title = "MIF in fibroblasts: per-patient gradient scores"
   ) +
-  theme_minimal()
+  theme_ripple(base_size = 12)
 ```
 
-All five patients show a consistent negative coefficient — MIF RNA counts
-increase near tumor cells in every replicate. This reproducibility across
-independent biological replicates, enforced by RIPPLE's sign-consistency gate,
-rules out single-sample artifacts. Note that reproducibility alone does not
-distinguish paracrine induction from systematic ambient RNA, since both can be
-consistent across replicates — this is why the contamination check is a
-separate QC step.
+All five patients show a consistent negative coefficient — MIF RNA
+counts increase near tumor in every replicate. Reproducibility alone
+does not rule out systematic ambient RNA (both real induction and
+ambient RNA can be reproducible across replicates), which is why the
+contamination check below is a separate QC step.
 
-## Macrophage deep-dive
+## Panel D — Pathway enrichment (fGSEA dotplot)
 
-```{r volcano-macrophage, fig.width = 8, fig.height = 6}
-mac <- results[cell_type == "macrophage"]
-mac[, neg_log10_fdr := -log10(pmax(fisher_fdr, 1e-300))]
-mac[, significant := fisher_fdr < 0.05]
-
-top_mac <- mac[fisher_fdr < 0.05][order(fisher_fdr)][1:15]
-
-ggplot(mac, aes(x = median_coef, y = neg_log10_fdr)) +
-  geom_point(aes(color = significant), size = 1.2, alpha = 0.6) +
-  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "grey50") +
-  scale_color_manual(
-    values = c("TRUE" = "#D55E00", "FALSE" = "grey70"),
-    guide = "none"
-  ) +
-  ggrepel::geom_text_repel(
-    data = top_mac,
-    aes(label = gene),
-    size = 3, max.overlaps = 20, seed = 42
-  ) +
-  labs(
-    x = "Median gradient score (per µm)",
-    y = expression(-log[10] ~ "Fisher FDR"),
-    title = "Macrophages: tumor-proximity gene gradients"
-  ) +
-  theme_minimal()
-```
-
-Macrophages show a mix of induced and repressed programs near tumor cells,
-consistent with tumor-associated macrophage (TAM) polarization.
-
-## Contamination check
-
-Genes that are significant in many cell types simultaneously may reflect
-ambient RNA contamination or segmentation artifacts rather than true
-distance-dependent biology. RIPPLE flags these automatically:
-
-```{r contamination}
-contam_path <- system.file("extdata/cosmx_cached/contamination_candidates.csv",
-  package = "ripple"
-)
-contam <- fread(contam_path)
-
-knitr::kable(contam[1:10], caption = "Top contamination candidates")
-```
-
-Genes like **HLA-E**, **KRT19**, **MIF**, and **RPL22** appear significant
-across 8-9 cell types — a hallmark of ambient RNA. Notice that **MIF** appears
-here despite being a top hit in fibroblasts and macrophages above. This is the
-kind of case where contamination flagging is essential: MIF may be genuinely
-induced by tumor paracrine signaling *and* inflated by ambient RNA from
-high-expressing tumor cells. Genes on this list should be deprioritised or
-validated independently (e.g., by RNA FISH) before biological interpretation.
-
-## Pathway enrichment (fGSEA)
-
-RIPPLE integrates with fGSEA to test whether gradient genes are enriched for
-known biological pathways:
-
-```{r run-fgsea, eval = FALSE}
+```{r fig4-D-run, eval = FALSE}
+# Run fGSEA via the atlas wrapper (writes fgsea_all_celltypes.csv)
 run_ripple_atlas(
   results_dir = "ripple_output/tumor_ripple",
   query_label = "Tumor",
@@ -360,72 +375,269 @@ run_ripple_atlas(
 )
 ```
 
-```{r fgsea-results, fig.width = 9, fig.height = 6}
+```{r fig4-D-load}
 fgsea_path <- system.file("extdata/cosmx_cached/fgsea_all_celltypes.csv",
-  package = "ripple"
-)
+                          package = "ripple")
 fgsea_dt <- fread(fgsea_path)
-
-# Top pathways across cell types
-sig_pathways <- fgsea_dt[padj < 0.1]
-cat(
-  length(unique(sig_pathways$pathway_clean)), "pathways enriched (padj < 0.1) across",
-  length(unique(sig_pathways$cell_type)), "cell types\n"
-)
-
-# Heatmap of NES per cell type for top pathways
-if (nrow(sig_pathways) > 0) {
-  top_pw <- sig_pathways[, .(mean_abs_nes = mean(abs(NES))), by = pathway_clean]
-  top_pw <- top_pw[order(-mean_abs_nes)][1:min(15, .N)]
-
-  plot_dt <- fgsea_dt[pathway_clean %in% top_pw$pathway_clean]
-  plot_dt[, pathway_clean := factor(pathway_clean, levels = rev(top_pw$pathway_clean))]
-  plot_dt[, sig_label := fifelse(padj < 0.1, "*", "")]
-
-  ggplot(plot_dt, aes(x = cell_type, y = pathway_clean, fill = NES)) +
-    geom_tile(color = "white", linewidth = 0.3) +
-    geom_text(aes(label = sig_label), size = 4) +
-    scale_fill_gradient2(
-      low = "#0072B2", mid = "white", high = "#D55E00",
-      midpoint = 0, name = "NES"
-    ) +
-    labs(
-      x = NULL, y = NULL,
-      title = "fGSEA: MSigDB Hallmark pathway enrichment in tumor-proximity gradients",
-      subtitle = "* = padj < 0.1"
-    ) +
-    theme_minimal() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
-} else {
-  message(
-    "No pathways reached padj < 0.1. Consider relaxing the threshold ",
-    "or using a different gene set collection."
-  )
-}
 ```
 
-## Interpretation summary
+`plot_fgsea_dotplot()` summarises the table at a glance — dot size
+encodes -log10(padj), dot colour encodes NES on the same red/blue
+diverging scale as the gradient volcano (red NES = induced near tumor,
+blue NES = repressed), and non-significant cells are dimmed:
 
-This CosMx NSCLC analysis demonstrates RIPPLE's ability to detect biologically
-interpretable spatial gradients in a multi-patient dataset:
+```{r fig4-D, fig.width = 9, fig.height = 7}
+plot_fgsea_dotplot(fgsea_dt, padj_threshold = 0.1, top_n = 12)
+```
 
-1. **Fibroblasts** show the strongest tumor-proximity remodeling (129 genes),
-   including CAF activation markers (IGFBP5, THBS1) and ECM genes. Several
-   top hits (MIF, KRT19) are flagged as contamination and should be validated
-   independently.
-2. **Macrophages** show a polarized response (94 genes), with tumor-proximity
-   induction of antigen presentation (HLA-DRA, HLA-DPA1) and cytoskeletal
-   remodeling (TUBB, S100A6).
-3. **T cell subsets** (CD4 memory: 55 genes, CD8 memory: 27 genes, Tregs: 23
-   genes) each show distinct gradient signatures, suggesting spatial
-   organisation of the adaptive immune response around tumor nests.
-4. **Contamination flagging** correctly identifies ambient RNA artifacts
-   (immunoglobulin genes appearing in non-immune cells) — critical for avoiding
-   false biological conclusions.
+Hallmark pathways like **E2F_TARGETS**, **G2M_CHECKPOINT** (proliferation,
+red — induced in tumor-proximal fibroblasts and macrophages) and
+**ALLOGRAFT_REJECTION** (immune effector programs, blue — depleted in
+tumor-proximal myeloid + lymphoid cells) light up across multiple
+stromal/immune cell types — each column tells its own story.
 
-All 516 significant genes are reproduced across 5 independent patients with
-unanimous sign consistency, providing strong evidence for genuine
-tumor-microenvironment spatial interactions.
+### Robust pathway enrichment: dropping contamination genes
+
+The same contamination genes we filtered out of the volcano label sets
+also dominate fGSEA leading edges (ribosomal genes, MHC housekeeping,
+ambient-RNA-prone markers light up `INTERFERON_GAMMA_RESPONSE`,
+`TNFA_SIGNALING_VIA_NFKB`, etc. in cell types where they don't really
+belong). `run_ripple_fgsea()` accepts `exclude_contamination = TRUE` to
+drop them before ranking — **using the same heuristic** as the
+upfront classification above.
+
+```{r fgsea-filtered, eval = FALSE}
+# Using the same threshold we picked in the pre-flight section.
+fgsea_filtered <- run_ripple_fgsea(
+  results,
+  gene_sets               = "hallmark",
+  organism                = "human",
+  exclude_contamination   = TRUE,
+  contamination_threshold = 4
+)
+
+# Side-by-side: with and without filter
+plot_fgsea_dotplot(fgsea_dt,       padj_threshold = 0.1, top_n = 12) +
+  ggplot2::labs(title = "fGSEA -- all genes")
+plot_fgsea_dotplot(fgsea_filtered, padj_threshold = 0.1, top_n = 12) +
+  ggplot2::labs(title = "fGSEA -- contamination genes excluded")
+```
+
+When the panels are very similar, the unfiltered enrichment is robust
+to the most obvious ambient RNA. When they differ substantially, the
+filter is removing real signal, contamination, or both — investigate
+the dropped leading-edge genes before reporting either version as the
+answer. The full caveat list lives in the
+[Pre-flight: contamination check] section above (and in
+`?run_ripple_fgsea`); the most important one for fGSEA specifically is
+that NES values are panel-size-sensitive and **not directly comparable
+between filtered and unfiltered runs**.
+
+## Panel E — Top tumor → fibroblast ligand–receptor pairs
+
+Stage 6 (`run_ripple_lr()`) intersects gradient genes with curated
+ligand–receptor databases and (optionally) NicheNet, producing a
+combined prioritization score per L-R pair. The bundled file
+`combined_prioritization.csv` is the output for fibroblasts:
+
+```{r fig4-E-load}
+lr_path <- system.file(
+  "extdata/cosmx_cached/lr/fibroblast/combined_prioritization.csv",
+  package = "ripple"
+)
+lr_fib <- fread(lr_path)
+cat(nrow(lr_fib), "L-R pairs prioritized for tumor -> fibroblast\n")
+head(lr_fib[order(-combined_score),
+            .(ligand, receptor, combined_score, receptor_gradient_coef,
+              receptor_fdr, ligand_pct_query)], 5)
+```
+
+```{r fig4-E, fig.width = 9, fig.height = 6}
+lr_top <- lr_fib[order(-combined_score)][1:15]
+lr_top[, pair := factor(paste0(ligand, " -> ", receptor),
+                        levels = rev(paste0(ligand, " -> ", receptor)))]
+lr_top[, direction := fifelse(receptor_gradient_coef < 0,
+                              "Induced near tumor",
+                              "Repressed near tumor")]
+
+ggplot(lr_top, aes(x = combined_score, y = pair)) +
+  geom_point(aes(size = ligand_pct_query, colour = direction)) +
+  scale_colour_manual(values = c(
+    "Induced near tumor"   = "#B2182B",
+    "Repressed near tumor" = "#2166AC"
+  ), name = "Receptor gradient") +
+  scale_size_continuous(range = c(2, 7),
+                        name = "Tumor cells\nexpressing ligand (%)") +
+  labs(
+    x = "Combined prioritization score",
+    y = NULL,
+    title = "Top tumor -> fibroblast L-R pairs"
+  ) +
+  theme_ripple(base_size = 12) +
+  theme(legend.position = "right",
+        legend.box = "vertical",
+        legend.key.size = unit(0.4, "cm"))
+```
+
+The top pair (CD44 → EPCAM) and several MIF-axis pairs (MIF → CXCR4,
+MIF → CD74) match the gradient hits in Panel B and the EMT pathway
+enrichment in Panel D — three independent angles converging on the same
+biology.
+
+## Reproducing the full multi-panel figure
+
+The exact PDF used in the paper is rendered by:
+
+```{r render-fig4, eval = FALSE}
+source("paper/render_figures.R")
+# writes paper/figures/fig_4_cosmx.{pdf,png}
+```
+
+# Beyond Figure 4: macrophage deep-dive, contamination, and QC
+
+## Macrophage gradient volcano
+
+Macrophages show a polarised response near tumor (94 significant genes
+in total), with both induced (antigen-presentation, cytoskeletal) and
+repressed (homeostatic) programs. The same volcano view as Panel B,
+applied to macrophages:
+
+```{r mac-volcano, fig.width = 8, fig.height = 6}
+mac <- results[cell_type == "macrophage"]   # all genes for the scatter
+mac[, neg_log10_fdr := -log10(pmax(fisher_fdr, 1e-300))]
+mac[, direction := fifelse(
+  fisher_fdr < 0.05 & median_coef < 0, "Induced near tumor",
+  fifelse(fisher_fdr < 0.05 & median_coef > 0, "Repressed near tumor",
+          "Not significant"))]
+
+# Same labelling pattern as the fibroblast panel:
+# top hits from `results_clean` (cell-type-specific signal) plus a
+# curated set of biologically interesting macrophage markers (some of
+# which — e.g. MHC II — are multi-cell-type by nature and therefore
+# appear in `contam_genes`; we keep them because the macrophage
+# induction is the biological point of interest).
+top_clean_mac <- results_clean[
+  cell_type == "macrophage" & fisher_fdr < 0.05
+][order(fisher_fdr)][1:10]$gene
+
+curated_mac <- c("HLA-DRA", "HLA-DPA1", "HLA-DRB1", "CD74",
+                 "C1QA", "C1QB", "C1QC", "APOE",
+                 "CXCL8", "IL1B", "CCL3", "MIF")
+
+label_mac <- unique(c(top_clean_mac, curated_mac))
+mac[, to_label := gene %in% label_mac & fisher_fdr < 0.05]
+
+ggplot(mac, aes(x = median_coef, y = neg_log10_fdr)) +
+  geom_point(aes(colour = direction), size = 0.9, alpha = 0.6) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", colour = "grey50") +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey70") +
+  geom_text_repel(
+    data = mac[to_label == TRUE], aes(label = gene),
+    size = 3.5, max.overlaps = 25, box.padding = 0.3, seed = 1
+  ) +
+  scale_colour_manual(values = c(
+    "Induced near tumor"   = "#B2182B",
+    "Repressed near tumor" = "#2166AC",
+    "Not significant"      = "grey75"
+  ), name = NULL) +
+  labs(
+    x = "Gradient score (per um)",
+    y = expression(-log[10] ~ "Fisher FDR"),
+    title = "Macrophages: tumor-proximity gene gradients"
+  ) +
+  theme_ripple(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+**Macrophage induced near tumor (negative gradient score):**
+
+- **HLA class II** (HLA-DRA, HLA-DPA1, HLA-DRB1) and **CD74** —
+  antigen-presentation machinery. Tumor-proximal macrophages upregulate
+  the MHC II axis, consistent with intratumoral antigen sampling.
+- **Cytoskeletal remodelling** (TUBB, VIM, S100A4/A6) — supports
+  motility and morphological adaptation in the tumor niche.
+- **CXCL8 / IL1B / CCL3** — pro-inflammatory chemokines/cytokines
+  characteristic of tumor-associated macrophage (TAM) activation.
+
+**Macrophage repressed near tumor (positive gradient score):**
+
+- **C1QA / C1QB / C1QC** and **APOE** — complement and lipid-handling
+  programs of homeostatic / tissue-resident macrophages, downregulated
+  as cells acquire a TAM phenotype.
+
+This induced/repressed split — antigen-presentation/inflammatory **up**,
+homeostatic/complement **down** — recovers the canonical macrophage
+polarisation axis directly from spatial transcriptomics, anchored to
+distance from the tumor.
+
+# Specificity breakdown plot and QC dashboard
+
+The contamination check itself was already run upfront (see
+[Pre-flight: contamination check]); the `spec` object and `contam_genes`
+vector are still in scope. `plot_specificity_breakdown()` summarises
+the four classes as a one-glance bar:
+
+```{r breakdown, fig.width = 7, fig.height = 4}
+plot_specificity_breakdown(results, contamination_threshold = 4)
+```
+
+Genes like **HLA-E**, **KRT19**, **MIF**, and **RPL22** are flagged
+because they are significant across 8–9 cell types — a hallmark of
+ambient RNA. The MIF case (significant in 9 cell types, kept on the
+fibroblast and macrophage volcanos for discussion) is the canonical
+example of why filtering must be deliberate: MIF is plausibly both
+genuinely induced by tumor paracrine signalling **and** inflated by
+ambient RNA from high-expressing tumor cells.
+
+## QC dashboard
+
+The CosMx run was launched without a per-cell distance dump (older
+version), so `ripple_plot_qc()` here will skip panels 1+2 and warn —
+that's expected. On any fresh `run_ripple()` call all seven panels are
+populated automatically.
+
+```{r qc, eval = FALSE}
+qc <- ripple_plot_qc(
+  results_dir           = "ripple_output/tumor_ripple",
+  query_signature_genes = c("KRT19", "EPCAM", "MKI67", "KRT8"),
+  query_label           = "Tumor"
+)
+```
+
+The bleed-through panel (panel 7) takes a query-marker vector; any
+marker that shows up significant in many target cell types is
+highlighted in red — the smoking gun for ambient RNA.
+
+# Interpretation summary
+
+This CosMx NSCLC analysis demonstrates RIPPLE's ability to detect
+biologically interpretable spatial gradients in a multi-patient dataset:
+
+1. **Fibroblasts** show the strongest tumor-proximity remodelling
+   (129 genes), including CAF activation markers (IGFBP5, THBS1) and
+   ECM genes. Top hits flagged as contamination (MIF, KRT19) should be
+   validated independently.
+2. **Macrophages** show a polarised response (94 genes), with
+   tumor-proximity induction of antigen presentation (HLA-DRA,
+   HLA-DPA1) and cytoskeletal remodelling (TUBB, S100A6).
+3. **T cell subsets** (CD4 memory: 55 genes, CD8 memory: 27 genes,
+   Tregs: 23 genes) each show distinct gradient signatures, suggesting
+   spatial organisation of the adaptive immune response around tumor
+   nests.
+4. **Hallmark pathway enrichment** (EMT, hypoxia, TNFα–NFκB) recovers
+   well-established tumor-niche biology and ties together
+   stromal/immune programs.
+5. **L-R prioritization** identifies CD44 → EPCAM and the MIF axis
+   (MIF → CXCR4, MIF → CD74) as the top tumor → fibroblast signalling
+   candidates — independently corroborated by the gradient and pathway
+   panels.
+6. **Contamination flagging** correctly identifies ambient RNA artefacts
+   (immunoglobulin genes in non-immune cells, ubiquitous ribosomal
+   genes) — critical for avoiding false biological conclusions.
+
+All 516 significant genes are reproduced across 5 independent patients
+with unanimous sign consistency (the strict gate), providing strong
+evidence for genuine tumor-microenvironment spatial interactions.
 
 ## Session info
 

@@ -15,7 +15,10 @@ run_ripple_fgsea(
   max_size = 500,
   n_perm = 10000,
   min_genes = 100,
-  seed = 42
+  seed = 42,
+  exclude_contamination = FALSE,
+  contamination_threshold = 4L,
+  exclude_specificity_class = NULL
 )
 }
 \arguments{
@@ -49,6 +52,26 @@ Default: 100. Lower for small custom gene panels.}
 
 \item{seed}{Integer. Random seed for fGSEA permutations. Set to ensure
 reproducibility. Default: 42.}
+
+\item{exclude_contamination}{Logical. If \code{TRUE}, drops genes flagged
+as cross-cell-type contamination from the ranked list before fGSEA.
+When the input does not already carry a \code{specificity_class}
+column, \code{\link{classify_gene_specificity}} is called internally
+with \code{contamination_threshold} to compute it. Default \code{FALSE}.
+See "Limitations" below before turning this on.}
+
+\item{contamination_threshold}{Integer. Minimum number of cell types in
+which a gene must be significant (at \code{fdr_col} < 0.05) to be
+classified as contamination. Used only when
+\code{exclude_contamination = TRUE} and \code{specificity_class} is
+not already present. Default: \code{4L}.}
+
+\item{exclude_specificity_class}{Optional character vector of
+specificity-class labels (e.g. \code{"contamination"}) to drop from the
+ranked list. Lower-level alternative to \code{exclude_contamination}
+when you want to drop other classes (e.g. \code{c("contamination",
+  "ubiquitous")}). Requires the input to carry a \code{specificity_class}
+column. Default \code{NULL}.}
 }
 \value{
 A \code{data.table} with columns: cell_type, pathway, pathway_clean,
@@ -68,6 +91,8 @@ The function:
 \enumerate{
 \item Loads gene sets from msigdbr if \code{gene_sets} is a string,
 or uses the provided named list directly.
+\item Optionally classifies and drops contamination-class genes (see
+\code{exclude_contamination}).
 \item For each cell type, creates a ranked gene list sorted by
 \code{coef_col} values (named by gene).
 \item Runs \code{fgsea::fgsea()} with the specified parameters.
@@ -76,6 +101,42 @@ or uses the provided named list directly.
 
 Cell types with fewer than \code{min_genes} ranked genes are skipped.
 }
+\section{Limitations of contamination filtering}{
+
+Setting \code{exclude_contamination = TRUE} (or
+\code{exclude_specificity_class = "contamination"}) is a useful sanity
+check, but it is a \strong{heuristic} that can both over- and
+under-correct. Be aware of the following before reporting filtered
+enrichments:
+\itemize{
+\item \strong{Loses real biology when contamination + induction co-occur.}
+A gene can be both genuinely induced near the query \emph{and}
+contaminated by ambient RNA from query cells (e.g. MIF in the CosMx
+NSCLC walkthrough). Filtering removes the gene from every cell type's
+ranking, including cell types where the induction is real.
+\item \strong{The threshold is panel-dependent.} The default
+\code{contamination_threshold = 4} assumes ~10-20 cell types in the
+panel. With 3 cell types the cutoff is unreachable; with 30 fine
+subtypes it is too lenient. Re-tune for your annotation granularity.
+\item \strong{Removes genes globally, not per cell type.} A gene
+classified as contamination in the dataset as a whole is dropped from
+every cell type's ranking, even where its expression is genuinely
+specific.
+\item \strong{Multi-cell-type biology is not contamination.} Many
+cytokines, MHC genes, and stress-response genes are legitimately
+expressed across many cell types. Filtering may remove signal that
+reflects real shared biology.
+\item \strong{Rank-based tests are panel-size sensitive.} Dropping
+genes shifts the ranks of all remaining genes; NES values from
+filtered and unfiltered runs are not directly comparable. Always
+report whether the filter was applied and ideally show the unfiltered
+result alongside.
+}
+Recommended use: run fGSEA both with and without the filter, compare
+top pathways, and treat large discrepancies as a flag for further
+investigation rather than evidence that one is "right".
+}
+
 \examples{
 \dontrun{
 results <- data.table::fread("all_genes_results.csv")

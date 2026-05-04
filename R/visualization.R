@@ -234,6 +234,15 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
 #'   (default: "Query").
 #' @param n_label Integer. Maximum number of genes to label (default: 20).
 #' @param title Character or NULL. Plot title. If NULL, auto-generated.
+#' @param exclude_specificity_class Optional character vector. Specificity-class
+#'   labels to exclude from the *label-selection pool only* (genes still
+#'   appear as dots, just without text labels). Typical use:
+#'   \code{exclude_specificity_class = "contamination"} to skip ambient-RNA /
+#'   query-signature genes that the cross-cell-type heuristic flagged. If set,
+#'   the input \code{results} must carry a \code{specificity_class} column
+#'   (produced by \code{classify_gene_specificity()} or
+#'   \code{run_ripple_atlas()}). Default \code{NULL} preserves the prior
+#'   labelling behaviour.
 #'
 #' @return A \code{ggplot} object.
 #'
@@ -244,6 +253,12 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
 #'   coef_col = "median_coef",
 #'   fdr_col = "fisher_fdr",
 #'   query_label = "Tumor"
+#' )
+#'
+#' # Skip contamination-flagged genes when picking labels:
+#' plot_gradient_volcano(
+#'   results,
+#'   exclude_specificity_class = "contamination"
 #' )
 #' }
 #'
@@ -257,7 +272,8 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
                                   fdr_threshold = 0.05,
                                   query_label = "Query",
                                   n_label = 20,
-                                  title = NULL) {
+                                  title = NULL,
+                                  exclude_specificity_class = NULL) {
   plot_data <- data.table::copy(results)
 
   plot_data[, neg_log10_fdr := -log10(get(fdr_col))]
@@ -265,7 +281,22 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 
   plot_data[, significant := get(fdr_col) < fdr_threshold]
 
-  top_genes <- head(plot_data[significant == TRUE][order(get(fdr_col))], n_label)
+  # Optional exclusion (label-selection pool only — dots are unaffected)
+  label_pool <- plot_data[significant == TRUE]
+  if (!is.null(exclude_specificity_class)) {
+    if (!"specificity_class" %in% names(label_pool)) {
+      stop(
+        "exclude_specificity_class is set but `specificity_class` is not a ",
+        "column on `results`. Run classify_gene_specificity() or ",
+        "run_ripple_atlas() first to add this column.",
+        call. = FALSE
+      )
+    }
+    label_pool <- label_pool[
+      !specificity_class %in% exclude_specificity_class
+    ]
+  }
+  top_genes <- head(label_pool[order(get(fdr_col))], n_label)
 
   coef_values <- plot_data[[coef_col]]
   max_score <- max(abs(coef_values), na.rm = TRUE) * 1.1
@@ -308,16 +339,31 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 }
 
 
-#' Decay curve plot
+#' Gradient curve plot
 #'
-#' Creates a decay curve showing the proportion of expressing cells as a
-#' function of distance from query cells, with a 95\% CI ribbon on the
-#' pooled mean. The gene's meta-analysis gradient score and FDR are shown
-#' in the subtitle.
+#' Plots a per-cell expression statistic as a function of distance from
+#' query cells. The shape can be monotonic decay, monotonic increase,
+#' biphasic, or noisy — hence "gradient curve" rather than "decay curve".
+#' Two modes:
+#' \itemize{
+#'   \item \strong{Pooled mode} (default): one curve from a pre-pooled
+#'     bin table, with a 95\% CI ribbon derived from a per-bin SE column
+#'     (ribbon is mean +/- 1.96 * SE).
+#'   \item \strong{Per-sample mode}: when \code{sample_col} is supplied,
+#'     each biological replicate is drawn as a faint line and the mean
+#'     across samples is overlaid in bold, with a 95\% CI ribbon
+#'     (mean +/- 1.96 * SE across samples per bin). This makes replicate
+#'     consistency visible at a glance.
+#' }
+#' The gene's meta-analysis gradient score and FDR are shown in the
+#' subtitle.
 #'
-#' @param bin_stats A \code{data.table} with binned decay statistics. Must
-#'   contain columns \code{dist_mid}, \code{prop_expressing}, \code{n_cells},
-#'   and \code{se}.
+#' @param bin_stats A \code{data.table} of binned decay statistics. In
+#'   pooled mode, must contain the columns named by \code{x_col},
+#'   \code{y_col}, optionally \code{se_col} for the ribbon, and
+#'   \code{n_cells} for point sizing. In per-sample mode, must
+#'   additionally contain \code{sample_col}; per-bin means and SEs are
+#'   computed internally.
 #' @param gene_name Character. Gene name for the plot title.
 #' @param cell_type Character. Cell type name for context and for looking up
 #'   the meta-analysis row when \code{results} is passed.
@@ -333,43 +379,110 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #'   \code{cell_type} is used. Must contain \code{gene}, \code{cell_type},
 #'   and one of \code{median_coef} / \code{gradient_score} /
 #'   \code{combined_coef}, and one of \code{fisher_fdr} / \code{fdr}.
+#' @param sample_col Character or NULL. Name of the per-sample identifier
+#'   column in \code{bin_stats}. When non-NULL, switches to per-sample
+#'   mode: thin lines per sample plus a bold mean line with a 95\% CI
+#'   ribbon (mean +/- 1.96 * SE across samples per bin). Default
+#'   \code{NULL} (pooled mode).
+#' @param x_col Character. Name of the distance / bin-centre column on
+#'   \code{bin_stats}. Default \code{"dist_mid"}.
+#' @param y_col Character. Name of the response column (proportion
+#'   expressing, mean rate, etc.) on \code{bin_stats}. Default
+#'   \code{"prop_expressing"}.
+#' @param se_col Character. Name of the per-bin SE column used for the
+#'   ribbon in pooled mode. Ignored in per-sample mode (SE is computed
+#'   across samples). Default \code{"se"}.
+#' @param y_lab Character or NULL. Y-axis label. Default \code{NULL} →
+#'   "P(expressing)" in pooled mode, "Mean expression rate" in per-sample
+#'   mode.
 #' @param query_label Character. Display label for the query cell type
 #'   (default: "Query").
 #' @param max_distance Numeric. Maximum distance for x-axis (default: 200).
-#' @param color Character. Line/ribbon color (default: "#E74C3C").
+#' @param color Character. Line / ribbon / point color (default:
+#'   \code{"#E74C3C"}).
+#' @param sample_alpha Numeric. Alpha for the per-sample lines in
+#'   per-sample mode (default \code{0.4}).
+#' @param sample_linewidth Numeric. Linewidth for per-sample lines in
+#'   per-sample mode (default \code{0.4}).
 #'
-#' @return A \code{ggplot} object, or NULL if bin_stats is NULL or empty.
+#' @return A \code{ggplot} object, or NULL if \code{bin_stats} is NULL or
+#'   empty.
+#'
+#' @section CI interpretation -- the two modes are not the same statistic:
+#' Both modes draw a \code{mean +/- 1.96 * SE} ribbon, but the SE is
+#' constructed differently and the resulting intervals answer different
+#' questions. \strong{Read this before reporting confidence intervals.}
+#' \describe{
+#'   \item{\strong{Pooled mode (binomial Wald CI of a pooled-cell
+#'     proportion)}}{The \code{se_col} is taken as-is from
+#'     \code{bin_stats}. When the input comes from
+#'     \code{\link{bin_decay_data}} (or the original HyMy
+#'     distance-correlation analysis), this column is the classical
+#'     binomial standard error \code{sqrt(p * (1 - p) / n)} of the
+#'     proportion expressing, with \code{n} = total cells in the bin
+#'     pooled across all samples. The ribbon is therefore a normal-
+#'     approximation 95\% Wald interval for that pooled-cell proportion,
+#'     clamped to the 0-to-1 range. This matches the original HyMy plot exactly,
+#'     but it \strong{overstates precision when there is between-sample
+#'     variability}: the effective N is closer to the number of
+#'     replicates than the number of cells.}
+#'   \item{\strong{Per-sample mode (cross-sample CI of the mean)}}{The
+#'     SE is computed inside the function as
+#'     \code{sd_across_samples / sqrt(n_samples)} per bin, using the
+#'     per-sample \code{y_col} values supplied in \code{bin_stats}. The
+#'     ribbon is a normal-approximation 95\% CI for the cross-sample
+#'     \emph{mean} of \code{y_col}. This captures between-replicate
+#'     variability that pooled mode hides, and is the more honest
+#'     interval when replicate consistency matters (e.g. for the paper).
+#'     With small N (3-5 replicates) the normal approximation is rough;
+#'     the per-sample lines themselves are the more reliable visual.}
+#' }
+#' Neither mode corrects for spatial autocorrelation between cells in
+#' the same bin; both inherit the independence assumption of the
+#' underlying RIPPLE Poisson GLM.
 #'
 #' @examples
 #' \dontrun{
-#' # Pass stats explicitly
-#' plot_decay_curve(
-#'   bin_stats = binned_data,
-#'   gene_name = "Cxcl12",
-#'   cell_type = "LEC",
+#' # Pooled mode
+#' plot_gradient_curve(
+#'   bin_stats      = binned_data,
+#'   gene_name      = "Cxcl12",
+#'   cell_type      = "LEC",
 #'   gradient_score = -0.005,
-#'   fdr = 0.001
+#'   fdr            = 0.001
 #' )
 #'
-#' # Or let it look them up from a results table
-#' plot_decay_curve(
-#'   bin_stats = binned_data,
-#'   gene_name = "Cxcl12",
-#'   cell_type = "LEC",
-#'   results = merged_results
+#' # Per-sample mode: thin lines per replicate + bold mean
+#' plot_gradient_curve(
+#'   bin_stats   = curve_per_sample,        # has a sample_id column
+#'   gene_name   = "Ccr7",
+#'   cell_type   = "T_cell",
+#'   sample_col  = "sample_id",
+#'   x_col       = "bin_mid_um",
+#'   y_col       = "mean_rate",
+#'   y_lab       = "Mean expression rate (per UMI)",
+#'   results     = merged_results
 #' )
 #' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_ribbon geom_line geom_point
 #'   scale_size_continuous scale_x_continuous ylim labs theme_bw theme
 #'   element_text
+#' @importFrom data.table as.data.table copy setnames
 #' @export
-plot_decay_curve <- function(bin_stats, gene_name, cell_type,
-                             gradient_score = NULL, fdr = NULL,
-                             results = NULL,
-                             query_label = "Query",
-                             max_distance = 200,
-                             color = "#E74C3C") {
+plot_gradient_curve <- function(bin_stats, gene_name, cell_type,
+                                gradient_score = NULL, fdr = NULL,
+                                results = NULL,
+                                sample_col = NULL,
+                                x_col = "dist_mid",
+                                y_col = "prop_expressing",
+                                se_col = "se",
+                                y_lab = NULL,
+                                query_label = "Query",
+                                max_distance = 200,
+                                color = "#E74C3C",
+                                sample_alpha = 0.4,
+                                sample_linewidth = 0.4) {
   if (is.null(bin_stats) || nrow(bin_stats) == 0) {
     return(NULL)
   }
@@ -402,39 +515,240 @@ plot_decay_curve <- function(bin_stats, gene_name, cell_type,
     )
   }
 
-  p <- ggplot2::ggplot(bin_stats, ggplot2::aes(
-    x = .data$dist_mid,
-    y = .data$prop_expressing
-  )) +
-    ggplot2::geom_ribbon(
+  dt <- data.table::as.data.table(data.table::copy(bin_stats))
+
+  required <- c(x_col, y_col)
+  if (!is.null(sample_col)) required <- c(required, sample_col)
+  miss <- setdiff(required, names(dt))
+  if (length(miss) > 0) {
+    stop("Missing required columns in bin_stats: ",
+         paste(miss, collapse = ", "), call. = FALSE)
+  }
+
+  per_sample <- !is.null(sample_col)
+
+  if (per_sample) {
+    # Compute mean curve and across-sample SE per bin
+    has_n_cells <- "n_cells" %in% names(dt)
+    mean_dt <- if (has_n_cells) {
+      dt[, list(
+        mean_val   = mean(get(y_col), na.rm = TRUE),
+        se_val     = stats::sd(get(y_col), na.rm = TRUE) /
+                       sqrt(sum(!is.na(get(y_col)))),
+        ncells_sum = sum(get("n_cells"), na.rm = TRUE)
+      ), by = c(x_col)]
+    } else {
+      dt[, list(
+        mean_val   = mean(get(y_col), na.rm = TRUE),
+        se_val     = stats::sd(get(y_col), na.rm = TRUE) /
+                       sqrt(sum(!is.na(get(y_col))))
+      ), by = c(x_col)]
+    }
+
+    if (is.null(y_lab)) y_lab <- "Mean expression rate"
+    y_max <- max(c(dt[[y_col]], mean_dt$mean_val + 1.96 * mean_dt$se_val),
+                 na.rm = TRUE)
+
+    p <- ggplot2::ggplot()
+    # Faint per-sample lines (background)
+    p <- p + ggplot2::geom_line(
+      data = dt,
       ggplot2::aes(
-        ymin = pmax(0, .data$prop_expressing - 1.96 * .data$se),
-        ymax = pmin(1, .data$prop_expressing + 1.96 * .data$se)
+        x = .data[[x_col]], y = .data[[y_col]],
+        group = .data[[sample_col]]
       ),
-      fill = color, alpha = 0.15
-    ) +
-    ggplot2::geom_line(color = color, linewidth = 0.8) +
-    ggplot2::geom_point(ggplot2::aes(size = .data$n_cells),
-      color = color, alpha = 0.7
-    ) +
-    ggplot2::scale_size_continuous(range = c(0.8, 3.5), guide = "none") +
+      colour = color, alpha = sample_alpha, linewidth = sample_linewidth
+    )
+    # Mean +/- 1.96 * SE ribbon (95% CI of the mean across samples)
+    p <- p + ggplot2::geom_ribbon(
+      data = mean_dt,
+      ggplot2::aes(x = .data[[x_col]],
+                   ymin = pmax(0, .data$mean_val - 1.96 * .data$se_val),
+                   ymax = .data$mean_val + 1.96 * .data$se_val),
+      fill = color, alpha = 0.18
+    )
+    # Bold mean line (foreground)
+    p <- p + ggplot2::geom_line(
+      data = mean_dt,
+      ggplot2::aes(x = .data[[x_col]], y = .data$mean_val),
+      colour = color, linewidth = 1.1
+    )
+    if (has_n_cells) {
+      p <- p + ggplot2::geom_point(
+        data = mean_dt,
+        ggplot2::aes(x = .data[[x_col]], y = .data$mean_val,
+                     size = .data$ncells_sum),
+        colour = color, alpha = 0.85
+      ) +
+        ggplot2::scale_size_continuous(range = c(0.8, 3.5), guide = "none")
+    }
+  } else {
+    # Pooled mode (back-compat)
+    if (is.null(y_lab)) y_lab <- "P(expressing)"
+    has_se <- se_col %in% names(dt)
+    y_max  <- max(dt[[y_col]], na.rm = TRUE) * 1.3
+
+    p <- ggplot2::ggplot(dt, ggplot2::aes(
+      x = .data[[x_col]], y = .data[[y_col]]
+    ))
+    if (has_se) {
+      p <- p + ggplot2::geom_ribbon(
+        ggplot2::aes(
+          ymin = pmax(0, .data[[y_col]] - 1.96 * .data[[se_col]]),
+          ymax = pmin(1, .data[[y_col]] + 1.96 * .data[[se_col]])
+        ),
+        fill = color, alpha = 0.15
+      )
+    }
+    p <- p +
+      ggplot2::geom_line(color = color, linewidth = 0.8) +
+      ggplot2::geom_point(
+        ggplot2::aes(size = .data$n_cells),
+        color = color, alpha = 0.7
+      ) +
+      ggplot2::scale_size_continuous(range = c(0.8, 3.5), guide = "none")
+  }
+
+  p <- p +
     ggplot2::scale_x_continuous(breaks = seq(0, max_distance, by = 50)) +
-    ggplot2::ylim(0, min(1, max(bin_stats$prop_expressing, na.rm = TRUE) * 1.3)) +
+    ggplot2::ylim(0, min(1, y_max)) +
     ggplot2::labs(
-      title = gene_name,
+      title    = gene_name,
       subtitle = sub_text,
-      x = paste0("Distance to ", query_label, " (um)"),
-      y = "P(expressing)"
+      x        = paste0("Distance to ", query_label, " (um)"),
+      y        = y_lab
     ) +
     theme_ripple(base_size = 11) +
     ggplot2::theme(
-      plot.title = ggplot2::element_text(face = "bold.italic", size = 11),
+      plot.title    = ggplot2::element_text(face = "bold.italic", size = 11),
       plot.subtitle = ggplot2::element_text(
         size = 9, color = "grey20", face = "bold"
       )
     )
 
   return(p)
+}
+
+
+#' Decay curve plot (deprecated)
+#'
+#' Deprecated alias for \code{\link{plot_gradient_curve}}. Renamed because
+#' "decay" is misleading — many gradient curves are not monotonically
+#' decaying (positive coefficients show the inverse pattern, and biphasic
+#' curves are common). Calls through to \code{plot_gradient_curve()} with
+#' the same arguments.
+#'
+#' @param ... Arguments passed to \code{\link{plot_gradient_curve}}.
+#'
+#' @return A \code{ggplot} object.
+#'
+#' @keywords internal
+#' @export
+plot_decay_curve <- function(...) {
+  .Deprecated("plot_gradient_curve")
+  plot_gradient_curve(...)
+}
+
+
+#' Proportion-expressing curve plot
+#'
+#' Specialised wrapper around \code{\link{plot_gradient_curve}} for the
+#' canonical RIPPLE / HyMy plot: the **proportion of cells expressing a
+#' gene** (counts > 0) as a function of distance from query cells. This is
+#' the y-axis used in the original HyMy distance-correlation analysis and
+#' is the most direct visual readout of a spatial gradient — it does not
+#' depend on cell-size normalisation, and the binomial scale (0 to 1)
+#' makes the effect size easy to read.
+#'
+#' Use \code{\link{plot_gradient_curve}} when you want to plot something
+#' other than proportion expressing (e.g. mean expression rate per UMI,
+#' library-size-normalised mean, or a custom statistic).
+#'
+#' All other behaviour — pooled vs per-sample mode, the bold mean overlay
+#' with a 95\% CI ribbon, the subtitle with gradient score and FDR — is
+#' identical to \code{\link{plot_gradient_curve}}.
+#'
+#' \strong{CI interpretation differs between modes.} See the
+#' "CI interpretation -- the two modes are not the same statistic"
+#' section of \code{\link{plot_gradient_curve}} for the full discussion.
+#' Briefly: pooled mode uses the supplied per-bin SE (binomial Wald,
+#' \code{sqrt(p * (1 - p) / n)} on pooled-cell n, matching the original
+#' HyMy plot); per-sample mode uses cross-sample
+#' \code{sd / sqrt(n_samples)} (more honest about replicate
+#' variability).
+#'
+#' @inheritParams plot_gradient_curve
+#' @param y_col Character. Name of the proportion-expressing column on
+#'   \code{bin_stats}. Default \code{"prop_expressing"} (the column written
+#'   by \code{\link{bin_decay_data}}).
+#' @param y_lab Character or NULL. Y-axis label. Default
+#'   \code{"Proportion expressing"}.
+#' @param color Character. Line / ribbon / point color. Default
+#'   \code{"#2C7FB8"} (a more "neutral" blue than the gradient-curve
+#'   default red, since proportion-expressing plots usually depict the
+#'   raw signal rather than a directional gradient).
+#'
+#' @return A \code{ggplot} object, or NULL if \code{bin_stats} is NULL or
+#'   empty.
+#'
+#' @examples
+#' \dontrun{
+#' # Pooled mode: pre-binned proportion-expressing data
+#' plot_prop_curve(
+#'   bin_stats      = binned_prop,
+#'   gene_name      = "Cxcl12",
+#'   cell_type      = "T_cell",
+#'   gradient_score = -0.005,
+#'   fdr            = 1e-3
+#' )
+#'
+#' # Per-sample mode: thin per-replicate lines + bold mean + 95% CI
+#' plot_prop_curve(
+#'   bin_stats   = binned_prop_per_sample,   # has a sample_id column
+#'   gene_name   = "Ccr7",
+#'   cell_type   = "T_cell",
+#'   sample_col  = "sample_id",
+#'   x_col       = "bin_mid_um",
+#'   results     = merged_results
+#' )
+#' }
+#'
+#' @seealso \code{\link{plot_gradient_curve}} for the general-purpose
+#'   version, and \code{\link{bin_decay_data}} for producing the
+#'   \code{prop_expressing} column from raw counts and distances.
+#'
+#' @export
+plot_prop_curve <- function(bin_stats, gene_name, cell_type,
+                            gradient_score = NULL, fdr = NULL,
+                            results = NULL,
+                            sample_col = NULL,
+                            x_col = "dist_mid",
+                            y_col = "prop_expressing",
+                            se_col = "se",
+                            y_lab = "Proportion expressing",
+                            query_label = "Query",
+                            max_distance = 200,
+                            color = "#2C7FB8",
+                            sample_alpha = 0.4,
+                            sample_linewidth = 0.4) {
+  plot_gradient_curve(
+    bin_stats        = bin_stats,
+    gene_name        = gene_name,
+    cell_type        = cell_type,
+    gradient_score   = gradient_score,
+    fdr              = fdr,
+    results          = results,
+    sample_col       = sample_col,
+    x_col            = x_col,
+    y_col            = y_col,
+    se_col           = se_col,
+    y_lab            = y_lab,
+    query_label      = query_label,
+    max_distance     = max_distance,
+    color            = color,
+    sample_alpha     = sample_alpha,
+    sample_linewidth = sample_linewidth
+  )
 }
 
 
@@ -543,16 +857,18 @@ plot_fgsea_dotplot <- function(fgsea_results,
   nes_lim <- max(abs(dt$NES), na.rm = TRUE)
   if (!is.finite(nes_lim) || nes_lim == 0) nes_lim <- 1
 
+  # Negative NES = induced near query (matches red in volcano);
+  # positive NES = repressed near query (matches blue in volcano).
   diverging_palette <- grDevices::colorRampPalette(
-    c("#2166AC", "#4393C3", "#92C5DE", "#D1E5F0",
+    c("#B2182B", "#D6604D", "#F4A582", "#FDDBC7",
       "#F7F7F7",
-      "#FDDBC7", "#F4A582", "#D6604D", "#B2182B")
+      "#D1E5F0", "#92C5DE", "#4393C3", "#2166AC")
   )
 
   if (is.null(title)) title <- "Pathway enrichment per cell type"
   if (is.null(subtitle)) {
     subtitle <- sprintf(
-      "Pathways with padj < %s in ≥ 1 cell type   |   dot size = -log10(padj), color = NES",
+      "Pathways with padj < %s in >= 1 cell type | dot size = -log10(padj) | red NES = induced, blue NES = repressed",
       format(padj_threshold)
     )
   }
@@ -1598,4 +1914,267 @@ plot_specificity_breakdown <- function(results,
       axis.text.x = ggplot2::element_text(angle = 20, hjust = 1),
       legend.position = "none"
     )
+}
+
+
+#' RIPPLE QC dashboard
+#'
+#' Multi-panel QC dashboard composed from the artefacts written by
+#' \code{\link{run_ripple}}. Bundles replicate-quality panels (per-sample
+#' distance density, cell composition, sign consistency, dispersion) with
+#' specificity / contamination panels (gene counts split by direction and
+#' specificity class, specificity breakdown, top widely-shared genes with
+#' optional query-marker bleed-through highlighting).
+#'
+#' Reads only files written under \code{results_dir}:
+#' \itemize{
+#'   \item \code{summary/all_genes_results.csv} (required)
+#'   \item \code{qc/cell_distances.csv.gz} (optional; enables panels 1+2)
+#' }
+#'
+#' @param results_dir Path to a RIPPLE output directory (the one containing
+#'   \code{summary/} and \code{qc/} subdirectories).
+#' @param query_signature_genes Optional character vector of query marker
+#'   genes. When supplied, genes in the bleed-through panel that are also
+#'   query markers are highlighted in red -- this is the smoking-gun pattern
+#'   for ambient RNA / segmentation contamination (a query marker showing as
+#'   "induced" across many target cell types).
+#' @param fdr_threshold Numeric. Significance cutoff (default: 0.05).
+#' @param contamination_threshold Integer. Min number of cell types where a
+#'   gene is significant for the contamination class (default: 4).
+#' @param query_label Character. Display label for the query cell type
+#'   (default: "Query").
+#' @param top_n_bleed Integer. Number of top widely-shared genes to show in
+#'   the bleed-through panel (default: 15).
+#' @param output_file Character or NULL. If set, also saves the assembled
+#'   patchwork to this path via \code{ggsave}.
+#' @param width,height Numeric. \code{ggsave} dimensions when
+#'   \code{output_file} is set (defaults: 14 x 18 inches).
+#'
+#' @return A \code{patchwork} object (returned invisibly when
+#'   \code{output_file} is set).
+#'
+#' @examples
+#' \dontrun{
+#' ripple_plot_qc(
+#'   results_dir = "results/spatial_analysis_Tumor/ripple",
+#'   query_signature_genes = c("KRT19", "EPCAM", "MKI67"),
+#'   query_label = "Tumor",
+#'   output_file = "qc_dashboard.pdf"
+#' )
+#' }
+#'
+#' @importFrom data.table fread as.data.table
+#' @importFrom ggplot2 ggplot aes geom_violin geom_col geom_histogram
+#'   geom_boxplot geom_hline geom_vline scale_fill_manual stat_summary
+#'   labs theme element_text unit ggsave
+#' @importFrom patchwork wrap_plots plot_annotation
+#' @export
+ripple_plot_qc <- function(results_dir,
+                           query_signature_genes = NULL,
+                           fdr_threshold = 0.05,
+                           contamination_threshold = 4L,
+                           query_label = "Query",
+                           top_n_bleed = 15L,
+                           output_file = NULL,
+                           width = 14, height = 18) {
+  qc_dir <- file.path(results_dir, "qc")
+  summary_dir <- file.path(results_dir, "summary")
+
+  results_path <- file.path(summary_dir, "all_genes_results.csv")
+  if (!file.exists(results_path)) {
+    stop("Missing required file: ", results_path, call. = FALSE)
+  }
+  results <- data.table::fread(results_path)
+
+  dist_path <- file.path(qc_dir, "cell_distances.csv.gz")
+  cell_distances <- if (file.exists(dist_path)) {
+    data.table::fread(dist_path)
+  } else {
+    message(
+      "Note: ", dist_path, " not found -- ",
+      "distance and composition panels will be skipped."
+    )
+    NULL
+  }
+
+  panels <- list()
+
+  # -- Panel 1: per-sample distance distribution (violin) --
+  if (!is.null(cell_distances)) {
+    panels$dist <- ggplot2::ggplot(
+      cell_distances, ggplot2::aes(x = sample_id, y = dist_to_query)
+    ) +
+      ggplot2::geom_violin(
+        fill = "steelblue", color = "grey30",
+        alpha = 0.6, scale = "width"
+      ) +
+      ggplot2::stat_summary(
+        fun = stats::median, geom = "point",
+        color = "white", size = 1.6
+      ) +
+      ggplot2::labs(
+        title = "Per-sample distance to query",
+        subtitle = "Heavy skew or sample-specific spikes flag tissue-boundary effects",
+        x = NULL, y = paste0("Distance to ", query_label, " (um)")
+      ) +
+      theme_ripple(base_size = 11) +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold"),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey40"),
+        axis.text.x = ggplot2::element_text(angle = 30, hjust = 1)
+      )
+
+    # -- Panel 2: cells per cell type per sample (stacked bar) --
+    cell_comp <- cell_distances[, .N, by = .(sample_id, cell_type)]
+    panels$comp <- ggplot2::ggplot(
+      cell_comp, ggplot2::aes(x = sample_id, y = N, fill = cell_type)
+    ) +
+      ggplot2::geom_col(position = "stack", width = 0.7) +
+      ggplot2::labs(
+        title = "Cell composition per sample",
+        subtitle = "Watch for sample dropouts or annotation imbalance",
+        x = NULL, y = "Cells", fill = "Cell type"
+      ) +
+      theme_ripple(base_size = 11) +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold"),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey40"),
+        axis.text.x = ggplot2::element_text(angle = 30, hjust = 1),
+        legend.position = "right",
+        legend.text = ggplot2::element_text(size = 8),
+        legend.key.size = ggplot2::unit(0.4, "cm")
+      )
+  }
+
+  # -- Panel 3: sign-consistency histogram --
+  if ("sign_consistency" %in% names(results)) {
+    panels$sign <- ggplot2::ggplot(
+      results[!is.na(sign_consistency)],
+      ggplot2::aes(x = sign_consistency)
+    ) +
+      ggplot2::geom_histogram(
+        bins = 20, fill = "#4393C3", color = "white", alpha = 0.85
+      ) +
+      ggplot2::geom_vline(
+        xintercept = 1.0, linetype = "dashed", color = "grey30"
+      ) +
+      ggplot2::labs(
+        title = "Sign consistency across replicates",
+        subtitle = "Pile-up at 1.0 = many genes have replicate-consistent direction",
+        x = "Fraction of samples agreeing on sign",
+        y = "Genes (across all cell types)"
+      ) +
+      theme_ripple(base_size = 11) +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold"),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey40")
+      )
+  }
+
+  # -- Panel 4: median dispersion per cell type --
+  if (all(c("median_dispersion", "cell_type") %in% names(results))) {
+    panels$disp <- ggplot2::ggplot(
+      results[!is.na(median_dispersion)],
+      ggplot2::aes(x = cell_type, y = median_dispersion)
+    ) +
+      ggplot2::geom_boxplot(
+        fill = "#92C5DE", color = "grey30", outlier.size = 0.4
+      ) +
+      ggplot2::geom_hline(
+        yintercept = c(0.3, 2), linetype = "dashed", color = "grey50"
+      ) +
+      ggplot2::labs(
+        title = "Median dispersion per cell type",
+        subtitle = "Poisson appropriate when most genes sit between 0.3 and 2",
+        x = NULL, y = "Median dispersion"
+      ) +
+      theme_ripple(base_size = 11) +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold"),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey40"),
+        axis.text.x = ggplot2::element_text(angle = 30, hjust = 1)
+      )
+  }
+
+  # -- Panel 5: significant genes per cell type, split by direction x specificity --
+  panels$counts <- plot_gene_counts_by_celltype(
+    results,
+    fdr_threshold = fdr_threshold,
+    contamination_threshold = contamination_threshold,
+    query_label = query_label
+  )
+
+  # -- Panel 6: specificity breakdown --
+  panels$spec <- plot_specificity_breakdown(
+    results,
+    fdr_threshold = fdr_threshold,
+    contamination_threshold = contamination_threshold
+  )
+
+  # -- Panel 7: bleed-through (top widely-shared genes, optional query-marker flag) --
+  spec_dt <- classify_gene_specificity(
+    results,
+    fdr_threshold = fdr_threshold,
+    contamination_threshold = contamination_threshold
+  )
+  if (nrow(spec_dt) > 0) {
+    top_bleed <- spec_dt[order(-n_celltypes)][seq_len(min(top_n_bleed, .N))]
+    if (is.null(query_signature_genes)) {
+      top_bleed[, is_query_marker := FALSE]
+    } else {
+      top_bleed[, is_query_marker := gene %in% query_signature_genes]
+    }
+    gene_order <- as.character(top_bleed$gene)
+    top_bleed[, gene := factor(gene, levels = rev(gene_order))]
+
+    bleed_subtitle <- if (is.null(query_signature_genes)) {
+      "Pass `query_signature_genes` to flag query-marker bleed-through (e.g. KRT19 in non-tumor cells)"
+    } else {
+      "Red bars = query markers showing up significant in many cell types (likely contamination)"
+    }
+
+    panels$bleed <- ggplot2::ggplot(
+      top_bleed,
+      ggplot2::aes(x = n_celltypes, y = gene, fill = is_query_marker)
+    ) +
+      ggplot2::geom_col(width = 0.75) +
+      ggplot2::scale_fill_manual(
+        values = c("FALSE" = "#92C5DE", "TRUE" = "#B2182B"),
+        labels = c("FALSE" = "Other", "TRUE" = "Query marker"),
+        name = NULL,
+        drop = FALSE
+      ) +
+      ggplot2::labs(
+        title = sprintf(
+          "Top %d most widely-shared significant genes",
+          nrow(top_bleed)
+        ),
+        subtitle = bleed_subtitle,
+        x = "# cell types where significant", y = NULL
+      ) +
+      theme_ripple(base_size = 11) +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold"),
+        plot.subtitle = ggplot2::element_text(size = 8, color = "grey40"),
+        axis.text.y = ggplot2::element_text(face = "italic", size = 9),
+        legend.position = if (is.null(query_signature_genes)) "none" else "bottom"
+      )
+  }
+
+  combined <- patchwork::wrap_plots(panels, ncol = 2) +
+    patchwork::plot_annotation(
+      title = sprintf("RIPPLE QC dashboard -- query: %s", query_label),
+      theme = ggplot2::theme(
+        plot.title = ggplot2::element_text(face = "bold", size = 14)
+      )
+    )
+
+  if (!is.null(output_file)) {
+    ggplot2::ggsave(output_file, combined, width = width, height = height)
+    message("Saved: ", output_file)
+    return(invisible(combined))
+  }
+
+  combined
 }

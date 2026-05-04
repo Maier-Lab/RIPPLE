@@ -55,7 +55,7 @@ landscape <- data.frame(
     "Communication score",
     "Ligand activity score",
     "Cluster labels",
-    "Coefficient + Fisher FDR + decay slope"
+    "Gradient score + Fisher FDR + decay slope"
   ),
   Replicate_aware = c("No", "No", "No", "No", "No", "No", "Yes"),
   Directional = c(
@@ -86,11 +86,11 @@ reproducible across patients or mice --- not artefacts of a single tissue
 section.
 
 **2. Directional, interpretable output.**
-Each gene receives a signed coefficient (beta, in log-rate change per
-micrometre). A negative beta means gene expression *increases* near the query
-cell type (induced); a positive beta means it *decreases* (repressed). This is
-directly interpretable as a spatial gradient, unlike importance scores (MISTy)
-or omnibus p-values (nnSVG).
+Each gene receives a signed coefficient — the **gradient score** (`beta`, in
+log-rate change per micrometre). A negative gradient score means gene
+expression *increases* near the query cell type (induced); a positive gradient
+score means it *decreases* (repressed). This is directly interpretable as a
+spatial gradient, unlike importance scores (MISTy) or omnibus p-values (nnSVG).
 
 **3. Cell-type-anchored.**
 The distance metric is always to a specific query cell type (e.g., "distance
@@ -135,6 +135,15 @@ query-target hypothesis (confirmatory).
 RIPPLE's optional Stage 6 (L-R integration) bridges back to ligand--receptor
 tools by matching gradient genes to known L-R pairs, providing mechanistic
 context for the statistical gradients.
+
+## See also
+
+- `vignette("getting_started", package = "ripple")` — 5-minute end-to-end
+  on the bundled synthetic dataset.
+- `vignette("cosmx_nsclc_walkthrough", package = "ripple")` — applied
+  case study reproducing paper Figure 4 (CosMx NSCLC, 5 patients).
+- `vignette("benchmarks", package = "ripple")` — FDR calibration, power
+  curves, and runtime measurements (paper Figure 2).
 
 ## References
 

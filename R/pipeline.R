@@ -552,6 +552,18 @@ run_ripple <- function(
     file.path(qc_dir, "filtered_celltype_counts.csv")
   )
 
+  # Per-cell distances (powers ripple_plot_qc panel 1+2)
+  cell_dist_dt <- data.table::data.table(
+    sample_id     = cell_data[[sample_column]],
+    cell_type     = cell_data[[celltype_column]],
+    dist_to_query = cell_data$dist_to_query
+  )
+  data.table::fwrite(
+    cell_dist_dt,
+    file.path(qc_dir, "cell_distances.csv.gz")
+  )
+  .msg("  Saved: qc/cell_distances.csv.gz", verbose = verbose)
+
   # --------------------------------------------------------------------------
   # 10. Main analysis loop: iterate over target cell types
   # --------------------------------------------------------------------------

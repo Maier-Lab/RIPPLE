@@ -30,7 +30,7 @@ RIPPLE/
 │   ├── enrichment.R         # run_ripple_fgsea, classify_gene_specificity, bin_decay_data
 │   ├── atlas.R              # run_ripple_atlas
 │   ├── lr_integration.R     # run_ripple_lr, classify_lr_artifacts
-│   ├── visualization.R      # plot_gradient_volcano, plot_decay_curve, spatial plots,
+│   ├── visualization.R      # plot_gradient_volcano, plot_gradient_curve, spatial plots,
 │   │                        # create_gradient_volcano, create_forest_plot, create_coefficient_strips
 │   └── utils.R              # calculate_enrichment, permutation_pvalue
 ├── data/                    # Bundled datasets
@@ -61,7 +61,7 @@ RIPPLE/
 | `meta_analysis.R` | `run_meta_analysis`, `compute_fisher_pval` | Cross-replicate inference |
 | `permutation.R` | `run_permutation_test`, `run_permutation_tests`, `merge_permutation_results` | Null distribution |
 | `spatial.R` | `get_coord_columns`, `build_knn_graph`, `build_radius_graph`, `calculate_distance_to_type`, `get_neighbor_cell_types`, `calculate_neighbor_composition`, `check_spatial_autocorrelation` | Spatial utilities |
-| `visualization.R` | `plot_spatial_single`, `plot_spatial_by_sample`, `plot_gradient_volcano`, `plot_decay_curve`, `create_gradient_volcano`, `create_forest_plot`, `create_coefficient_strips` | Plotting |
+| `visualization.R` | `plot_spatial_single`, `plot_spatial_by_sample`, `plot_gradient_volcano`, `plot_gradient_curve`, `create_gradient_volcano`, `create_forest_plot`, `create_coefficient_strips` | Plotting |
 | `utils.R` | `calculate_enrichment`, `permutation_pvalue` | Helpers |
 
 ---
@@ -200,7 +200,7 @@ RIPPLE detects **distance-dependent expression changes**: genes whose RNA counts
 | **2. Permutation Validation** | Optional | `run_permutation_tests()` (R, CPU) or `inst/python/run_permutation_gpu.py` (GPU) | Null distribution via label permutation -- validates query specificity. GPU script is faster for large datasets. |
 | **3. Merge & Summarize** | Core | `merge_ripple_results()`, `merge_permutation_results()`, `compute_fisher_pval()` | Integrate permutation p-values, compute Fisher's combined p-value, merge across cell types |
 | **4. Confounder Control** | Optional | `run_ripple_confounder()` | Bivariate GLM adding distance-to-control-cell-type -- isolates query-specific effects from shared niche |
-| **5. Visualization & Enrichment** | Optional | `run_ripple_atlas()`, `run_ripple_fgsea()`, `classify_gene_specificity()`, `plot_gradient_volcano()`, `plot_decay_curve()` | Volcanos, decay curves, heatmaps, dotplots, fGSEA pathway enrichment, contamination flagging |
+| **5. Visualization & Enrichment** | Optional | `run_ripple_atlas()`, `run_ripple_fgsea()`, `classify_gene_specificity()`, `plot_gradient_volcano()`, `plot_gradient_curve()` | Volcanos, decay curves, heatmaps, dotplots, fGSEA pathway enrichment, contamination flagging |
 | **6. L-R Integration** | Optional | `run_ripple_lr()`, `classify_lr_artifacts()` | Match gradient genes to ligand-receptor pairs via NicheNet, 4-tier artifact classification |
 
 ---

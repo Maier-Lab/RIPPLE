@@ -18,6 +18,7 @@ run_ripple_atlas(
   organism = "mouse",
   fgsea_min_genes = 100,
   fgsea_seed = 42,
+  fgsea_exclude_contamination = FALSE,
   stage2_dir = NULL,
   verbose = TRUE
 )
@@ -61,6 +62,14 @@ fGSEA filtering. Default: 100.}
 
 \item{fgsea_seed}{Integer. Random seed for reproducible fGSEA results.
 Default: 42.}
+
+\item{fgsea_exclude_contamination}{Logical. If \code{TRUE}, drops genes
+classified as contamination (significant in
+\code{>= contamination_threshold} cell types) from the fGSEA ranked
+list. Useful for separating cell-type-specific pathway signals from
+ambient-RNA artefacts, but heuristic — see the "Limitations of
+contamination filtering" section of \code{\link{run_ripple_fgsea}}
+before reporting filtered results. Default: \code{FALSE}.}
 
 \item{stage2_dir}{Character or NULL. Path to Stage 2 results directory.
 If provided, adds classification panels. Default: NULL.}

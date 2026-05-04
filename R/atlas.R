@@ -347,6 +347,13 @@ NULL
 #'   fGSEA filtering. Default: 100.
 #' @param fgsea_seed Integer. Random seed for reproducible fGSEA results.
 #'   Default: 42.
+#' @param fgsea_exclude_contamination Logical. If \code{TRUE}, drops genes
+#'   classified as contamination (significant in
+#'   \code{>= contamination_threshold} cell types) from the fGSEA ranked
+#'   list. Useful for separating cell-type-specific pathway signals from
+#'   ambient-RNA artefacts, but heuristic — see the "Limitations of
+#'   contamination filtering" section of \code{\link{run_ripple_fgsea}}
+#'   before reporting filtered results. Default: \code{FALSE}.
 #' @param stage2_dir Character or NULL. Path to Stage 2 results directory.
 #'   If provided, adds classification panels. Default: NULL.
 #' @param verbose Logical. Print progress messages. Default: TRUE.
@@ -401,6 +408,7 @@ run_ripple_atlas <- function(results_dir,
                              organism = "mouse",
                              fgsea_min_genes = 100,
                              fgsea_seed = 42,
+                             fgsea_exclude_contamination = FALSE,
                              stage2_dir = NULL,
                              verbose = TRUE) {
   # --- Setup ---
@@ -621,9 +629,12 @@ run_ripple_atlas <- function(results_dir,
         {
           fgsea_results <- run_ripple_fgsea(
             all_results,
-            gene_sets = gene_sets, organism = organism,
-            coef_col = coef_col, fdr_col = sig_col,
-            min_genes = fgsea_min_genes, seed = fgsea_seed
+            gene_sets               = gene_sets, organism = organism,
+            coef_col                = coef_col,  fdr_col  = sig_col,
+            min_genes               = fgsea_min_genes,
+            seed                    = fgsea_seed,
+            exclude_contamination   = fgsea_exclude_contamination,
+            contamination_threshold = contamination_threshold
           )
 
           if (nrow(fgsea_results) > 0) {

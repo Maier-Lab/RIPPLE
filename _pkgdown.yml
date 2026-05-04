@@ -91,6 +91,8 @@ reference:
   - plot_spatial_single
   - plot_spatial_by_sample
   - plot_gradient_volcano
+  - plot_gradient_curve
+  - plot_prop_curve
   - plot_decay_curve
   - create_gradient_volcano
   - create_forest_plot

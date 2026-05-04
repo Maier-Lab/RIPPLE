@@ -1,8 +1,8 @@
 ---
-title: "RIPPLE benchmark: FDR calibration, power, and method comparison"
+title: "RIPPLE benchmarks: FDR calibration, power, and runtime"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RIPPLE benchmark: FDR calibration, power, and method comparison}
+  %\VignetteIndexEntry{RIPPLE benchmarks: FDR calibration, power, and runtime}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -15,151 +15,268 @@ knitr::opts_chunk$set(
   fig.height = 5,
   out.width = "100%"
 )
+library(ripple)
 library(data.table)
 library(ggplot2)
 library(patchwork)
 ```
 
-## Overview
+This vignette presents the synthetic benchmarks that validate RIPPLE's
+statistical properties and runtime profile:
 
-This vignette presents three benchmarks that validate RIPPLE's statistical
-properties on synthetic data:
+1. **FDR calibration under the null** — empirical type-I error control,
+   strict gate (sign consistency = 1.0).
+2. **Relaxed-gate calibration cost** — same setup with sign consistency
+   ≥ 0.75 (the recommended setting for N ≥ 5).
+3. **Power curves** — sensitivity as a function of effect size, sample
+   count, and gate strictness.
+4. **Runtime and memory** — wall time and peak RAM across three
+   dataset sizes.
 
-1. **FDR calibration under the null** — empirical type-I error control.
-2. **Power curves** — sensitivity as a function of effect size and sample count.
-3. **Method comparison** — RIPPLE vs. MISTy and nnSVG on shared synthetic data.
-
-All benchmarks use a common synthetic data generator (`data-raw/benchmarks/`)
-that produces `SpatialExperiment` objects with controllable spatial structure
-and optional planted distance-dependent gradients.
+All four panels appear in **paper Figure 2**, rendered exactly by
+`paper/render_figures.R`. This vignette uses the same cached RDS
+results from `inst/extdata/`.
 
 ## Synthetic data design
 
-Each dataset contains three cell types:
+Each dataset is a small `SpatialExperiment` with three cell types:
 
-- **Tumour** (30 cells): dense central cluster (radius 60 µm).
-- **T cells** (120 cells): uniformly distributed; these are the target for
-  gradient testing.
-- **Fibroblasts** (50 cells): annular ring at 100--200 µm from the tumour
-  centre.
+- **Tumor** (30 cells): dense central cluster, radius 60 µm.
+- **T cells** (120 cells): uniformly distributed; the target.
+- **Fibroblasts** (50 cells): annular ring at 100–200 µm from tumor.
 
-For **null** datasets, all genes follow a flat Poisson rate with no distance
-dependence. For **gradient** datasets, a subset of genes in T cells have
-expression rates modulated by `exp(beta * distance_to_tumour)`, where `beta`
-controls the strength and direction of the gradient.
+For **null** datasets, all genes follow a flat Poisson rate with no
+distance dependence. For **gradient** datasets, a subset of T-cell
+genes have expression rates modulated by `exp(beta * distance_to_tumor)`,
+where `beta` controls magnitude and direction.
 
-## 1. FDR calibration under the null
+## 1. FDR calibration under the null (strict gate)
 
-50 null datasets (no planted gradient, 50 background genes each) were generated
-for each of three sample sizes (N = 3, 5, 10 biological replicates). RIPPLE
-was run on each; the empirical FDR is the fraction of genes called significant
-at Fisher FDR < 0.05.
+500 background genes per dataset, 50 iterations per sample size
+(N = 3, 5, 10), no planted gradient. The strict sign-consistency gate
+(sign = 1.0) requires unanimous direction across replicates.
 
-```{r fdr-calibration, fig.cap = "Empirical FDR under a true null across 50 iterations per sample size. Dashed line: nominal 0.05 level."}
-null_path <- system.file("extdata/bench_null_results.rds", package = "ripple")
-if (file.exists(null_path)) {
-  null_res <- readRDS(null_path)$per_run
+```{r fdr-strict, fig.cap = "Empirical FDR under a true null. Dashed line: nominal 0.05 level."}
+null_path <- system.file("extdata/bench_null_hires_results.rds",
+                         package = "ripple")
+null_res <- readRDS(null_path)$per_run
 
-  p1 <- ggplot(null_res, aes(x = factor(n_samples), y = empirical_fdr)) +
-    geom_boxplot(fill = "#E8E8E8", outlier.size = 1) +
-    geom_jitter(width = 0.15, alpha = 0.3, size = 1) +
-    geom_hline(yintercept = 0.05, linetype = "dashed", color = "#D55E00") +
-    labs(
-      x = "Number of biological replicates (N)",
-      y = "Empirical FDR",
-      title = "FDR calibration under the null"
-    ) +
-    theme_minimal()
-  print(p1)
-
-  # Summary table
-  summary_dt <- null_res[, .(
-    runs = .N,
-    mean_fdr = sprintf("%.4f", mean(empirical_fdr)),
-    max_fdr = sprintf("%.4f", max(empirical_fdr)),
-    pooled_fdr = sprintf("%.4f", sum(n_sig_fdr) / sum(n_genes_tested))
-  ), by = n_samples]
-  knitr::kable(summary_dt,
-    col.names = c(
-      "N", "Runs", "Mean FDR",
-      "Max FDR", "Pooled FDR"
-    ),
-    caption = "Summary of null FDR calibration."
-  )
-} else {
-  cat("Null benchmark results not yet available.\n")
-  cat("Run: Rscript data-raw/benchmarks/bench_null.R\n")
-}
-```
-
-## 2. Power curves
-
-5 gradient genes (negative coefficient, induced near tumour) and 45 background
-genes were planted in each dataset. Four effect sizes (`|beta|` = 0.002, 0.005,
-0.01, 0.02) were tested across three sample sizes (N = 3, 5, 10), with 30
-iterations each. Power is the fraction of the 5 gradient genes recovered at
-FDR < 0.05.
-
-```{r power-curves, fig.cap = "Power to detect planted gradient genes as a function of effect size and sample count. Error bars: ± 1 SD across iterations."}
-power_path <- system.file("extdata/bench_power_results.rds", package = "ripple")
-if (file.exists(power_path)) {
-  power_res <- readRDS(power_path)$summary
-
-  p2 <- ggplot(
-    power_res,
-    aes(
-      x = abs(beta), y = mean_power,
-      color = factor(n_samples), group = factor(n_samples)
-    )
+p1 <- ggplot(null_res, aes(x = factor(n_samples), y = empirical_fdr)) +
+  geom_boxplot(fill = "#E8E8E8", outlier.size = 1) +
+  geom_jitter(width = 0.15, alpha = 0.3, size = 1) +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "#D55E00") +
+  labs(
+    x = "Number of biological replicates (N)",
+    y = "Empirical FDR (Fisher FDR < 0.05)",
+    title = "FDR calibration under the null (strict gate, sign = 1.0)"
   ) +
-    geom_line(linewidth = 1) +
-    geom_point(size = 3) +
-    geom_errorbar(
-      aes(
-        ymin = pmax(0, mean_power - sd_power),
-        ymax = pmin(1, mean_power + sd_power)
-      ),
-      width = 0.001
-    ) +
-    scale_x_log10(labels = scales::label_number()) +
-    labs(
-      x = expression("|" * beta * "| (gradient score, per µm)"),
-      y = "Power (sensitivity)",
-      color = "N (replicates)",
-      title = "Power to detect gradient genes"
-    ) +
-    theme_minimal()
-  print(p2)
+  theme_ripple(base_size = 12)
+print(p1)
 
-  knitr::kable(
-    power_res[, .(
-      beta = sprintf("%.3f", beta), N = n_samples,
-      power = sprintf("%.2f", mean_power),
-      sd = sprintf("%.2f", sd_power),
-      FDR = sprintf("%.3f", mean_fdr)
-    )],
-    col.names = c("beta", "N", "Power", "SD", "Observed FDR"),
-    caption = "Power and observed FDR by effect size and sample count."
-  )
-} else {
-  cat("Power benchmark results not yet available.\n")
-  cat("Run: Rscript data-raw/benchmarks/bench_power.R\n")
-}
+# Pooled-rate summary
+summary_dt <- null_res[, .(
+  iterations  = .N,
+  mean_fdr    = sprintf("%.4f", mean(empirical_fdr)),
+  max_fdr     = sprintf("%.4f", max(empirical_fdr)),
+  pooled_rate = sprintf("%.4e", sum(n_sig_fdr) / sum(n_genes_tested))
+), by = n_samples]
+knitr::kable(
+  summary_dt,
+  col.names = c("N", "Iterations", "Mean FDR", "Max FDR",
+                "Pooled FDR (genes)"),
+  caption = "Null FDR calibration with strict gate."
+)
 ```
 
-## 3. Method comparison (MISTy and nnSVG)
+The empirical FDR is essentially zero across all sample sizes — the
+strict gate alone (before any p-value combination) requires unanimous
+sign agreement across replicates, which costs `~ 2 * 0.5^N * alpha`
+even before FDR correction. Paper Figure 2A overlays this theoretical
+floor on the empirical points.
 
-<!-- TODO: Add once bench_comparison.R results are available -->
+## 2. Relaxed-gate calibration cost
 
-To be completed: comparison of RIPPLE, MISTy, and nnSVG on the same synthetic
-datasets. Expected findings:
+The strict gate is conservative. Relaxing to sign consistency ≥ 0.75
+(allowing 1 dissenting replicate at N = 5, 2 at N = 10) recovers power
+at the cost of a higher false-positive floor. The relaxed-gate
+benchmark validates that the cost is bounded.
 
-- **nnSVG** detects planted genes (positive control) but also flags many
-  additional SVGs unrelated to the tumour anchor (lower specificity).
-- **MISTy** importance scores correlate with RIPPLE |beta| (agreement on
-  signal magnitude) but do not provide direction or calibrated FDR.
-- **RIPPLE** uniquely provides directional inference, sign-consistency, and
-  formally calibrated FDR.
+```{r fdr-relaxed}
+null_relaxed <- readRDS(system.file(
+  "extdata/bench_null_hires_relaxed_results.rds",
+  package = "ripple"
+))$per_run
+
+summary_relaxed <- null_relaxed[, .(
+  iterations  = .N,
+  mean_fdr    = sprintf("%.4f", mean(empirical_fdr)),
+  max_fdr     = sprintf("%.4f", max(empirical_fdr)),
+  pooled_rate = sprintf("%.4e", sum(n_sig_fdr) / sum(n_genes_tested))
+), by = n_samples]
+knitr::kable(
+  summary_relaxed,
+  col.names = c("N", "Iterations", "Mean FDR", "Max FDR",
+                "Pooled FDR (genes)"),
+  caption = "Null FDR calibration with relaxed gate (sign >= 0.75)."
+)
+```
+
+The pooled raw-p rate rises to the relaxed-gate theoretical floor (see
+paper Figure 2B), but the **FDR rate stays close to strict** — BH
+correction absorbs most of the gate change. In practice this means
+relaxing the gate is cheap on calibration but expensive on raw p-value
+interpretation; downstream analysis should always use FDR.
+
+## 3. Power curves (strict vs relaxed gate)
+
+5 gradient genes (negative coefficient, induced near tumor) and 495
+background genes per dataset. Four effect sizes (`|beta|` = 0.002, 0.005,
+0.01, 0.02) × three sample sizes (N = 3, 5, 10) × 30 iterations each.
+
+```{r power-curves, fig.width = 8, fig.height = 5}
+power_strict  <- readRDS(system.file(
+  "extdata/bench_power_results.rds", package = "ripple"
+))$summary
+power_relaxed <- readRDS(system.file(
+  "extdata/bench_power_relaxed_results.rds", package = "ripple"
+))$summary
+
+power_combined <- rbindlist(list(
+  cbind(power_strict,  gate = "Strict (sign = 1.0)"),
+  cbind(power_relaxed, gate = "Relaxed (sign >= 0.75)")
+), use.names = TRUE)
+power_combined[, gate := factor(gate,
+  levels = c("Strict (sign = 1.0)", "Relaxed (sign >= 0.75)"))]
+
+ggplot(
+  power_combined,
+  aes(
+    x = abs(beta), y = mean_power,
+    colour = factor(n_samples), linetype = gate,
+    group = interaction(n_samples, gate)
+  )
+) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.5) +
+  scale_x_log10(labels = scales::label_number()) +
+  scale_colour_brewer(palette = "Set1", name = "N") +
+  scale_linetype_manual(values = c(
+    "Strict (sign = 1.0)"    = "solid",
+    "Relaxed (sign >= 0.75)" = "dashed"
+  ), name = "Gate") +
+  labs(
+    x = expression("|gradient score " * beta * "| (per " * mu * "m)"),
+    y = "Power (sensitivity)",
+    title = "Power to detect planted gradient genes"
+  ) +
+  theme_ripple(base_size = 12) +
+  theme(legend.position = "right", legend.box = "vertical")
+```
+
+Headline numbers (matching paper Figure 2C):
+
+- At `|beta| >= 0.005` (a typical biological gradient), power is ~100 %
+  for N >= 5 under both gates.
+- At `|beta| = 0.002` (the smallest tested), the relaxed gate gains
+  +5 percentage points at N = 5 and +14 pp at N = 10 vs strict.
+- At N = 3 the gates coincide exactly (sign >= 0.75 of 3 ≡ sign = 1.0
+  in this implementation).
+
+```{r power-table}
+knitr::kable(
+  power_strict[, .(
+    beta = sprintf("%.3f", beta), N = n_samples,
+    power = sprintf("%.2f", mean_power),
+    sd    = sprintf("%.2f", sd_power),
+    fdr   = sprintf("%.3f", mean_fdr)
+  )],
+  col.names = c("|beta|", "N", "Power", "SD", "Observed FDR"),
+  caption = "Power and observed FDR by effect size and sample count (strict gate)."
+)
+```
+
+## 4. Runtime and memory
+
+End-to-end `run_ripple()` wall time and peak resident memory across
+three synthetic dataset sizes.
+
+```{r runtime, fig.width = 7, fig.height = 4}
+rt <- readRDS(system.file("extdata/bench_runtime_results.rds",
+                          package = "ripple"))$per_run
+
+rt_summary <- rt[, .(
+  median_t  = median(t_ripple),
+  median_mb = median(peak_mb)
+), by = .(size, n_cells, n_genes, n_samples)]
+rt_summary[, size := factor(size, levels = c("small", "medium", "large"))]
+setorder(rt_summary, size)
+
+knitr::kable(
+  rt_summary[, .(
+    size, cells = n_cells, genes = n_genes, N = n_samples,
+    `time (s)`     = sprintf("%.1f", median_t),
+    `peak RAM (MB)` = sprintf("%.0f", median_mb)
+  )],
+  caption = "Median runtime and peak RAM per dataset size (10 reps each)."
+)
+
+rt_long <- melt(
+  rt_summary, id.vars = "size",
+  measure.vars = c("median_t", "median_mb"),
+  variable.name = "metric", value.name = "value"
+)
+rt_long[, metric := fifelse(metric == "median_t",
+                            "Time (s)", "Peak RAM (MB)")]
+
+ggplot(rt_long, aes(x = size, y = value, fill = metric)) +
+  geom_col(position = position_dodge(width = 0.75), width = 0.7) +
+  geom_text(aes(label = round(value)),
+            position = position_dodge(width = 0.75),
+            vjust = -0.3, size = 3.5) +
+  scale_fill_manual(values = c(
+    "Time (s)"      = "#6A3D9A",
+    "Peak RAM (MB)" = "#FF7F00"
+  ), name = NULL) +
+  scale_y_log10() +
+  labs(
+    x = "Dataset size", y = "value (log scale)",
+    title = "RIPPLE runtime and peak memory"
+  ) +
+  theme_ripple(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+## Reproducing paper Figure 2
+
+The exact 4-panel figure used in the paper (with Wilson CIs, theoretical
+floors, and zero-observation triangles) is rendered by:
+
+```{r render-fig2, eval = FALSE}
+source("paper/render_figures.R")
+# writes paper/figures/fig_2_stat_validation.{pdf,png}
+```
+
+## Re-running the benchmarks from scratch
+
+The benchmark scripts live under `data-raw/benchmarks/`. Each writes
+its RDS output to `inst/extdata/`.
+
+```{r rerun, eval = FALSE}
+# Strict-gate null calibration (~5 min, 50 iters x 3 sample sizes)
+source("data-raw/benchmarks/bench_null_hires.R")
+
+# Relaxed-gate null calibration
+source("data-raw/benchmarks/bench_null_hires_relaxed.R")
+
+# Power benchmark (~30 min, 4 effect sizes x 3 sample sizes x 30 iters)
+source("data-raw/benchmarks/bench_power.R")
+
+# Relaxed-gate power
+source("data-raw/benchmarks/bench_power_relaxed.R")
+
+# Runtime / memory (~10 min, 3 sizes x 10 reps)
+source("data-raw/benchmarks/bench_runtime.R")
+```
 
 ## Session info
 

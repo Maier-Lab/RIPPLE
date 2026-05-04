@@ -1,0 +1,222 @@
+---
+title: "Getting started with RIPPLE"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with RIPPLE}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 5,
+  out.width = "100%"
+)
+```
+
+This vignette runs RIPPLE end-to-end on the bundled synthetic dataset
+`ripple_mock_data` in under a minute. By the end you will have run the
+core analysis, inspected the QC dashboard, and recovered the planted
+gradient signal — the same workflow used on real data, just on a small
+toy example so it's fast to follow.
+
+For the deeper applied tutorial (real CosMx NSCLC, ~765 K cells, 5
+patients), see `vignette("cosmx_nsclc_walkthrough", package = "ripple")`.
+
+## What RIPPLE answers
+
+> *For each gene in a target cell type, does expression change as a
+> function of physical distance to a chosen query cell type —
+> reproducibly across biological replicates?*
+
+This is **not** a spatially-variable-gene test, **not** a co-localisation
+test, and **not** a ligand–receptor pairing. It is a directed, cell-type
+anchored, per-gene gradient test with built-in replicate-aware inference.
+For comparisons against MISTy / nnSVG / CellChat / NicheNet, see
+`vignette("methods_positioning", package = "ripple")`.
+
+## Install and load
+
+```{r install, eval = FALSE}
+# From a private mirror or local source
+remotes::install_github("CMangana/RIPPLE")
+```
+
+```{r libraries, message = FALSE}
+library(ripple)
+library(data.table)
+library(ggplot2)
+```
+
+## The bundled mock dataset
+
+`ripple_mock_data` is a small `SpatialExperiment` with 50 genes × 600
+cells across three samples. It contains three cell types (Tumor,
+T_cell, Fibroblast) and a planted distance-dependent gradient: 5 genes
+named `INDUCED_*` and 5 named `REPRESSED_*` in T cells respond to
+distance from Tumor; the remaining 40 background genes (`BG_*`) do not.
+
+```{r mock-data}
+data(ripple_mock_data)
+ripple_mock_data
+
+table(
+  sample   = ripple_mock_data$sample_id,
+  celltype = ripple_mock_data$cell_type
+)
+```
+
+## Run RIPPLE
+
+`run_ripple()` is the main entry point. It auto-detects target cell
+types (everything except the query), fits a per-sample Poisson GLM with
+cell-size offset, and combines across replicates via Fisher's combined
+p-value with sign-consistency gating.
+
+```{r run-ripple, message = FALSE, warning = FALSE}
+out_dir <- file.path(tempdir(), "ripple_quickstart")
+unlink(out_dir, recursive = TRUE)
+dir.create(out_dir)
+
+results <- run_ripple(
+  input                = ripple_mock_data,
+  query_celltype       = "Tumor",
+  celltype_column      = "cell_type",
+  sample_column        = "sample_id",
+  output_dir           = out_dir,
+  min_cells_per_sample = 30,
+  min_expr_pct         = 0,
+  min_expr_floor       = 10,
+  verbose              = FALSE
+)
+
+results_dir <- file.path(out_dir, "ripple")
+list.files(results_dir, recursive = TRUE)
+```
+
+`run_ripple()` returns a `data.table` of results AND writes a structured
+output directory containing per-cell-type CSVs, QC tables, and the
+per-cell distance file used by `ripple_plot_qc()`.
+
+## Look at the recovered signal
+
+The planted `INDUCED_*` genes should appear with **negative** gradient
+scores (RNA increases near Tumor) and pass FDR < 0.01. The `REPRESSED_*`
+genes should be positive. Background genes (`BG_*`) should be roughly
+uncalibrated noise.
+
+```{r inspect-results}
+head(results[, .(gene, cell_type, median_coef, fisher_fdr, sign_consistency)],
+     5)
+
+# Planted induced genes in T cells
+results[
+  grepl("^INDUCED", gene) & cell_type == "T_cell",
+  .(gene, median_coef, fisher_fdr, sign_consistency)
+]
+
+# Planted repressed genes in T cells
+results[
+  grepl("^REPRESSED", gene) & cell_type == "T_cell",
+  .(gene, median_coef, fisher_fdr, sign_consistency)
+]
+```
+
+All ten planted genes should have the expected sign and full
+sign-consistency (1.0) across the three samples.
+
+## Volcano plot
+
+```{r volcano, fig.height = 5}
+plot_gradient_volcano(
+  results[cell_type == "T_cell"],
+  query_label = "Tumor",
+  n_label     = 12
+)
+```
+
+The 10 planted genes split cleanly: `INDUCED_*` on the left (negative
+gradient score), `REPRESSED_*` on the right, background genes pile up
+near the centre well below the FDR line.
+
+## Specificity classification
+
+`classify_gene_specificity()` separates real cell-type-restricted signal
+from genes that hit many cell types simultaneously — the latter are
+candidate ambient RNA / segmentation contamination.
+
+```{r specificity}
+spec <- classify_gene_specificity(
+  results, fdr_threshold = 0.05, contamination_threshold = 4
+)
+spec
+```
+
+In this clean synthetic dataset every planted gene shows up as
+`specific` (significant in only one cell type — T_cell). On real data
+you will typically see a mix of `specific`, `moderate`, and
+`contamination` classes; the third is what you want to flag.
+
+If you want pathway enrichment (`run_ripple_fgsea()`) to ignore
+contamination-class genes, pass `exclude_contamination = TRUE` —
+**but** read the "Limitations of contamination filtering" section in
+`?run_ripple_fgsea` first, and ideally run with and without the filter
+before reporting. The
+[CosMx walkthrough](cosmx_nsclc_walkthrough.html) shows a side-by-side
+comparison.
+
+## QC dashboard
+
+`ripple_plot_qc()` builds a multi-panel patchwork from the artefacts
+written by `run_ripple()`. It bundles replicate-quality panels (per-sample
+distance density, cell composition, sign consistency, dispersion) with
+specificity / contamination panels (gene counts split by direction and
+specificity, specificity breakdown, top widely-shared genes with optional
+query-marker bleed-through highlighting).
+
+```{r qc-dashboard, fig.width = 14, fig.height = 18}
+qc <- ripple_plot_qc(
+  results_dir,
+  query_signature_genes = c("INDUCED_1", "INDUCED_2", "INDUCED_3"),
+  query_label           = "Tumor",
+  top_n_bleed           = 10
+)
+qc
+```
+
+What to look for on real data:
+
+- **Distance violins** (top-left): heavy right-skew or sample-specific
+  spikes flag tissue-boundary effects.
+- **Cell composition** (top-right): watch for sample dropouts or
+  annotation imbalance — if one sample has 10× fewer T cells, its
+  per-sample GLM will be noisy.
+- **Sign consistency** (mid-left): genes with replicate-consistent
+  direction pile up at 1.0; a flat distribution means most "hits" are
+  driven by single samples and should not be trusted.
+- **Median dispersion** (mid-right): Poisson is appropriate when
+  cell-type medians sit between ~0.3 and ~2 (dashed lines). Cell types
+  above 2 may need a quasi-Poisson model.
+- **Bleed-through** (bottom): if a gene you passed in
+  `query_signature_genes` shows up red AND is significant in many cell
+  types, it is almost certainly ambient RNA from the query.
+
+## Next steps
+
+- **Real data, deep dive:** `vignette("cosmx_nsclc_walkthrough", package = "ripple")`
+  walks through a 765 K-cell, 5-patient CosMx NSCLC analysis — including
+  contamination handling, fGSEA pathway enrichment, ligand–receptor
+  integration, and full reproduction of paper Figure 4.
+- **Statistical validation:** `vignette("benchmarks", package = "ripple")`
+  shows the FDR calibration and power benchmarks that back the method.
+- **Methods comparison:** `vignette("methods_positioning", package = "ripple")`
+  compares RIPPLE against MISTy, nnSVG, CellChat, NicheNet.
+
+## Session info
+
+```{r session-info}
+sessionInfo()
+```
