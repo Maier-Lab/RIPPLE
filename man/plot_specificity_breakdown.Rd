@@ -23,7 +23,11 @@ Typically the output of \code{\link{run_ripple}} or
 \item{fdr_threshold}{Numeric. FDR cutoff (default: \code{0.05}).}
 
 \item{contamination_threshold}{Integer. Number of cell types at or above
-which a gene is flagged as "contamination" (default: \code{4}).}
+which a gene is flagged as "contamination" (default: \code{4}).
+The default is illustrative -- adapt to your panel size and
+annotation granularity. See "Choosing
+\code{contamination_threshold}" in
+\code{\link{classify_gene_specificity}} for guidance.}
 }
 \value{
 A \code{ggplot2} object.

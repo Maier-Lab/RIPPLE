@@ -64,7 +64,11 @@ See "Limitations" below before turning this on.}
 which a gene must be significant (at \code{fdr_col} < 0.05) to be
 classified as contamination. Used only when
 \code{exclude_contamination = TRUE} and \code{specificity_class} is
-not already present. Default: \code{4L}.}
+not already present. Default: \code{4L} -- this is illustrative
+only; the right cutoff depends on how many cell types are in your
+panel and how fine the annotation is. See "Choosing
+\code{contamination_threshold}" in
+\code{\link{classify_gene_specificity}} for guidance.}
 
 \item{exclude_specificity_class}{Optional character vector of
 specificity-class labels (e.g. \code{"contamination"}) to drop from the

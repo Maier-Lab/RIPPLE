@@ -29,7 +29,10 @@ for ambient RNA / segmentation contamination (a query marker showing as
 \item{fdr_threshold}{Numeric. Significance cutoff (default: 0.05).}
 
 \item{contamination_threshold}{Integer. Min number of cell types where a
-gene is significant for the contamination class (default: 4).}
+gene is significant for the contamination class (default: \code{4}).
+The default is illustrative -- tune for your panel size and
+annotation granularity. See
+\code{\link{classify_gene_specificity}} for guidance.}
 
 \item{query_label}{Character. Display label for the query cell type
 (default: "Query").}

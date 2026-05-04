@@ -156,11 +156,29 @@ the number of cell types it appears in and a four-level class
 (`specific`, `moderate`, `ubiquitous`, `contamination`). We compute it
 **once**, here, and reuse it everywhere downstream.
 
+**A note on `contamination_threshold`.** There is no universally
+correct value. The default of `4` is illustrative — it is sensible
+for the ~10-20 cell-type panel here (and for the original HyMy / TDLN
+analyses), but you should pick a cutoff appropriate to **your** data:
+
+- **Few cell types (≤ 5):** a cutoff of 4 is barely reachable;
+  consider 2 or 3.
+- **Many fine subtypes (~30+):** a cutoff of 4 is too lenient and
+  will flag legitimate lineage-shared biology; consider 6-10.
+- **Annotation granularity:** fine subtypes share more markers than
+  coarse types; raise the cutoff accordingly.
+- **Sanity check:** plot `n_celltypes` as a histogram across all
+  significant genes — the cutoff should sit in the right tail,
+  separating clear multi-cell-type genes from cell-type-specific
+  signal.
+
+Whatever value you choose, **report it in the methods**.
+
 ```{r preflight-contam}
 spec <- classify_gene_specificity(
   results,
   fdr_threshold           = 0.05,
-  contamination_threshold = 4   # significant in >= 4 cell types -> contamination
+  contamination_threshold = 4   # tune for your panel; see note above
 )
 
 table(spec$specificity_class)

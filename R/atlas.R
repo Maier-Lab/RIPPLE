@@ -334,7 +334,11 @@ NULL
 #'   Default: "fisher_fdr".
 #' @param fdr_threshold Numeric. Significance cutoff. Default: 0.05.
 #' @param contamination_threshold Integer. Flag genes significant in at least
-#'   this many cell types as potential contamination. Default: 4.
+#'   this many cell types as potential contamination. Default: \code{4}
+#'   -- this is illustrative only; tune for your panel size and
+#'   annotation granularity. See "Choosing
+#'   \code{contamination_threshold}" in
+#'   \code{\link{classify_gene_specificity}} for guidance.
 #' @param top_per_celltype Integer. Number of top genes per cell type in the
 #'   dotplot. Default: 5.
 #' @param run_fgsea Logical. Whether to run pathway enrichment (requires

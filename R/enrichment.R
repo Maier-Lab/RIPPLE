@@ -127,7 +127,11 @@ NULL
 #'   which a gene must be significant (at \code{fdr_col} < 0.05) to be
 #'   classified as contamination. Used only when
 #'   \code{exclude_contamination = TRUE} and \code{specificity_class} is
-#'   not already present. Default: \code{4L}.
+#'   not already present. Default: \code{4L} -- this is illustrative
+#'   only; the right cutoff depends on how many cell types are in your
+#'   panel and how fine the annotation is. See "Choosing
+#'   \code{contamination_threshold}" in
+#'   \code{\link{classify_gene_specificity}} for guidance.
 #' @param exclude_specificity_class Optional character vector of
 #'   specificity-class labels (e.g. \code{"contamination"}) to drop from the
 #'   ranked list. Lower-level alternative to \code{exclude_contamination}
@@ -396,7 +400,10 @@ run_ripple_fgsea <- function(results,
 #'   Default: "fisher_fdr".
 #' @param fdr_threshold Numeric. Significance cutoff. Default: 0.05.
 #' @param contamination_threshold Integer. Genes significant in at least this
-#'   many cell types are flagged as "contamination". Default: 4.
+#'   many cell types are flagged as "contamination". Default: \code{4}.
+#'   \strong{This default is illustrative, not universal -- you should pick a
+#'   value appropriate to your dataset.} See "Choosing
+#'   \code{contamination_threshold}" below.
 #'
 #' @return A \code{data.table} with columns:
 #' \describe{
@@ -408,6 +415,37 @@ run_ripple_fgsea <- function(results,
 #'     "moderate" (2-3 cell types), "ubiquitous" (4+ but below contamination
 #'     threshold), or "contamination" (>= contamination_threshold).}
 #' }
+#'
+#' @section Choosing \code{contamination_threshold}:
+#' There is no universally correct cutoff. The right value depends on
+#' three things:
+#' \itemize{
+#'   \item \strong{How many cell types are in your panel.} The default of
+#'     4 is sensible for ~10-20 cell types (the typical scale of a
+#'     mid-resolution immune / stromal annotation, including the original
+#'     HyMy / TDLN analyses). With ~3-5 cell types the cutoff is barely
+#'     reachable -- everything will be classified as "specific" or
+#'     "moderate". With ~30+ fine subtypes the cutoff is too lenient --
+#'     many genes that are biologically expressed across a few related
+#'     subtypes will pass without being flagged.
+#'   \item \strong{Annotation granularity.} Coarse types (e.g. "T cell",
+#'     "myeloid") share fewer marker genes than fine subtypes (e.g.
+#'     "CD4 memory", "CD8 effector", "Treg"). Fine annotations need a
+#'     larger cutoff to avoid flagging real lineage-shared biology as
+#'     contamination.
+#'   \item \strong{Biological prior.} Cytokines, MHC genes, ribosomal
+#'     genes, and stress-response programs are legitimately expressed
+#'     across many cell types -- the cross-cell-type heuristic cannot
+#'     tell them apart from ambient RNA on its own. Inspect the flagged
+#'     genes and decide whether the cutoff is doing what you want.
+#' }
+#' \strong{Recommended workflow:} run with the default first, look at
+#' the flagged gene list (\code{spec[specificity_class ==
+#' "contamination"]}), and adjust up or down. A useful sanity check is
+#' to plot \code{n_celltypes} as a histogram across all significant
+#' genes -- the cutoff should sit in the right tail, separating clear
+#' multi-cell-type genes from cell-type-specific signal. Whatever value
+#' you choose, report it explicitly in the methods.
 #'
 #' @examples
 #' \dontrun{

@@ -1702,6 +1702,10 @@ plot_k_diagnostics <- function(input,
 #' @param fdr_threshold Numeric. FDR cutoff (default: \code{0.05}).
 #' @param contamination_threshold Integer. Number of cell types at or above
 #'   which a gene is flagged as "contamination" (default: \code{4}).
+#'   The default is illustrative -- adapt to your panel size and
+#'   annotation granularity. See "Choosing
+#'   \code{contamination_threshold}" in
+#'   \code{\link{classify_gene_specificity}} for guidance.
 #' @param query_label Character. Display label for the query cell type
 #'   (default: \code{"Query"}). Used in legend entries like
 #'   "Query-induced (specific)".
@@ -1941,7 +1945,10 @@ plot_specificity_breakdown <- function(results,
 #'   "induced" across many target cell types).
 #' @param fdr_threshold Numeric. Significance cutoff (default: 0.05).
 #' @param contamination_threshold Integer. Min number of cell types where a
-#'   gene is significant for the contamination class (default: 4).
+#'   gene is significant for the contamination class (default: \code{4}).
+#'   The default is illustrative -- tune for your panel size and
+#'   annotation granularity. See
+#'   \code{\link{classify_gene_specificity}} for guidance.
 #' @param query_label Character. Display label for the query cell type
 #'   (default: "Query").
 #' @param top_n_bleed Integer. Number of top widely-shared genes to show in

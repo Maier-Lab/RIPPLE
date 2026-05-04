@@ -21,7 +21,10 @@ Default: "fisher_fdr".}
 \item{fdr_threshold}{Numeric. Significance cutoff. Default: 0.05.}
 
 \item{contamination_threshold}{Integer. Genes significant in at least this
-many cell types are flagged as "contamination". Default: 4.}
+many cell types are flagged as "contamination". Default: \code{4}.
+\strong{This default is illustrative, not universal -- you should pick a
+value appropriate to your dataset.} See "Choosing
+\code{contamination_threshold}" below.}
 }
 \value{
 A \code{data.table} with columns:
@@ -45,6 +48,39 @@ artifacts (query transcripts leaking into neighboring cells) than genuine
 paracrine effects. This function provides a simple classification to flag
 such potential artifacts.
 }
+\section{Choosing \code{contamination_threshold}}{
+
+There is no universally correct cutoff. The right value depends on
+three things:
+\itemize{
+\item \strong{How many cell types are in your panel.} The default of
+4 is sensible for ~10-20 cell types (the typical scale of a
+mid-resolution immune / stromal annotation, including the original
+HyMy / TDLN analyses). With ~3-5 cell types the cutoff is barely
+reachable -- everything will be classified as "specific" or
+"moderate". With ~30+ fine subtypes the cutoff is too lenient --
+many genes that are biologically expressed across a few related
+subtypes will pass without being flagged.
+\item \strong{Annotation granularity.} Coarse types (e.g. "T cell",
+"myeloid") share fewer marker genes than fine subtypes (e.g.
+"CD4 memory", "CD8 effector", "Treg"). Fine annotations need a
+larger cutoff to avoid flagging real lineage-shared biology as
+contamination.
+\item \strong{Biological prior.} Cytokines, MHC genes, ribosomal
+genes, and stress-response programs are legitimately expressed
+across many cell types -- the cross-cell-type heuristic cannot
+tell them apart from ambient RNA on its own. Inspect the flagged
+genes and decide whether the cutoff is doing what you want.
+}
+\strong{Recommended workflow:} run with the default first, look at
+the flagged gene list (\code{spec[specificity_class ==
+"contamination"]}), and adjust up or down. A useful sanity check is
+to plot \code{n_celltypes} as a histogram across all significant
+genes -- the cutoff should sit in the right tail, separating clear
+multi-cell-type genes from cell-type-specific signal. Whatever value
+you choose, report it explicitly in the methods.
+}
+
 \examples{
 \dontrun{
 results <- data.table::fread("all_genes_results.csv")
