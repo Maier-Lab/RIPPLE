@@ -2197,13 +2197,14 @@ ripple_plot_qc <- function(results_dir,
 # functions canonicalise to confounder_specific / confounder_driven /
 # no_conf_result so a single palette serves any dataset.
 #
-# Palette (https://coolors.co/palette/335c67-99a88c-fff3b0-e09f3e-9e2a2b-540b0e):
-#   confounder_specific = #335C67  (dark teal, the canonical "good" class)
-#   enhanced            = #540B0E  (deep maroon, strongest positive signal)
-#   confounder_driven   = #E09F3E  (amber warning, signal explained by control)
-#   underpowered        = #99A88C  (sage; explicit in spec)
-#   reversed            = #9E2A2B  (bright red, sign flip)
-#   no_conf_result      = #FFF3B0  (cream; explicit in spec)
+# Palette (coolors base ffc759-607196-babfd1-e8e9ed, with #DB4C70 for
+# enhanced and #643A71 for the rare "reversed" class):
+#   confounder_specific = #607196  (steel blue, the canonical "good" class)
+#   enhanced            = #DB4C70  (rose, strongest positive signal)
+#   confounder_driven   = #FFC759  (warm amber, signal explained by control)
+#   underpowered        = #BABFD1  (light lavender-grey, neutral)
+#   reversed            = #643A71  (deep purple, sign-flip)
+#   no_conf_result      = #E8E9ED  (very light grey, "no info")
 .confounder_class_levels <- function() {
   c("confounder_specific", "enhanced", "confounder_driven",
     "underpowered", "reversed", "no_conf_result")
@@ -2211,12 +2212,12 @@ ripple_plot_qc <- function(results_dir,
 
 .confounder_class_palette <- function() {
   c(
-    confounder_specific = "#335C67",
-    enhanced            = "#540B0E",
-    confounder_driven   = "#E09F3E",
-    underpowered        = "#99A88C",
-    reversed            = "#9E2A2B",
-    no_conf_result      = "#FFF3B0"
+    confounder_specific = "#607196",
+    enhanced            = "#DB4C70",
+    confounder_driven   = "#FFC759",
+    underpowered        = "#BABFD1",
+    reversed            = "#643A71",
+    no_conf_result      = "#E8E9ED"
   )
 }
 
