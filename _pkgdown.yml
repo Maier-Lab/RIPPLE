@@ -94,6 +94,8 @@ reference:
   - plot_gradient_curve
   - plot_prop_curve
   - plot_decay_curve
+  - plot_confounder_bar
+  - plot_confounder_scatter
   - create_gradient_volcano
   - create_forest_plot
   - create_coefficient_strips

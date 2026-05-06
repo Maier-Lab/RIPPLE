@@ -2185,3 +2185,310 @@ ripple_plot_qc <- function(results_dir,
 
   combined
 }
+
+
+# =============================================================================
+# Stage 4 (confounder) classification plots
+# =============================================================================
+
+# Internal: canonical class order, palette, and renaming for Stage 4 outputs.
+# The package pipeline emits a dynamic class name "<query_label>_specific"
+# and the legacy names niche_driven / no_stage2_result; the new plot
+# functions canonicalise to confounder_specific / confounder_driven /
+# no_conf_result so a single palette serves any dataset.
+#
+# Palette (https://coolors.co/palette/335c67-99a88c-fff3b0-e09f3e-9e2a2b-540b0e):
+#   confounder_specific = #335C67  (dark teal, the canonical "good" class)
+#   enhanced            = #540B0E  (deep maroon, strongest positive signal)
+#   confounder_driven   = #E09F3E  (amber warning, signal explained by control)
+#   underpowered        = #99A88C  (sage; explicit in spec)
+#   reversed            = #9E2A2B  (bright red, sign flip)
+#   no_conf_result      = #FFF3B0  (cream; explicit in spec)
+.confounder_class_levels <- function() {
+  c("confounder_specific", "enhanced", "confounder_driven",
+    "underpowered", "reversed", "no_conf_result")
+}
+
+.confounder_class_palette <- function() {
+  c(
+    confounder_specific = "#335C67",
+    enhanced            = "#540B0E",
+    confounder_driven   = "#E09F3E",
+    underpowered        = "#99A88C",
+    reversed            = "#9E2A2B",
+    no_conf_result      = "#FFF3B0"
+  )
+}
+
+.canonicalize_confounder_classification <- function(x) {
+  x <- as.character(x)
+  # Anything ending in "_specific" (the dynamic <query_label>_specific) ->
+  # confounder_specific. Already-canonical "confounder_specific" is a no-op.
+  x[grepl("_specific$", x)] <- "confounder_specific"
+  # Legacy -> canonical
+  x[x == "niche_driven"]     <- "confounder_driven"
+  x[x == "no_stage2_result"] <- "no_conf_result"
+  x
+}
+
+
+#' Stage 4 classification per cell type (stacked bar)
+#'
+#' Stacked bar chart of how Stage 1-significant genes break down across the
+#' Stage 4 (confounder-controlled) classification, one bar per target cell
+#' type. Cell types are ordered by total gene count descending; the total
+#' is annotated above each bar. Use this for the "did the gradient survive
+#' confounder control" check across an entire annotation.
+#'
+#' Class names are canonicalised so the same palette serves any dataset:
+#' the dynamic \code{<query_label>_specific} produced by
+#' \code{run_ripple_confounder()} becomes \code{confounder_specific}; legacy
+#' \code{niche_driven} and \code{no_stage2_result} become
+#' \code{confounder_driven} and \code{no_conf_result}.
+#'
+#' @param stage4_results A \code{data.table} or \code{data.frame} with one
+#'   row per gene-per-cell_type, typically the output of
+#'   \code{\link{run_ripple_confounder}} (\code{stage2_multitarget_results.csv}
+#'   or \code{stage2_all_results.csv} aggregated across cell types).
+#' @param classification_column Character. Column carrying the Stage 4
+#'   class. Default \code{"classification"}.
+#' @param cell_type_column Character. Column with the target cell type.
+#'   Default \code{"cell_type"}.
+#' @param query_label,control_label Optional character. Used in the
+#'   subtitle when supplied (e.g. "Bivariate model: Tumor query, CAF
+#'   control"). \code{NULL} suppresses the subtitle.
+#' @param title Character or NULL. Plot title.
+#' @param base_size Numeric. \code{theme_ripple} base size (default 13).
+#'
+#' @return A \code{ggplot} object.
+#'
+#' @examples
+#' \dontrun{
+#' s4 <- data.table::fread(system.file(
+#'   "extdata/naive_trc_cached/confounder_cxcl12/stage2_multitarget_results.csv",
+#'   package = "ripple"))
+#' plot_confounder_bar(
+#'   s4,
+#'   query_label   = "TRC-Ccl21a",
+#'   control_label = "TRC-Cxcl12"
+#' )
+#' }
+#'
+#' @importFrom data.table as.data.table copy
+#' @importFrom ggplot2 ggplot aes geom_bar geom_text scale_fill_manual
+#'   scale_y_continuous expansion labs theme element_text margin unit
+#' @export
+plot_confounder_bar <- function(stage4_results,
+                                classification_column = "classification",
+                                cell_type_column      = "cell_type",
+                                query_label           = NULL,
+                                control_label         = NULL,
+                                title                 = NULL,
+                                base_size             = 13) {
+  dt <- data.table::as.data.table(data.table::copy(stage4_results))
+  required <- c(classification_column, cell_type_column)
+  miss <- setdiff(required, names(dt))
+  if (length(miss) > 0) {
+    stop("Missing required columns in stage4_results: ",
+         paste(miss, collapse = ", "), call. = FALSE)
+  }
+
+  dt[, classification := .canonicalize_confounder_classification(
+    get(classification_column)
+  )]
+  if (cell_type_column != "cell_type") {
+    data.table::setnames(dt, cell_type_column, "cell_type")
+  }
+
+  class_levels <- .confounder_class_levels()
+  class_cols   <- .confounder_class_palette()
+
+  dt[, classification := factor(classification, levels = class_levels)]
+  ct_totals <- dt[, .(total = .N), by = cell_type][order(-total)]
+  dt[, cell_type := factor(cell_type, levels = ct_totals$cell_type)]
+
+  if (is.null(title)) title <- "Stage 4 classification per target cell type"
+  subtitle <- if (!is.null(query_label) && !is.null(control_label)) {
+    sprintf("Bivariate model: %s query, %s control", query_label, control_label)
+  } else if (!is.null(query_label)) {
+    sprintf("Bivariate model: %s query", query_label)
+  } else {
+    NULL
+  }
+
+  ggplot2::ggplot(dt, ggplot2::aes(x = cell_type, fill = classification)) +
+    ggplot2::geom_bar() +
+    ggplot2::geom_text(
+      data = ct_totals,
+      ggplot2::aes(x = cell_type, y = total, label = total),
+      inherit.aes = FALSE, vjust = -0.4, size = 3.2, colour = "grey25"
+    ) +
+    ggplot2::scale_fill_manual(values = class_cols, name = NULL,
+                               drop = FALSE) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.1))) +
+    ggplot2::labs(
+      x = NULL, y = "Stage-1 significant genes",
+      title = title,
+      subtitle = subtitle
+    ) +
+    theme_ripple(base_size = base_size) +
+    ggplot2::theme(
+      plot.title    = ggplot2::element_text(face = "bold"),
+      plot.subtitle = ggplot2::element_text(size = 9, colour = "grey25",
+                                            margin = ggplot2::margin(b = 6)),
+      axis.text.x   = ggplot2::element_text(angle = 30, hjust = 1, size = 10),
+      legend.position = "bottom",
+      legend.key.size = ggplot2::unit(0.4, "cm")
+    )
+}
+
+
+#' Stage 4 confounder scatter (Stage 1 vs Stage 2 gradient score)
+#'
+#' Scatter of per-gene Stage 1 gradient score vs Stage 2 (bivariate)
+#' gradient score for a single target cell type, coloured by the Stage 4
+#' classification. Genes on the dashed \eqn{y = x} diagonal kept their
+#' Stage 1 magnitude after controlling for the confounder; genes that
+#' fell toward zero on the y-axis are confounder-driven; genes pushed
+#' further from zero on the y-axis are enhanced. Same class palette and
+#' canonicalisation as \code{\link{plot_confounder_bar}}.
+#'
+#' @param stage4_results A \code{data.table} or \code{data.frame} with
+#'   per-gene Stage 4 results for a single target cell type, typically
+#'   \code{stage2_all_results.csv} from
+#'   \code{\link{run_ripple_confounder}} filtered to one cell type.
+#' @param stage1_coef_column Character. Stage 1 gradient score column.
+#'   Default \code{"stage1_coef"}.
+#' @param stage2_coef_column Character. Stage 2 (bivariate) gradient
+#'   score column. Default \code{"stage2_median_coef"}.
+#' @param classification_column Character. Stage 4 class column.
+#'   Default \code{"classification"}.
+#' @param gene_column Character. Gene name column. Default \code{"gene"}.
+#' @param label_genes Optional character vector of genes to label via
+#'   \code{ggrepel::geom_text_repel}. \code{NULL} (default) = no labels.
+#' @param query_label,control_label Optional character. \code{query_label}
+#'   appears parenthetically on the x-axis label and in the subtitle
+#'   prefix; \code{control_label} appears in the y-axis label
+#'   ("controlled for ...").
+#' @param title Character or NULL. Plot title.
+#' @param base_size Numeric. \code{theme_ripple} base size (default 13).
+#'
+#' @return A \code{ggplot} object.
+#'
+#' @examples
+#' \dontrun{
+#' s4 <- data.table::fread(system.file(
+#'   "extdata/naive_trc_cached/confounder_cxcl12/stage2_all_results.csv",
+#'   package = "ripple"))
+#' plot_confounder_scatter(
+#'   s4,
+#'   label_genes   = c("Ccr7", "Sell", "Lef1", "Tcf7", "Cxcr4", "Gzma"),
+#'   query_label   = "TRC-Ccl21a",
+#'   control_label = "TRC-Cxcl12"
+#' )
+#' }
+#'
+#' @importFrom data.table as.data.table copy
+#' @importFrom ggplot2 ggplot aes geom_abline geom_hline geom_vline geom_point
+#'   scale_colour_manual coord_cartesian labs theme element_text margin unit
+#' @importFrom ggrepel geom_text_repel
+#' @export
+plot_confounder_scatter <- function(stage4_results,
+                                    stage1_coef_column    = "stage1_coef",
+                                    stage2_coef_column    = "stage2_median_coef",
+                                    classification_column = "classification",
+                                    gene_column           = "gene",
+                                    label_genes           = NULL,
+                                    query_label           = NULL,
+                                    control_label         = NULL,
+                                    title                 = NULL,
+                                    base_size             = 13) {
+  dt <- data.table::as.data.table(data.table::copy(stage4_results))
+  required <- c(stage1_coef_column, stage2_coef_column,
+                classification_column, gene_column)
+  miss <- setdiff(required, names(dt))
+  if (length(miss) > 0) {
+    stop("Missing required columns in stage4_results: ",
+         paste(miss, collapse = ", "), call. = FALSE)
+  }
+
+  dt[, classification := .canonicalize_confounder_classification(
+    get(classification_column)
+  )]
+  class_levels <- .confounder_class_levels()
+  class_cols   <- .confounder_class_palette()
+  dt[, classification := factor(classification, levels = class_levels)]
+
+  # Per-class counts for subtitle, in canonical order, only classes present
+  class_summary <- dt[, .N, by = classification][order(classification)]
+  count_str <- paste(
+    apply(class_summary, 1, function(r) sprintf("%s (%s)", r[[1]], r[[2]])),
+    collapse = "  ·  "
+  )
+  subtitle <- if (!is.null(query_label)) {
+    paste0(query_label, ":  ", count_str)
+  } else {
+    count_str
+  }
+
+  axis_max <- max(
+    abs(c(dt[[stage1_coef_column]], dt[[stage2_coef_column]])),
+    na.rm = TRUE
+  ) * 1.05
+  if (!is.finite(axis_max) || axis_max == 0) axis_max <- 1
+
+  x_lab <- if (!is.null(query_label)) {
+    bquote("Stage 1 gradient score " * beta ~ "(" * .(query_label) * ")")
+  } else {
+    expression("Stage 1 gradient score " * beta)
+  }
+  y_lab <- if (!is.null(control_label)) {
+    bquote("Stage 4 gradient score " * beta ~
+             "(controlled for " * .(control_label) * ")")
+  } else {
+    expression("Stage 4 gradient score " * beta)
+  }
+
+  p <- ggplot2::ggplot(
+    dt, ggplot2::aes(
+      x = .data[[stage1_coef_column]],
+      y = .data[[stage2_coef_column]],
+      colour = .data$classification
+    )
+  ) +
+    ggplot2::geom_abline(slope = 1, intercept = 0,
+                         linetype = "dashed", colour = "grey50") +
+    ggplot2::geom_hline(yintercept = 0, linewidth = 0.3, colour = "grey80") +
+    ggplot2::geom_vline(xintercept = 0, linewidth = 0.3, colour = "grey80") +
+    ggplot2::geom_point(alpha = 0.55, size = 1.6) +
+    ggplot2::scale_colour_manual(values = class_cols, name = NULL,
+                                 drop = FALSE) +
+    ggplot2::coord_cartesian(xlim = c(-axis_max, axis_max),
+                             ylim = c(-axis_max, axis_max)) +
+    ggplot2::labs(x = x_lab, y = y_lab,
+                  title = title, subtitle = subtitle) +
+    theme_ripple(base_size = base_size) +
+    ggplot2::theme(
+      plot.title    = ggplot2::element_text(face = "bold"),
+      plot.subtitle = ggplot2::element_text(size = 9, colour = "grey25",
+                                            margin = ggplot2::margin(b = 6)),
+      legend.position = "bottom",
+      legend.key.size = ggplot2::unit(0.4, "cm")
+    )
+
+  if (!is.null(label_genes)) {
+    label_dt <- dt[get(gene_column) %in% label_genes]
+    if (nrow(label_dt) > 0) {
+      p <- p + ggrepel::geom_text_repel(
+        data = label_dt,
+        ggplot2::aes(label = .data[[gene_column]]),
+        size = 3.3, max.overlaps = 20, box.padding = 0.4,
+        seed = 1, min.segment.length = 0,
+        show.legend = FALSE, inherit.aes = TRUE
+      )
+    }
+  }
+
+  p
+}
+

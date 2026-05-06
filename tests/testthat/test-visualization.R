@@ -246,6 +246,76 @@ test_that("plot_decay_curve still works as a deprecated alias", {
   expect_s3_class(p, "ggplot")
 })
 
+test_that("plot_confounder_bar renders + canonicalises legacy class names", {
+  s4 <- data.table::data.table(
+    gene           = paste0("g", 1:8),
+    cell_type      = c("CT1","CT1","CT1","CT2","CT2","CT3","CT3","CT3"),
+    classification = c("TRC-Ccl21a_specific", "enhanced", "niche_driven",
+                       "underpowered", "no_stage2_result",
+                       "TRC-Ccl21a_specific", "confounder_specific",
+                       "confounder_driven")
+  )
+  p <- plot_confounder_bar(s4, query_label = "TRC-Ccl21a",
+                           control_label = "TRC-Cxcl12")
+  expect_s3_class(p, "ggplot")
+  # All raw classes (legacy + dynamic + already-canonical) collapsed to the
+  # canonical 5; reversed not present
+  cls <- as.character(unique(p$data$classification))
+  expect_true(all(cls %in% c("confounder_specific", "enhanced",
+                             "confounder_driven", "underpowered",
+                             "no_conf_result")))
+  # Cell types ordered by total descending: CT1 (3) and CT3 (3) tie before CT2 (2)
+  ct_order <- levels(p$data$cell_type)
+  expect_equal(ct_order[length(ct_order)], "CT2")
+  # Subtitle reflects query/control labels
+  expect_match(p$labels$subtitle, "TRC-Ccl21a query")
+  expect_match(p$labels$subtitle, "TRC-Cxcl12 control")
+})
+
+test_that("plot_confounder_scatter labels requested genes via ggrepel", {
+  s4 <- data.table::data.table(
+    gene = c("Ccr7", "Sell", "Bg1", "Bg2", "Bg3"),
+    stage1_coef        = c(-0.005, -0.004,  0.001,  0.002, -0.003),
+    stage2_median_coef = c(-0.004, -0.0035, 0.0001, 0.0015, -0.0001),
+    classification     = c("TRC-Ccl21a_specific", "enhanced",
+                           "underpowered", "niche_driven",
+                           "no_stage2_result"),
+    cell_type          = "T_cell_all"
+  )
+  p <- plot_confounder_scatter(
+    s4,
+    label_genes   = c("Ccr7", "Sell"),
+    query_label   = "TRC-Ccl21a",
+    control_label = "TRC-Cxcl12"
+  )
+  expect_s3_class(p, "ggplot")
+  # Layers: 3 ref-lines (abline, hline, vline), 1 point, 1 text-repel
+  geoms <- vapply(p$layers, function(l) class(l$geom)[1], character(1))
+  expect_true("GeomTextRepel" %in% geoms)
+  txt_idx <- which(geoms == "GeomTextRepel")
+  expect_equal(nrow(p$layers[[txt_idx]]$data), 2L)
+  # Coloured by canonicalised class
+  cls <- as.character(unique(p$data$classification))
+  expect_true(all(cls %in% c("confounder_specific", "enhanced",
+                             "confounder_driven", "underpowered",
+                             "no_conf_result")))
+  # No labels when label_genes = NULL
+  p2 <- plot_confounder_scatter(s4)
+  geoms2 <- vapply(p2$layers, function(l) class(l$geom)[1], character(1))
+  expect_false("GeomTextRepel" %in% geoms2)
+})
+
+test_that("plot_confounder_* error on missing required columns", {
+  expect_error(
+    plot_confounder_bar(data.table::data.table(gene = "g1")),
+    "Missing required columns"
+  )
+  expect_error(
+    plot_confounder_scatter(data.table::data.table(gene = "g1")),
+    "Missing required columns"
+  )
+})
+
 test_that("ripple_plot_qc errors when summary file is missing", {
   bad <- tempfile("ripple_qc_bad_")
   dir.create(bad)
