@@ -18,7 +18,7 @@ plot_gradient_curve(
   y_lab = NULL,
   query_label = "Query",
   max_distance = 200,
-  color = "#E74C3C",
+  color = NULL,
   sample_alpha = 0.4,
   sample_linewidth = 0.4
 )
@@ -79,8 +79,14 @@ mode.}
 
 \item{max_distance}{Numeric. Maximum distance for x-axis (default: 200).}
 
-\item{color}{Character. Line / ribbon / point color (default:
-\code{"#E74C3C"}).}
+\item{color}{Character or \code{NULL}. Line / ribbon / point colour.
+Default \code{NULL} picks a sign-aware colour based on
+\code{gradient_score}: red (\code{#B2182B}) when negative (induced
+near query), blue (\code{#2166AC}) when positive (repressed near
+query). Falls back to \code{#E74C3C} if the gradient sign cannot
+be determined (no \code{gradient_score} and no \code{results}
+lookup). Matches the \code{plot_gradient_volcano()} direction
+palette so the volcano and curve panels read consistently.}
 
 \item{sample_alpha}{Numeric. Alpha for the per-sample lines in
 per-sample mode (default \code{0.4}).}

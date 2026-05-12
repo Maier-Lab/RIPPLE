@@ -18,7 +18,8 @@ plot_gradient_volcano(
   direction_palette = NULL,
   direction_labels = NULL,
   x_axis_label = NULL,
-  point_size = 0.8
+  point_size = 0.8,
+  base_size = 12
 )
 }
 \arguments{
@@ -88,6 +89,11 @@ Default \code{NULL} uses the generic
 \item{point_size}{Numeric. Fixed point size used when
 \code{color_by_direction = TRUE}. Default \code{0.8}. Ignored when
 \code{color_by_direction = FALSE} (size aesthetic is used instead).}
+
+\item{base_size}{Numeric. Base font size for \code{theme_ripple()}.
+Default \code{12}. Pass the figure-wide \code{BASE_SIZE} from a
+multi-panel render so axis text scales consistently with surrounding
+panels (avoids double-applying \code{theme_ripple()} downstream).}
 }
 \value{
 A \code{ggplot} object.

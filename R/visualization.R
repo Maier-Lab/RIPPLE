@@ -276,6 +276,10 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
 #' @param point_size Numeric. Fixed point size used when
 #'   \code{color_by_direction = TRUE}. Default \code{0.8}. Ignored when
 #'   \code{color_by_direction = FALSE} (size aesthetic is used instead).
+#' @param base_size Numeric. Base font size for \code{theme_ripple()}.
+#'   Default \code{12}. Pass the figure-wide \code{BASE_SIZE} from a
+#'   multi-panel render so axis text scales consistently with surrounding
+#'   panels (avoids double-applying \code{theme_ripple()} downstream).
 #'
 #' @return A \code{ggplot} object.
 #'
@@ -318,7 +322,8 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
                                   direction_palette = NULL,
                                   direction_labels = NULL,
                                   x_axis_label = NULL,
-                                  point_size = 0.8) {
+                                  point_size = 0.8,
+                                  base_size = 12) {
   plot_data <- data.table::copy(results)
 
   plot_data[, neg_log10_fdr := -log10(get(fdr_col))]
@@ -443,7 +448,7 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
             paste0("Coefficient (negative = ", query_label, "-induced)"),
       y = "-log10(FDR)"
     ) +
-    theme_ripple(base_size = 12) +
+    theme_ripple(base_size = base_size) +
     ggplot2::theme(
       legend.position = if (isTRUE(color_by_direction)) "bottom" else "right",
       plot.title = ggplot2::element_text(hjust = 0.5, face = "bold")
@@ -514,8 +519,14 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #' @param query_label Character. Display label for the query cell type
 #'   (default: "Query").
 #' @param max_distance Numeric. Maximum distance for x-axis (default: 200).
-#' @param color Character. Line / ribbon / point color (default:
-#'   \code{"#E74C3C"}).
+#' @param color Character or \code{NULL}. Line / ribbon / point colour.
+#'   Default \code{NULL} picks a sign-aware colour based on
+#'   \code{gradient_score}: red (\code{#B2182B}) when negative (induced
+#'   near query), blue (\code{#2166AC}) when positive (repressed near
+#'   query). Falls back to \code{#E74C3C} if the gradient sign cannot
+#'   be determined (no \code{gradient_score} and no \code{results}
+#'   lookup). Matches the \code{plot_gradient_volcano()} direction
+#'   palette so the volcano and curve panels read consistently.
 #' @param sample_alpha Numeric. Alpha for the per-sample lines in
 #'   per-sample mode (default \code{0.4}).
 #' @param sample_linewidth Numeric. Linewidth for per-sample lines in
@@ -620,7 +631,7 @@ plot_gradient_curve <- function(bin_stats, gene_name, cell_type,
                                 y_lab = NULL,
                                 query_label = "Query",
                                 max_distance = 200,
-                                color = "#E74C3C",
+                                color = NULL,
                                 sample_alpha = 0.4,
                                 sample_linewidth = 0.4) {
   if (is.null(bin_stats) || nrow(bin_stats) == 0) {
@@ -645,6 +656,18 @@ plot_gradient_curve <- function(bin_stats, gene_name, cell_type,
         fdr_col <- intersect(c("fisher_fdr", "fdr"), names(row))[1]
         if (!is.na(fdr_col)) fdr <- row[[fdr_col]][1]
       }
+    }
+  }
+
+  # Sign-aware default colour: red = induced near query (negative coef),
+  # blue = repressed near query (positive coef). Matches the
+  # plot_gradient_volcano() direction palette. If the caller passes
+  # `color` explicitly, that wins.
+  if (is.null(color)) {
+    if (!is.null(gradient_score) && !is.na(gradient_score)) {
+      color <- if (gradient_score < 0) "#B2182B" else "#2166AC"
+    } else {
+      color <- "#E74C3C"  # legacy default when sign is unknown
     }
   }
 
