@@ -27,9 +27,11 @@ plot_gradient_curve(
 \item{bin_stats}{A \code{data.table} of binned decay statistics. In
 pooled mode, must contain the columns named by \code{x_col},
 \code{y_col}, optionally \code{se_col} for the ribbon, and
-\code{n_cells} for point sizing. In per-sample mode, must
-additionally contain \code{sample_col}; per-bin means and SEs are
-computed internally.}
+optionally \code{n_cells} for the point-size encoding (see
+"Dot size encoding" below). In per-sample mode, must additionally
+contain \code{sample_col}; per-bin means and SEs are computed
+internally and \code{n_cells}, if present, is summed across samples
+per bin to drive the dot-size encoding.}
 
 \item{gene_name}{Character. Gene name for the plot title.}
 
@@ -141,6 +143,32 @@ the per-sample lines themselves are the more reliable visual.}
 Neither mode corrects for spatial autocorrelation between cells in
 the same bin; both inherit the independence assumption of the
 underlying RIPPLE Poisson GLM.
+}
+
+\section{Dot size encoding}{
+
+The bold dots on the curve are sized by the number of cells
+contributing to each bin. The size legend is hidden by design (the
+encoding is informational, not a primary axis), but the visual
+meaning is consistent across modes:
+\describe{
+\item{\strong{Pooled mode}}{One dot per bin at \code{(x_col, y_col)};
+size = the bin's \code{n_cells} value (all cells, all samples
+pooled). Bigger dot = tighter mean estimate.}
+\item{\strong{Per-sample mode}}{One dot per bin at
+\code{(x_col, mean across samples)}; size = the sum of
+\code{n_cells} across samples in that bin (i.e. total cells
+contributing to the cross-sample mean). Faint per-sample lines
+have no points -- only the bold mean is dotted. Bigger dot =
+more cells contributed to that bin's cross-sample mean.}
+}
+Why this matters: bins close to the query population are typically
+supported by many more cells than bins at the distance cap, so dots
+taper as distance increases. A small dot at the right edge of the
+plot is a signal that the apparent value there is supported by few
+observations. If the input \code{bin_stats} table has no
+\code{n_cells} column, all points render at a single small size and
+this encoding is silently absent.
 }
 
 \examples{

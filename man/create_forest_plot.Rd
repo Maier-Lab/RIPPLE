@@ -2,46 +2,85 @@
 % Please edit documentation in R/visualization.R
 \name{create_forest_plot}
 \alias{create_forest_plot}
-\title{Create forest plot for a single gene}
+\title{Forest plot of per-sample gradient coefficients}
 \usage{
 create_forest_plot(
   coefs,
-  ses,
-  sample_ids,
+  ses = NULL,
+  sample_ids = NULL,
   gene,
   cell_type,
-  output_path,
-  query_label = "Query"
+  output_path = NULL,
+  query_label = "Query",
+  show_combined = TRUE
 )
 }
 \arguments{
-\item{coefs}{Numeric vector. Per-sample coefficients.}
+\item{coefs}{In single-gene mode, a numeric vector of per-sample
+coefficients. In multi-gene mode, a long-format data.frame /
+data.table with columns \code{gene}, \code{sample_id}, \code{coef},
+\code{se}.}
 
-\item{ses}{Numeric vector. Per-sample standard errors.}
+\item{ses}{Numeric vector of per-sample standard errors. Required in
+single-gene mode; ignored in multi-gene mode.}
 
-\item{sample_ids}{Character vector. Sample identifiers (same length as
-\code{coefs}).}
+\item{sample_ids}{Character vector of sample identifiers, same length as
+\code{coefs}. Required in single-gene mode; ignored in multi-gene mode.}
 
-\item{gene}{Character. Gene name for the plot title.}
+\item{gene}{Character. Single gene name (single-gene mode), or character
+vector of genes to display (multi-gene mode). In multi-gene mode the
+vector also controls the y-axis order (top-to-bottom = first-to-last).
+If omitted in multi-gene mode, all genes in \code{coefs} are used in
+the order they first appear.}
 
 \item{cell_type}{Character. Cell type name for the plot title.}
 
-\item{output_path}{Character. File path to save the plot.}
+\item{output_path}{Optional character. If supplied, save the plot to
+this path with \code{ggplot2::ggsave()}. Default \code{NULL} returns
+the ggplot without writing to disk.}
 
 \item{query_label}{Character. Display label for the query cell type
 (default: "Query").}
+
+\item{show_combined}{Logical. Single-gene mode only. If \code{TRUE}
+(default), append an inverse-variance weighted combined estimate row
+(drawn as a larger diamond) and report its p-value and I-squared in
+the subtitle alongside the sign-consistency count. Set \code{FALSE}
+when the panel's purpose is to display per-sample replicate
+consistency without a meta-analytic summary dominating the eye --
+the combined row is skipped, \code{run_meta_analysis()} is not
+called, and the subtitle reports only the sign-consistency count.
+Ignored in multi-gene mode (no combined row is ever drawn there).}
 }
 \value{
-The \code{ggplot} object invisibly, or invisible \code{NULL} if
-fewer than two valid samples.
+A \code{ggplot} object (returned visibly when \code{output_path}
+is \code{NULL}; invisibly otherwise). Returns invisible \code{NULL}
+in single-gene mode if fewer than two valid samples.
 }
 \description{
 Shows per-sample Poisson GLM coefficients with 95\\% confidence intervals
-and the inverse-variance weighted combined estimate (diamond). Useful for
-assessing cross-sample reproducibility of a distance-expression gradient.
+for one or many genes. Useful for assessing cross-sample reproducibility
+of distance-expression gradients.
+}
+\details{
+Two modes:
+\itemize{
+\item \strong{Single-gene mode} (legacy): pass \code{coefs}, \code{ses},
+and \code{sample_ids} as parallel vectors plus a scalar \code{gene}.
+The plot adds an inverse-variance weighted combined estimate (diamond)
+row computed from the supplied per-sample coefficients.
+\item \strong{Multi-gene mode}: pass a long-format \code{data.frame} or
+\code{data.table} as \code{coefs} containing the columns
+\code{gene}, \code{sample_id}, \code{coef}, \code{se}. Each gene
+becomes a y-axis row; per-sample coefficients are dodged horizontally
+and coloured by sample. No combined diamond is drawn (the panel is
+about replicate consistency across a curated gene panel, not summary
+statistics for a single gene).
+}
 }
 \examples{
 \dontrun{
+# Single-gene mode (legacy):
 create_forest_plot(
   coefs = c(-0.005, -0.003, -0.004),
   ses = c(0.001, 0.002, 0.001),
@@ -50,6 +89,27 @@ create_forest_plot(
   cell_type = "LEC",
   output_path = "Cxcl12_forest.pdf"
 )
+
+# Single-gene mode without the combined diamond (replicate-consistency
+# focus, no meta-analytic summary):
+create_forest_plot(
+  coefs = c(-0.005, -0.003, -0.004),
+  ses = c(0.001, 0.002, 0.001),
+  sample_ids = c("S1", "S2", "S3"),
+  gene = "IGFBP5", cell_type = "fibroblast",
+  show_combined = FALSE
+)
+
+# Multi-gene mode (per-sample table):
+coefs_dt <- data.table::data.table(
+  gene = rep(c("Ccr7", "Sell", "Lef1"), each = 4),
+  sample_id = rep(paste0("M", 1:4), 3),
+  coef = rnorm(12, -0.005, 0.002),
+  se = runif(12, 0.001, 0.003)
+)
+create_forest_plot(coefs_dt,
+                   gene = c("Ccr7", "Sell", "Lef1"),
+                   cell_type = "T_cell_all")
 }
 
 }

@@ -12,7 +12,13 @@ plot_gradient_volcano(
   query_label = "Query",
   n_label = 20,
   title = NULL,
-  exclude_specificity_class = NULL
+  exclude_specificity_class = NULL,
+  label_genes = NULL,
+  color_by_direction = FALSE,
+  direction_palette = NULL,
+  direction_labels = NULL,
+  x_axis_label = NULL,
+  point_size = 0.8
 )
 }
 \arguments{
@@ -30,7 +36,8 @@ minimum a coefficient column and an FDR column.}
 \item{query_label}{Character. Display label for the query cell type
 (default: "Query").}
 
-\item{n_label}{Integer. Maximum number of genes to label (default: 20).}
+\item{n_label}{Integer. Maximum number of genes to label (default: 20).
+Ignored when \code{label_genes} is supplied.}
 
 \item{title}{Character or NULL. Plot title. If NULL, auto-generated.}
 
@@ -42,7 +49,45 @@ query-signature genes that the cross-cell-type heuristic flagged. If set,
 the input \code{results} must carry a \code{specificity_class} column
 (produced by \code{classify_gene_specificity()} or
 \code{run_ripple_atlas()}). Default \code{NULL} preserves the prior
-labelling behaviour.}
+labelling behaviour. Ignored when \code{label_genes} is supplied (the
+user has explicitly chosen which genes to label).}
+
+\item{label_genes}{Optional character vector. When supplied, these exact
+genes are labelled (subject to availability in \code{results}), instead
+of the top-N significant by FDR. Useful for manuscript figures where
+you want to highlight a curated panel of positive controls or pathway
+markers regardless of where they fall in the FDR ranking. Genes that
+are missing from the data trigger a one-time message and are silently
+dropped. Default \code{NULL} (use top-N).}
+
+\item{color_by_direction}{Logical. When \code{TRUE}, colour points by
+gradient direction (induced near query, repressed near query, not
+significant) using \code{direction_palette}, and drop the
+size-by-significance aesthetic in favour of a fixed point size. This
+produces the manuscript-style volcano with three clearly demarcated
+classes. Default \code{FALSE} (size-by-significance, no colour).}
+
+\item{direction_palette}{Optional named character vector of length 3 with
+names \code{"induced"}, \code{"repressed"}, \code{"ns"}. Override the
+default palette (\code{induced = "#B2182B"}, \code{repressed = "#2166AC"},
+\code{ns = "grey75"}). Ignored when \code{color_by_direction = FALSE}.}
+
+\item{direction_labels}{Optional named character vector of length 3 with
+names \code{"induced"}, \code{"repressed"}, \code{"ns"}. Override the
+legend labels. Defaults to
+\code{paste("Induced near", query_label)}, \code{paste("Repressed near",
+  query_label)}, and \code{"Not significant"}. Ignored when
+\code{color_by_direction = FALSE}.}
+
+\item{x_axis_label}{Optional character or expression. Override the default
+x-axis label. Pass an \code{expression()} for math/unit formatting (e.g.
+\code{expression("Gradient score " * beta ~ "(per " * mu * "m)")}).
+Default \code{NULL} uses the generic
+\code{"Coefficient (negative = <query_label>-induced)"}.}
+
+\item{point_size}{Numeric. Fixed point size used when
+\code{color_by_direction = TRUE}. Default \code{0.8}. Ignored when
+\code{color_by_direction = FALSE} (size aesthetic is used instead).}
 }
 \value{
 A \code{ggplot} object.
@@ -64,6 +109,12 @@ plot_gradient_volcano(
 plot_gradient_volcano(
   results,
   exclude_specificity_class = "contamination"
+)
+
+# Curated label set (e.g. T zone positive controls):
+plot_gradient_volcano(
+  results,
+  label_genes = c("Ccr7", "Sell", "Lef1", "Tcf7", "Cd69", "S1pr1")
 )
 }
 

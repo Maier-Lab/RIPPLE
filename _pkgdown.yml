@@ -96,6 +96,7 @@ reference:
   - plot_decay_curve
   - plot_confounder_bar
   - plot_confounder_scatter
+  - plot_confounder_ratio
   - create_gradient_volcano
   - create_forest_plot
   - create_coefficient_strips

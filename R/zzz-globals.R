@@ -20,7 +20,7 @@ utils::globalVariables(c(
   "obj", "odds_ratio",
   "padj", "pathway", "pathway_clean", "pct_expr", "perm_pval",
   "plot_color", "pval", "pvalue_fisher",
-  "receptor", "receptor_pct_target",
+  "ratio", "receptor", "receptor_pct_target",
   "sample_id", "scaled_activity", "scaled_direct",
   "scaled_enrichment", "scaled_expression",
   "se", "se_val", "show_label", "sign_consistency", "significant", "spatial_x", "spatial_y",

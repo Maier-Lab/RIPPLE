@@ -51,6 +51,7 @@ export(plot_gene_category_dotplot)
 export(plot_fgsea_dotplot)
 export(theme_ripple)
 export(plot_confounder_bar)
+export(plot_confounder_ratio)
 export(plot_confounder_scatter)
 export(plot_gene_counts_by_celltype)
 export(plot_specificity_breakdown)
@@ -74,6 +75,10 @@ export(classify_lr_artifacts)
 # utils.R
 export(calculate_enrichment)
 export(permutation_pvalue)
+
+# contamination_helpers.R
+export(default_ambient_family_pattern)
+export(find_ambient_family_genes)
 
 # --- importFrom ---
 

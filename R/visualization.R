@@ -233,6 +233,7 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
 #' @param query_label Character. Display label for the query cell type
 #'   (default: "Query").
 #' @param n_label Integer. Maximum number of genes to label (default: 20).
+#'   Ignored when \code{label_genes} is supplied.
 #' @param title Character or NULL. Plot title. If NULL, auto-generated.
 #' @param exclude_specificity_class Optional character vector. Specificity-class
 #'   labels to exclude from the *label-selection pool only* (genes still
@@ -242,7 +243,39 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
 #'   the input \code{results} must carry a \code{specificity_class} column
 #'   (produced by \code{classify_gene_specificity()} or
 #'   \code{run_ripple_atlas()}). Default \code{NULL} preserves the prior
-#'   labelling behaviour.
+#'   labelling behaviour. Ignored when \code{label_genes} is supplied (the
+#'   user has explicitly chosen which genes to label).
+#' @param label_genes Optional character vector. When supplied, these exact
+#'   genes are labelled (subject to availability in \code{results}), instead
+#'   of the top-N significant by FDR. Useful for manuscript figures where
+#'   you want to highlight a curated panel of positive controls or pathway
+#'   markers regardless of where they fall in the FDR ranking. Genes that
+#'   are missing from the data trigger a one-time message and are silently
+#'   dropped. Default \code{NULL} (use top-N).
+#' @param color_by_direction Logical. When \code{TRUE}, colour points by
+#'   gradient direction (induced near query, repressed near query, not
+#'   significant) using \code{direction_palette}, and drop the
+#'   size-by-significance aesthetic in favour of a fixed point size. This
+#'   produces the manuscript-style volcano with three clearly demarcated
+#'   classes. Default \code{FALSE} (size-by-significance, no colour).
+#' @param direction_palette Optional named character vector of length 3 with
+#'   names \code{"induced"}, \code{"repressed"}, \code{"ns"}. Override the
+#'   default palette (\code{induced = "#B2182B"}, \code{repressed = "#2166AC"},
+#'   \code{ns = "grey75"}). Ignored when \code{color_by_direction = FALSE}.
+#' @param direction_labels Optional named character vector of length 3 with
+#'   names \code{"induced"}, \code{"repressed"}, \code{"ns"}. Override the
+#'   legend labels. Defaults to
+#'   \code{paste("Induced near", query_label)}, \code{paste("Repressed near",
+#'   query_label)}, and \code{"Not significant"}. Ignored when
+#'   \code{color_by_direction = FALSE}.
+#' @param x_axis_label Optional character or expression. Override the default
+#'   x-axis label. Pass an \code{expression()} for math/unit formatting (e.g.
+#'   \code{expression("Gradient score " * beta ~ "(per " * mu * "m)")}).
+#'   Default \code{NULL} uses the generic
+#'   \code{"Coefficient (negative = <query_label>-induced)"}.
+#' @param point_size Numeric. Fixed point size used when
+#'   \code{color_by_direction = TRUE}. Default \code{0.8}. Ignored when
+#'   \code{color_by_direction = FALSE} (size aesthetic is used instead).
 #'
 #' @return A \code{ggplot} object.
 #'
@@ -260,6 +293,12 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
 #'   results,
 #'   exclude_specificity_class = "contamination"
 #' )
+#'
+#' # Curated label set (e.g. T zone positive controls):
+#' plot_gradient_volcano(
+#'   results,
+#'   label_genes = c("Ccr7", "Sell", "Lef1", "Tcf7", "Cd69", "S1pr1")
+#' )
 #' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_point geom_hline geom_vline xlim labs
@@ -273,7 +312,13 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
                                   query_label = "Query",
                                   n_label = 20,
                                   title = NULL,
-                                  exclude_specificity_class = NULL) {
+                                  exclude_specificity_class = NULL,
+                                  label_genes = NULL,
+                                  color_by_direction = FALSE,
+                                  direction_palette = NULL,
+                                  direction_labels = NULL,
+                                  x_axis_label = NULL,
+                                  point_size = 0.8) {
   plot_data <- data.table::copy(results)
 
   plot_data[, neg_log10_fdr := -log10(get(fdr_col))]
@@ -281,22 +326,76 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 
   plot_data[, significant := get(fdr_col) < fdr_threshold]
 
-  # Optional exclusion (label-selection pool only — dots are unaffected)
-  label_pool <- plot_data[significant == TRUE]
-  if (!is.null(exclude_specificity_class)) {
-    if (!"specificity_class" %in% names(label_pool)) {
-      stop(
-        "exclude_specificity_class is set but `specificity_class` is not a ",
-        "column on `results`. Run classify_gene_specificity() or ",
-        "run_ripple_atlas() first to add this column.",
-        call. = FALSE
+  if (isTRUE(color_by_direction)) {
+    default_palette <- c(induced = "#B2182B", repressed = "#2166AC",
+                         ns = "grey75")
+    default_labels  <- c(
+      induced   = paste("Induced near", query_label),
+      repressed = paste("Repressed near", query_label),
+      ns        = "Not significant"
+    )
+    pal <- if (is.null(direction_palette)) default_palette else {
+      missing_keys <- setdiff(c("induced", "repressed", "ns"),
+                              names(direction_palette))
+      if (length(missing_keys) > 0) {
+        stop("direction_palette must have names: induced, repressed, ns",
+             call. = FALSE)
+      }
+      direction_palette[c("induced", "repressed", "ns")]
+    }
+    lbl <- if (is.null(direction_labels)) default_labels else {
+      missing_keys <- setdiff(c("induced", "repressed", "ns"),
+                              names(direction_labels))
+      if (length(missing_keys) > 0) {
+        stop("direction_labels must have names: induced, repressed, ns",
+             call. = FALSE)
+      }
+      direction_labels[c("induced", "repressed", "ns")]
+    }
+    plot_data[, direction := data.table::fifelse(
+      significant & get(coef_col) < 0, lbl[["induced"]],
+      data.table::fifelse(significant & get(coef_col) > 0, lbl[["repressed"]],
+                          lbl[["ns"]]))]
+    # Map labels back to colours via a named palette keyed by the labels
+    # themselves (so ggplot's scale_colour_manual matches on `direction`).
+    direction_color_map <- stats::setNames(
+      c(pal[["induced"]], pal[["repressed"]], pal[["ns"]]),
+      c(lbl[["induced"]], lbl[["repressed"]], lbl[["ns"]])
+    )
+  }
+
+  if (!is.null(label_genes)) {
+    # Curated label set — use exactly the genes the user asked for, ignoring
+    # the top-N FDR ranking and any specificity-class exclusion (they have
+    # explicitly chosen these genes).
+    requested <- unique(as.character(label_genes))
+    available <- intersect(requested, plot_data$gene)
+    missing <- setdiff(requested, available)
+    if (length(missing) > 0) {
+      message(
+        sprintf("plot_gradient_volcano(): %d of %d label_genes not present in `results`: %s",
+                length(missing), length(requested),
+                paste(utils::head(missing, 10), collapse = ", "))
       )
     }
-    label_pool <- label_pool[
-      !specificity_class %in% exclude_specificity_class
-    ]
+    top_genes <- plot_data[gene %in% available]
+  } else {
+    label_pool <- plot_data[significant == TRUE]
+    if (!is.null(exclude_specificity_class)) {
+      if (!"specificity_class" %in% names(label_pool)) {
+        stop(
+          "exclude_specificity_class is set but `specificity_class` is not a ",
+          "column on `results`. Run classify_gene_specificity() or ",
+          "run_ripple_atlas() first to add this column.",
+          call. = FALSE
+        )
+      }
+      label_pool <- label_pool[
+        !specificity_class %in% exclude_specificity_class
+      ]
+    }
+    top_genes <- utils::head(label_pool[order(get(fdr_col))], n_label)
   }
-  top_genes <- head(label_pool[order(get(fdr_col))], n_label)
 
   coef_values <- plot_data[[coef_col]]
   max_score <- max(abs(coef_values), na.rm = TRUE) * 1.1
@@ -304,9 +403,21 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
   p <- ggplot2::ggplot(
     plot_data,
     ggplot2::aes(x = .data[[coef_col]], y = .data$neg_log10_fdr)
-  ) +
-    ggplot2::geom_point(ggplot2::aes(size = .data$significant), alpha = 0.6) +
-    ggplot2::scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.5), guide = "none") +
+  )
+
+  if (isTRUE(color_by_direction)) {
+    p <- p +
+      ggplot2::geom_point(ggplot2::aes(colour = .data$direction),
+                          size = point_size, alpha = 0.6) +
+      ggplot2::scale_colour_manual(values = direction_color_map, name = NULL)
+  } else {
+    p <- p +
+      ggplot2::geom_point(ggplot2::aes(size = .data$significant), alpha = 0.6) +
+      ggplot2::scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.5),
+                                  guide = "none")
+  }
+
+  p <- p +
     ggplot2::geom_hline(
       yintercept = -log10(fdr_threshold), linetype = "dashed",
       color = "grey40"
@@ -318,7 +429,9 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
       ggplot2::aes(label = .data$gene),
       size = 3,
       max.overlaps = 20,
-      box.padding = 0.5
+      box.padding = 0.5,
+      seed = 1,
+      min.segment.length = 0
     ) +
     ggplot2::labs(
       title = if (!is.null(title)) title else "Distance-Expression Gradient Volcano",
@@ -326,12 +439,13 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
         "%d genes significant (FDR < %.2f)",
         sum(plot_data$significant, na.rm = TRUE), fdr_threshold
       ),
-      x = paste0("Coefficient (negative = ", query_label, "-induced)"),
+      x = if (!is.null(x_axis_label)) x_axis_label else
+            paste0("Coefficient (negative = ", query_label, "-induced)"),
       y = "-log10(FDR)"
     ) +
     theme_ripple(base_size = 12) +
     ggplot2::theme(
-      legend.position = "right",
+      legend.position = if (isTRUE(color_by_direction)) "bottom" else "right",
       plot.title = ggplot2::element_text(hjust = 0.5, face = "bold")
     )
 
@@ -361,9 +475,11 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #' @param bin_stats A \code{data.table} of binned decay statistics. In
 #'   pooled mode, must contain the columns named by \code{x_col},
 #'   \code{y_col}, optionally \code{se_col} for the ribbon, and
-#'   \code{n_cells} for point sizing. In per-sample mode, must
-#'   additionally contain \code{sample_col}; per-bin means and SEs are
-#'   computed internally.
+#'   optionally \code{n_cells} for the point-size encoding (see
+#'   "Dot size encoding" below). In per-sample mode, must additionally
+#'   contain \code{sample_col}; per-bin means and SEs are computed
+#'   internally and \code{n_cells}, if present, is summed across samples
+#'   per bin to drive the dot-size encoding.
 #' @param gene_name Character. Gene name for the plot title.
 #' @param cell_type Character. Cell type name for context and for looking up
 #'   the meta-analysis row when \code{results} is passed.
@@ -440,6 +556,30 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #' Neither mode corrects for spatial autocorrelation between cells in
 #' the same bin; both inherit the independence assumption of the
 #' underlying RIPPLE Poisson GLM.
+#'
+#' @section Dot size encoding:
+#' The bold dots on the curve are sized by the number of cells
+#' contributing to each bin. The size legend is hidden by design (the
+#' encoding is informational, not a primary axis), but the visual
+#' meaning is consistent across modes:
+#' \describe{
+#'   \item{\strong{Pooled mode}}{One dot per bin at \code{(x_col, y_col)};
+#'     size = the bin's \code{n_cells} value (all cells, all samples
+#'     pooled). Bigger dot = tighter mean estimate.}
+#'   \item{\strong{Per-sample mode}}{One dot per bin at
+#'     \code{(x_col, mean across samples)}; size = the sum of
+#'     \code{n_cells} across samples in that bin (i.e. total cells
+#'     contributing to the cross-sample mean). Faint per-sample lines
+#'     have no points -- only the bold mean is dotted. Bigger dot =
+#'     more cells contributed to that bin's cross-sample mean.}
+#' }
+#' Why this matters: bins close to the query population are typically
+#' supported by many more cells than bins at the distance cap, so dots
+#' taper as distance increases. A small dot at the right edge of the
+#' plot is a signal that the apparent value there is supported by few
+#' observations. If the input \code{bin_stats} table has no
+#' \code{n_cells} column, all points render at a single small size and
+#' this encoding is silently absent.
 #'
 #' @examples
 #' \dontrun{
@@ -676,6 +816,11 @@ plot_decay_curve <- function(...) {
 #' HyMy plot); per-sample mode uses cross-sample
 #' \code{sd / sqrt(n_samples)} (more honest about replicate
 #' variability).
+#'
+#' \strong{Dot size encodes cell count per bin}, not significance. See
+#' the "Dot size encoding" section of \code{\link{plot_gradient_curve}}
+#' for the full discussion. Briefly: bigger dot = more cells contributed
+#' to that bin's mean. The size legend is hidden by design.
 #'
 #' @inheritParams plot_gradient_curve
 #' @param y_col Character. Name of the proportion-expressing column on
@@ -1278,27 +1423,63 @@ create_gradient_volcano <- function(results, cell_type, output_path,
 }
 
 
-#' Create forest plot for a single gene
+#' Forest plot of per-sample gradient coefficients
 #'
 #' Shows per-sample Poisson GLM coefficients with 95\% confidence intervals
-#' and the inverse-variance weighted combined estimate (diamond). Useful for
-#' assessing cross-sample reproducibility of a distance-expression gradient.
+#' for one or many genes. Useful for assessing cross-sample reproducibility
+#' of distance-expression gradients.
 #'
-#' @param coefs Numeric vector. Per-sample coefficients.
-#' @param ses Numeric vector. Per-sample standard errors.
-#' @param sample_ids Character vector. Sample identifiers (same length as
-#'   \code{coefs}).
-#' @param gene Character. Gene name for the plot title.
+#' Two modes:
+#' \itemize{
+#'   \item \strong{Single-gene mode} (legacy): pass \code{coefs}, \code{ses},
+#'     and \code{sample_ids} as parallel vectors plus a scalar \code{gene}.
+#'     The plot adds an inverse-variance weighted combined estimate (diamond)
+#'     row computed from the supplied per-sample coefficients.
+#'   \item \strong{Multi-gene mode}: pass a long-format \code{data.frame} or
+#'     \code{data.table} as \code{coefs} containing the columns
+#'     \code{gene}, \code{sample_id}, \code{coef}, \code{se}. Each gene
+#'     becomes a y-axis row; per-sample coefficients are dodged horizontally
+#'     and coloured by sample. No combined diamond is drawn (the panel is
+#'     about replicate consistency across a curated gene panel, not summary
+#'     statistics for a single gene).
+#' }
+#'
+#' @param coefs In single-gene mode, a numeric vector of per-sample
+#'   coefficients. In multi-gene mode, a long-format data.frame /
+#'   data.table with columns \code{gene}, \code{sample_id}, \code{coef},
+#'   \code{se}.
+#' @param ses Numeric vector of per-sample standard errors. Required in
+#'   single-gene mode; ignored in multi-gene mode.
+#' @param sample_ids Character vector of sample identifiers, same length as
+#'   \code{coefs}. Required in single-gene mode; ignored in multi-gene mode.
+#' @param gene Character. Single gene name (single-gene mode), or character
+#'   vector of genes to display (multi-gene mode). In multi-gene mode the
+#'   vector also controls the y-axis order (top-to-bottom = first-to-last).
+#'   If omitted in multi-gene mode, all genes in \code{coefs} are used in
+#'   the order they first appear.
 #' @param cell_type Character. Cell type name for the plot title.
-#' @param output_path Character. File path to save the plot.
+#' @param output_path Optional character. If supplied, save the plot to
+#'   this path with \code{ggplot2::ggsave()}. Default \code{NULL} returns
+#'   the ggplot without writing to disk.
 #' @param query_label Character. Display label for the query cell type
 #'   (default: "Query").
+#' @param show_combined Logical. Single-gene mode only. If \code{TRUE}
+#'   (default), append an inverse-variance weighted combined estimate row
+#'   (drawn as a larger diamond) and report its p-value and I-squared in
+#'   the subtitle alongside the sign-consistency count. Set \code{FALSE}
+#'   when the panel's purpose is to display per-sample replicate
+#'   consistency without a meta-analytic summary dominating the eye --
+#'   the combined row is skipped, \code{run_meta_analysis()} is not
+#'   called, and the subtitle reports only the sign-consistency count.
+#'   Ignored in multi-gene mode (no combined row is ever drawn there).
 #'
-#' @return The \code{ggplot} object invisibly, or invisible \code{NULL} if
-#'   fewer than two valid samples.
+#' @return A \code{ggplot} object (returned visibly when \code{output_path}
+#'   is \code{NULL}; invisibly otherwise). Returns invisible \code{NULL}
+#'   in single-gene mode if fewer than two valid samples.
 #'
 #' @examples
 #' \dontrun{
+#' # Single-gene mode (legacy):
 #' create_forest_plot(
 #'   coefs = c(-0.005, -0.003, -0.004),
 #'   ses = c(0.001, 0.002, 0.001),
@@ -1307,15 +1488,43 @@ create_gradient_volcano <- function(results, cell_type, output_path,
 #'   cell_type = "LEC",
 #'   output_path = "Cxcl12_forest.pdf"
 #' )
+#'
+#' # Single-gene mode without the combined diamond (replicate-consistency
+#' # focus, no meta-analytic summary):
+#' create_forest_plot(
+#'   coefs = c(-0.005, -0.003, -0.004),
+#'   ses = c(0.001, 0.002, 0.001),
+#'   sample_ids = c("S1", "S2", "S3"),
+#'   gene = "IGFBP5", cell_type = "fibroblast",
+#'   show_combined = FALSE
+#' )
+#'
+#' # Multi-gene mode (per-sample table):
+#' coefs_dt <- data.table::data.table(
+#'   gene = rep(c("Ccr7", "Sell", "Lef1"), each = 4),
+#'   sample_id = rep(paste0("M", 1:4), 3),
+#'   coef = rnorm(12, -0.005, 0.002),
+#'   se = runif(12, 0.001, 0.003)
+#' )
+#' create_forest_plot(coefs_dt,
+#'                    gene = c("Ccr7", "Sell", "Lef1"),
+#'                    cell_type = "T_cell_all")
 #' }
 #'
-#' @importFrom ggplot2 ggplot aes geom_vline geom_errorbarh geom_point
-#'   scale_shape_manual scale_size_manual labs theme_bw theme element_text
-#'   ggsave
-#' @importFrom data.table data.table
+#' @importFrom ggplot2 ggplot aes geom_vline geom_errorbar geom_point
+#'   scale_shape_manual scale_size_manual scale_colour_brewer
+#'   position_dodge labs theme element_text ggsave
+#' @importFrom data.table data.table as.data.table
 #' @export
-create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
-                               output_path, query_label = "Query") {
+create_forest_plot <- function(coefs, ses = NULL, sample_ids = NULL,
+                               gene, cell_type,
+                               output_path = NULL, query_label = "Query",
+                               show_combined = TRUE) {
+  if (is.data.frame(coefs)) {
+    return(.forest_multi_gene(coefs, gene, cell_type, output_path,
+                              query_label))
+  }
+
   valid_idx <- !is.na(coefs) & !is.na(ses) & ses > 0
   if (sum(valid_idx) < 2) {
     return(invisible(NULL))
@@ -1333,19 +1542,23 @@ create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
     upper = coefs + 1.96 * ses
   )
 
-  meta_result <- run_meta_analysis(coefs, ses, sample_ids)
-
-  if (!is.na(meta_result$combined_coef)) {
-    meta_row <- data.table::data.table(
-      sample = "Combined",
-      coef = meta_result$combined_coef,
-      se = meta_result$combined_se,
-      lower = meta_result$combined_coef - 1.96 * meta_result$combined_se,
-      upper = meta_result$combined_coef + 1.96 * meta_result$combined_se
-    )
-    plot_data <- rbind(plot_data, meta_row)
-    plot_data[, is_combined := sample == "Combined"]
+  if (isTRUE(show_combined)) {
+    meta_result <- run_meta_analysis(coefs, ses, sample_ids)
+    if (!is.na(meta_result$combined_coef)) {
+      meta_row <- data.table::data.table(
+        sample = "Combined",
+        coef = meta_result$combined_coef,
+        se = meta_result$combined_se,
+        lower = meta_result$combined_coef - 1.96 * meta_result$combined_se,
+        upper = meta_result$combined_coef + 1.96 * meta_result$combined_se
+      )
+      plot_data <- rbind(plot_data, meta_row)
+      plot_data[, is_combined := sample == "Combined"]
+    } else {
+      plot_data[, is_combined := FALSE]
+    }
   } else {
+    meta_result <- NULL
     plot_data[, is_combined := FALSE]
   }
 
@@ -1358,15 +1571,22 @@ create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
     max(n_neg, n_pos), length(coefs)
   )
 
-  i2_display <- if (is.na(meta_result$i2)) {
-    "N/A"
+  if (isTRUE(show_combined) && !is.null(meta_result)) {
+    i2_display <- if (is.na(meta_result$i2)) {
+      "N/A"
+    } else {
+      sprintf("%.1f%%", meta_result$i2 * 100)
+    }
+    pval_display <- if (is.na(meta_result$combined_pval)) {
+      "N/A"
+    } else {
+      sprintf("%.2e", meta_result$combined_pval)
+    }
+    subtitle_text <- sprintf(
+      "p = %s, I2 = %s | %s", pval_display, i2_display, sign_text
+    )
   } else {
-    sprintf("%.1f%%", meta_result$i2 * 100)
-  }
-  pval_display <- if (is.na(meta_result$combined_pval)) {
-    "N/A"
-  } else {
-    sprintf("%.2e", meta_result$combined_pval)
+    subtitle_text <- sign_text
   }
 
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = coef, y = sample)) +
@@ -1393,16 +1613,92 @@ create_forest_plot <- function(coefs, ses, sample_ids, gene, cell_type,
       x = "Gradient score (per um)",
       y = NULL,
       title = sprintf("%s in %s (Poisson GLM)", gene, cell_type),
-      subtitle = sprintf(
-        "p = %s, I2 = %s | %s",
-        pval_display, i2_display, sign_text
-      )
+      subtitle = subtitle_text
     ) +
     theme_ripple(base_size = 12) +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
 
-  ggplot2::ggsave(output_path, p, width = 6, height = 4)
-  invisible(p)
+  if (!is.null(output_path)) {
+    ggplot2::ggsave(output_path, p, width = 6, height = 4)
+    return(invisible(p))
+  }
+  p
+}
+
+# Internal — multi-gene forest panel.
+# Each gene becomes a y-axis row, per-sample coefs dodged and coloured by
+# sample. No combined diamond (the panel is about replicate consistency).
+.forest_multi_gene <- function(coefs, gene, cell_type, output_path,
+                               query_label) {
+  dt <- data.table::as.data.table(coefs)
+  required <- c("gene", "sample_id", "coef", "se")
+  miss <- setdiff(required, names(dt))
+  if (length(miss) > 0) {
+    stop(
+      "Multi-gene mode requires columns: ", paste(required, collapse = ", "),
+      ". Missing: ", paste(miss, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  if (!missing(gene) && !is.null(gene) && length(gene) > 0) {
+    requested <- as.character(gene)
+    available <- intersect(requested, dt$gene)
+    if (length(available) == 0) {
+      stop("None of the requested genes are present in `coefs`.",
+           call. = FALSE)
+    }
+    missing_genes <- setdiff(requested, available)
+    if (length(missing_genes) > 0) {
+      message(
+        sprintf("create_forest_plot(): %d of %d genes not present: %s",
+                length(missing_genes), length(requested),
+                paste(utils::head(missing_genes, 10), collapse = ", "))
+      )
+    }
+    dt <- dt[gene %in% available]
+    gene_levels <- rev(available)
+  } else {
+    gene_levels <- rev(unique(dt$gene))
+  }
+  dt <- dt[!is.na(coef) & !is.na(se) & se > 0]
+  if (nrow(dt) < 2) {
+    return(invisible(NULL))
+  }
+  dt[, ci_lo := coef - 1.96 * se]
+  dt[, ci_hi := coef + 1.96 * se]
+  dt[, gene := factor(gene, levels = gene_levels)]
+
+  p <- ggplot2::ggplot(dt, ggplot2::aes(x = coef, y = gene,
+                                         colour = sample_id)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
+                        colour = "grey50") +
+    ggplot2::geom_errorbar(
+      ggplot2::aes(xmin = ci_lo, xmax = ci_hi),
+      orientation = "y", width = 0.3, alpha = 0.7,
+      position = ggplot2::position_dodge(width = 0.6)
+    ) +
+    ggplot2::geom_point(
+      size = 2.2, alpha = 0.9,
+      position = ggplot2::position_dodge(width = 0.6)
+    ) +
+    ggplot2::scale_colour_brewer(palette = "Set2", name = "Sample") +
+    ggplot2::labs(
+      x = "Per-sample gradient score (per um)",
+      y = NULL,
+      title = sprintf("Per-sample replicate consistency in %s", cell_type)
+    ) +
+    theme_ripple(base_size = 12) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold"),
+      legend.position = "bottom"
+    )
+
+  if (!is.null(output_path)) {
+    ggplot2::ggsave(output_path, p,
+                    width = 7, height = max(3, length(gene_levels) * 0.6))
+    return(invisible(p))
+  }
+  p
 }
 
 
@@ -2492,4 +2788,170 @@ plot_confounder_scatter <- function(stage4_results,
 
   p
 }
+
+
+#' Stage 4 confounder attenuation-ratio plot
+#'
+#' Sibling of \code{\link{plot_confounder_scatter}} that plots the
+#' classifier's underlying statistic on the y-axis directly. Per gene:
+#' x = Stage 1 gradient score, y = \code{stage2_median_coef / stage1_coef}
+#' (the attenuation ratio used by \code{run_ripple_confounder()} to assign
+#' the Stage 4 class). Reference lines at y = 1.1 (enhancement cutoff),
+#' y = 1.0 ("no change"), y = 0.5 (attenuation cutoff), and y = 0
+#' (sign-flip line) make the class boundaries readable directly off the
+#' plot.
+#'
+#' Easier to interpret than the raw scatter when overplotting on the
+#' diagonal makes per-class assignment hard to see, because the y-axis
+#' position alone tells the reader which Stage 4 class each gene
+#' belongs to.
+#'
+#' @inheritParams plot_confounder_scatter
+#'
+#' @return A \code{ggplot} object.
+#'
+#' @details
+#' Genes with \code{stage1_coef == 0} (would produce \code{Inf}) or with
+#' a missing \code{stage2_median_coef} (\code{no_conf_result} class) are
+#' dropped from the plot with a one-line \code{message()} reporting the
+#' count. They still appear in the per-class subtitle counts so the
+#' total class breakdown is visible.
+#'
+#' @examples
+#' \dontrun{
+#' s4 <- data.table::fread(system.file(
+#'   "extdata/naive_trc_cached/confounder_cxcl12/stage2_all_results.csv",
+#'   package = "ripple"))
+#' plot_confounder_ratio(
+#'   s4,
+#'   label_genes   = c("Ccr7", "Sell", "Lef1", "Tcf7", "Cxcr4", "Gzma"),
+#'   query_label   = "TRC-Ccl21a",
+#'   control_label = "TRC-Cxcl12"
+#' )
+#' }
+#'
+#' @seealso \code{\link{plot_confounder_scatter}} for the raw stage 1 vs
+#'   stage 2 scatter.
+#'
+#' @importFrom data.table as.data.table copy
+#' @importFrom ggplot2 ggplot aes geom_hline geom_vline geom_point
+#'   scale_colour_manual labs theme element_text margin unit
+#' @importFrom ggrepel geom_text_repel
+#' @export
+plot_confounder_ratio <- function(stage4_results,
+                                  stage1_coef_column    = "stage1_coef",
+                                  stage2_coef_column    = "stage2_median_coef",
+                                  classification_column = "classification",
+                                  gene_column           = "gene",
+                                  label_genes           = NULL,
+                                  query_label           = NULL,
+                                  control_label         = NULL,
+                                  title                 = NULL,
+                                  base_size             = 13) {
+  dt <- data.table::as.data.table(data.table::copy(stage4_results))
+  required <- c(stage1_coef_column, stage2_coef_column,
+                classification_column, gene_column)
+  miss <- setdiff(required, names(dt))
+  if (length(miss) > 0) {
+    stop("Missing required columns in stage4_results: ",
+         paste(miss, collapse = ", "), call. = FALSE)
+  }
+
+  dt[, classification := .canonicalize_confounder_classification(
+    get(classification_column)
+  )]
+  class_levels <- .confounder_class_levels()
+  class_cols   <- .confounder_class_palette()
+  dt[, classification := factor(classification, levels = class_levels)]
+
+  # Per-class counts (computed BEFORE dropping rows so no_conf_result and
+  # any divide-by-zero genes still appear in the subtitle).
+  class_summary <- dt[, .N, by = classification][order(classification)]
+  count_str <- paste(
+    apply(class_summary, 1, function(r) sprintf("%s (%s)", r[[1]], r[[2]])),
+    collapse = "  ·  "
+  )
+  subtitle <- if (!is.null(query_label)) {
+    paste0(query_label, ":  ", count_str)
+  } else {
+    count_str
+  }
+
+  # Compute the ratio and drop unplottable rows
+  dt[, ratio := get(stage2_coef_column) / get(stage1_coef_column)]
+  n_total <- nrow(dt)
+  dt <- dt[is.finite(ratio)]
+  n_dropped <- n_total - nrow(dt)
+  if (n_dropped > 0) {
+    message(
+      "  plot_confounder_ratio: dropped ", n_dropped,
+      " gene(s) with stage1_coef == 0 or missing stage2_median_coef ",
+      "(still counted in the subtitle); ", nrow(dt), " plotted."
+    )
+  }
+
+  if (nrow(dt) == 0) {
+    stop("No genes remain after dropping non-finite ratios.", call. = FALSE)
+  }
+
+  x_lab <- if (!is.null(query_label)) {
+    bquote("Stage 1 gradient score " * beta ~ "(" * .(query_label) * ")")
+  } else {
+    expression("Stage 1 gradient score " * beta)
+  }
+  y_lab <- if (!is.null(control_label)) {
+    bquote(beta[Stage~2] / beta[Stage~1] ~
+             "(controlled for " * .(control_label) * ")")
+  } else {
+    expression(beta[Stage~2] / beta[Stage~1])
+  }
+
+  p <- ggplot2::ggplot(
+    dt, ggplot2::aes(
+      x = .data[[stage1_coef_column]],
+      y = .data$ratio,
+      colour = .data$classification
+    )
+  ) +
+    # Reference lines, drawn first so points sit on top
+    ggplot2::geom_hline(yintercept = 0,   linewidth = 0.3,
+                        colour = "grey80") +
+    ggplot2::geom_hline(yintercept = 0.5, linetype = "dotted",
+                        colour = "grey55") +
+    ggplot2::geom_hline(yintercept = 1.0, linetype = "dashed",
+                        colour = "grey45") +
+    ggplot2::geom_hline(yintercept = 1.1, linetype = "dotted",
+                        colour = "grey55") +
+    ggplot2::geom_vline(xintercept = 0,   linewidth = 0.3,
+                        colour = "grey80") +
+    ggplot2::geom_point(alpha = 0.6, size = 1.6) +
+    ggplot2::scale_colour_manual(values = class_cols, name = NULL,
+                                 drop = FALSE) +
+    ggplot2::labs(x = x_lab, y = y_lab,
+                  title = title, subtitle = subtitle) +
+    theme_ripple(base_size = base_size) +
+    ggplot2::theme(
+      plot.title    = ggplot2::element_text(face = "bold"),
+      plot.subtitle = ggplot2::element_text(size = 9, colour = "grey25",
+                                            margin = ggplot2::margin(b = 6)),
+      legend.position = "bottom",
+      legend.key.size = ggplot2::unit(0.4, "cm")
+    )
+
+  if (!is.null(label_genes)) {
+    label_dt <- dt[get(gene_column) %in% label_genes]
+    if (nrow(label_dt) > 0) {
+      p <- p + ggrepel::geom_text_repel(
+        data = label_dt,
+        ggplot2::aes(label = .data[[gene_column]]),
+        size = 3.3, max.overlaps = 20, box.padding = 0.4,
+        seed = 1, min.segment.length = 0,
+        show.legend = FALSE, inherit.aes = TRUE
+      )
+    }
+  }
+
+  p
+}
+
 

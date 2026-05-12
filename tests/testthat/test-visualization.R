@@ -314,6 +314,75 @@ test_that("plot_confounder_* error on missing required columns", {
     plot_confounder_scatter(data.table::data.table(gene = "g1")),
     "Missing required columns"
   )
+  expect_error(
+    plot_confounder_ratio(data.table::data.table(gene = "g1")),
+    "Missing required columns"
+  )
+})
+
+test_that("plot_confounder_ratio computes stage2/stage1 and draws thresholds", {
+  s4 <- data.table::data.table(
+    gene = c("Ccr7", "Sell", "Dropme", "NoStage2", "Lef1"),
+    stage1_coef        = c(-0.005, -0.004, 0,       -0.003,  -0.002),
+    stage2_median_coef = c(-0.004, -0.0035, -0.001, NA,      0.0025),
+    classification     = c("TRC-Ccl21a_specific", "enhanced",
+                           "TRC-Ccl21a_specific", "no_stage2_result",
+                           "reversed"),
+    cell_type          = "T_cell_all"
+  )
+
+  expect_message(
+    p <- plot_confounder_ratio(
+      s4,
+      label_genes   = c("Ccr7", "Sell"),
+      query_label   = "TRC-Ccl21a",
+      control_label = "TRC-Cxcl12"
+    ),
+    "dropped 2 gene"
+  )
+
+  expect_s3_class(p, "ggplot")
+
+  # Layers: 4 hlines + 1 vline + 1 point + 1 text-repel = 7
+  geoms <- vapply(p$layers, function(l) class(l$geom)[1], character(1))
+  expect_equal(sum(geoms == "GeomHline"),     4)
+  expect_equal(sum(geoms == "GeomVline"),     1)
+  expect_equal(sum(geoms == "GeomPoint"),     1)
+  expect_equal(sum(geoms == "GeomTextRepel"), 1)
+
+  # Ratio computed correctly for the 3 plottable rows
+  pt_data <- p$data
+  expect_equal(sort(round(pt_data$ratio, 4)),
+               sort(round(c(-0.004 / -0.005,
+                            -0.0035 / -0.004,
+                             0.0025 / -0.002), 4)))
+
+  # Subtitle reports all 5 genes (counts include the dropped ones)
+  expect_match(p$labels$subtitle, "TRC-Ccl21a")
+
+  # ggrepel layer should carry exactly the 2 requested label rows
+  txt_idx <- which(geoms == "GeomTextRepel")
+  expect_equal(nrow(p$layers[[txt_idx]]$data), 2L)
+
+  # Class colour palette is canonicalised (no raw "TRC-Ccl21a_specific")
+  cls <- as.character(unique(pt_data$classification))
+  expect_true(all(cls %in% c("confounder_specific", "enhanced",
+                             "confounder_driven", "underpowered",
+                             "reversed", "no_conf_result")))
+})
+
+test_that("plot_confounder_ratio errors when no plottable rows remain", {
+  s4 <- data.table::data.table(
+    gene = c("a", "b"),
+    stage1_coef        = c(0, 0),
+    stage2_median_coef = c(NA, NA),
+    classification     = c("no_stage2_result", "no_stage2_result"),
+    cell_type          = "CT"
+  )
+  expect_error(
+    suppressMessages(plot_confounder_ratio(s4)),
+    "No genes remain"
+  )
 })
 
 test_that("ripple_plot_qc errors when summary file is missing", {

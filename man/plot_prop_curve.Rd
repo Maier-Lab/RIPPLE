@@ -27,9 +27,11 @@ plot_prop_curve(
 \item{bin_stats}{A \code{data.table} of binned decay statistics. In
 pooled mode, must contain the columns named by \code{x_col},
 \code{y_col}, optionally \code{se_col} for the ribbon, and
-\code{n_cells} for point sizing. In per-sample mode, must
-additionally contain \code{sample_col}; per-bin means and SEs are
-computed internally.}
+optionally \code{n_cells} for the point-size encoding (see
+"Dot size encoding" below). In per-sample mode, must additionally
+contain \code{sample_col}; per-bin means and SEs are computed
+internally and \code{n_cells}, if present, is summed across samples
+per bin to drive the dot-size encoding.}
 
 \item{gene_name}{Character. Gene name for the plot title.}
 
@@ -117,6 +119,11 @@ Briefly: pooled mode uses the supplied per-bin SE (binomial Wald,
 HyMy plot); per-sample mode uses cross-sample
 \code{sd / sqrt(n_samples)} (more honest about replicate
 variability).
+
+\strong{Dot size encodes cell count per bin}, not significance. See
+the "Dot size encoding" section of \code{\link{plot_gradient_curve}}
+for the full discussion. Briefly: bigger dot = more cells contributed
+to that bin's mean. The size legend is hidden by design.
 }
 \examples{
 \dontrun{
