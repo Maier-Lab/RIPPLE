@@ -30,16 +30,13 @@ library(patchwork)
 This vignette walks through RIPPLE on the **CosMx SMI NSCLC dataset**
 from [He et al. (2022)](https://doi.org/10.1038/s41587-022-01483-z) —
 765,771 cells, 980 genes, 17 cell types, 5 NSCLC patients (each treated
-as a biological replicate). Tumor cells are the query; we ask which
+as a biological replicate). Tumor cells are the query, so we ask which
 genes in the surrounding cell types change expression as a function of
 distance to the nearest tumor cell, reproducibly across all 5 patients.
 
-The analysis recovers **516 significant gradient hits** at Fisher
-FDR < 0.05 across 17 target cell types, with fibroblasts (129) and
-macrophages (94) showing the strongest tumor-proximity remodelling.
-
 This vignette is structured to **directly reproduce panels A–E of
-paper Figure 4**. Each panel uses cached results bundled with the
+paper Figure 4**. You can follow it to learn how to work with RIPPLE and the type of outputs you can get.
+Each panel uses cached results bundled with the
 package; running the analysis from scratch on the raw 2.6 GB h5ad takes
 ~6 hours on a 16-core machine and is shown but not executed.
 
@@ -144,9 +141,8 @@ cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0
 
 > **Strongly recommended:** run the contamination check **before** any
 > downstream interpretation, top-hit listing, or pathway enrichment.
-> Cross-cell-type "contamination" genes — genes that come up significant
-> in many cell types simultaneously, typically ribosomal genes, MHC
-> housekeeping, and ambient RNA from highly expressed query markers —
+> Cross-cell-type "contamination" genes are genes that come up significant
+> in many cell types simultaneously, typically ambient RNA from highly expressed query markers or cells in their microenvironment,
 > will otherwise dominate every "top hits" table and every fGSEA leading
 > edge, masking the cell-type-specific biology that RIPPLE is designed
 > to surface.
@@ -156,7 +152,7 @@ the number of cell types it appears in and a four-level class
 (`specific`, `moderate`, `ubiquitous`, `contamination`). We compute it
 **once**, here, and reuse it everywhere downstream.
 
-**A note on the contamination dials.** There is no universally
+**A note on the contamination settings.** There is no universally
 correct cutoff. `classify_gene_specificity()` exposes **two**
 dials — both should be reported in your methods:
 
@@ -168,14 +164,14 @@ dials — both should be reported in your methods:
    - **Many fine subtypes (~30+):** a cutoff of 4 is too lenient and
      will flag legitimate lineage-shared biology; consider 6-10.
    - Sanity check: plot `n_celltypes` as a histogram across all
-     significant genes — the cutoff should sit in the right tail,
+     significant genes. The cutoff should sit in the right tail,
      separating clear multi-cell-type genes from cell-type-specific
      signal.
 2. **`contamination_sig_threshold`** (how strictly significant each
    "hit" must be). Default `NULL` means any `*`-significant
    (FDR < 0.05) hit counts toward the contamination tally. Tighten to
    `"**"` (FDR < 0.01) or `"***"` (FDR < 0.001) to make the filter
-   **looser overall** — a gene only counts as a hit in cell types
+   **looser overall**; a gene only counts as a hit in cell types
    where the signal is unambiguous, so fewer genes get flagged. Useful
    when the default classifies as "contamination" things you believe
    are real biology.
@@ -192,7 +188,7 @@ spec <- classify_gene_specificity(
 
 table(spec$specificity_class)
 
-# Genes flagged as contamination — to be deprioritised in top-hit lists
+# Genes flagged as contamination to be deprioritised in top-hit lists
 contam_genes <- spec[specificity_class == "contamination", unique(gene)]
 cat("Contamination-flagged genes:", length(contam_genes), "\n")
 head(spec[specificity_class == "contamination"][order(-n_celltypes)], 10)
@@ -210,7 +206,7 @@ cat(nrow(results),       "rows in `results` (unfiltered)\n")
 cat(nrow(results_clean), "rows in `results_clean` (contamination removed)\n")
 ```
 
-> **⚠ Limitations of contamination filtering — read before reporting
+> **⚠ Limitations of contamination filtering: read before reporting
 > filtered results:**
 >
 > - **Loses real biology when contamination + induction co-occur.**
@@ -218,7 +214,7 @@ cat(nrow(results_clean), "rows in `results_clean` (contamination removed)\n")
 >   by ambient RNA from query cells (MIF in this dataset is a textbook
 >   example). Filtering removes the gene from every cell type's ranking,
 >   including those where the induction is real. Always inspect the
->   contamination list and decide case-by-case.
+>   contamination list and decide.
 > - **The threshold is panel-dependent.** Default
 >   `contamination_threshold = 4` assumes ~10-20 cell types in the panel.
 >   With 3 cell types the cutoff is unreachable; with 30 fine subtypes
@@ -418,10 +414,10 @@ plot_fgsea_dotplot(fgsea_dt, padj_threshold = 0.1, top_n = 12)
 ```
 
 Hallmark pathways like **E2F_TARGETS**, **G2M_CHECKPOINT** (proliferation,
-red — induced in tumor-proximal fibroblasts and macrophages) and
-**ALLOGRAFT_REJECTION** (immune effector programs, blue — depleted in
+red is induced in tumor-proximal fibroblasts and macrophages) and
+**ALLOGRAFT_REJECTION** (immune effector programs, blue is depleted in
 tumor-proximal myeloid + lymphoid cells) light up across multiple
-stromal/immune cell types — each column tells its own story.
+stromal/immune cell types.
 
 ### Robust pathway enrichment: dropping contamination genes
 
@@ -430,7 +426,7 @@ also dominate fGSEA leading edges (ribosomal genes, MHC housekeeping,
 ambient-RNA-prone markers light up `INTERFERON_GAMMA_RESPONSE`,
 `TNFA_SIGNALING_VIA_NFKB`, etc. in cell types where they don't really
 belong). `run_ripple_fgsea()` accepts `exclude_contamination = TRUE` to
-drop them before ranking — **using the same heuristic** as the
+drop them before ranking, **using the same heuristic** as the
 upfront classification above.
 
 ```{r fgsea-filtered, eval = FALSE}
@@ -452,7 +448,7 @@ plot_fgsea_dotplot(fgsea_filtered, padj_threshold = 0.1, top_n = 12) +
 
 When the panels are very similar, the unfiltered enrichment is robust
 to the most obvious ambient RNA. When they differ substantially, the
-filter is removing real signal, contamination, or both — investigate
+filter is removing real signal, contamination, or both; so investigate
 the dropped leading-edge genes before reporting either version as the
 answer. The full caveat list lives in the
 [Pre-flight: contamination check] section above (and in
