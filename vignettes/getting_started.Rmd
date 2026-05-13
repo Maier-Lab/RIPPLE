@@ -156,8 +156,8 @@ spec
 ```
 
 In this clean synthetic dataset every planted gene shows up as
-`specific` (significant in only one cell type — T_cell). On real data
-you will typically see a mix of `specific`, `moderate`, and
+`specific` (significant in only one cell type: T_cell). On real data
+you will see a mix of `specific`, `moderate`, and
 `contamination` classes; the third is what you want to flag.
 
 If you want pathway enrichment (`run_ripple_fgsea()`) to ignore
@@ -168,11 +168,11 @@ before reporting. The
 [CosMx walkthrough](cosmx_nsclc_walkthrough.html) shows a side-by-side
 comparison.
 
-> **Note on the contamination dials.** `classify_gene_specificity()`
-> has two: `contamination_threshold` (how many cell types — default
+> **Note on the contamination settings.** `classify_gene_specificity()`
+> has two: `contamination_threshold` (how many cell types, default
 > `4`, illustrative for a ~10-20 cell-type panel; tune for your data)
 > and `contamination_sig_threshold` (how strictly significant each
-> "hit" must be — default `NULL`, which means any `*` hit counts; pass
+> "hit" must be, default `NULL`, which means any `*` hit counts; pass
 > `"**"` or `"***"` to require stricter significance and flag fewer
 > genes). **Pick values appropriate to your dataset and report them in
 > the methods.** See `?classify_gene_specificity` for the full
@@ -202,7 +202,7 @@ What to look for on real data:
 - **Distance violins** (top-left): heavy right-skew or sample-specific
   spikes flag tissue-boundary effects.
 - **Cell composition** (top-right): watch for sample dropouts or
-  annotation imbalance — if one sample has 10× fewer T cells, its
+  annotation imbalance. If one sample has 10× fewer T cells, its
   per-sample GLM will be noisy.
 - **Sign consistency** (mid-left): genes with replicate-consistent
   direction pile up at 1.0; a flat distribution means most "hits" are
@@ -217,7 +217,7 @@ What to look for on real data:
 ## Next steps
 
 - **Real data, deep dive:** `vignette("cosmx_nsclc_walkthrough", package = "ripple")`
-  walks through a 765 K-cell, 5-patient CosMx NSCLC analysis — including
+  walks through a 5-patient CosMx NSCLC analysis. Including
   contamination handling, fGSEA pathway enrichment, ligand–receptor
   integration, and full reproduction of paper Figure 4.
 - **Statistical validation:** `vignette("benchmarks", package = "ripple")`
