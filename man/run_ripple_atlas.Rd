@@ -11,15 +11,15 @@ run_ripple_atlas(
   coef_col = "median_coef",
   sig_col = "fisher_fdr",
   fdr_threshold = 0.05,
-  contamination_threshold = 4,
-  contamination_sig_threshold = NULL,
+  broad_threshold = 4,
+  broad_sig_threshold = NULL,
   top_per_celltype = 5,
   run_fgsea = TRUE,
   gene_sets = "hallmark",
   organism = "mouse",
   fgsea_min_genes = 100,
   fgsea_seed = 42,
-  fgsea_exclude_contamination = FALSE,
+  fgsea_exclude_broad = FALSE,
   stage2_dir = NULL,
   verbose = TRUE
 )
@@ -43,18 +43,17 @@ Default: "fisher_fdr".}
 
 \item{fdr_threshold}{Numeric. Significance cutoff. Default: 0.05.}
 
-\item{contamination_threshold}{Integer. Flag genes significant in at least
-this many cell types as potential contamination. Default: \code{4}
--- this is illustrative only; tune for your panel size and
-annotation granularity. See "Choosing
-\code{contamination_threshold}" in
+\item{broad_threshold}{Integer. Flag genes significant in at least
+this many cell types as the broad-expression class (heuristic
+proxy for ambient-RNA artefacts). Default: \code{4} -- this is
+illustrative only; tune for your panel size and annotation
+granularity. See "Choosing \code{broad_threshold}" in
 \code{\link{classify_gene_specificity}} for guidance.}
 
-\item{contamination_sig_threshold}{Numeric or character. Stricter
-significance bar for the contamination tally (e.g. \code{"**"} for
-FDR < 0.01). \code{NULL} (default) keeps the back-compat behaviour
-(any \code{*} hit counts). See \code{\link{classify_gene_specificity}}
-for details.}
+\item{broad_sig_threshold}{Numeric or character. Stricter
+significance bar for the broad-class tally (e.g. \code{"**"} for
+FDR < 0.01). \code{NULL} (default) means any \code{*} hit counts.
+See \code{\link{classify_gene_specificity}} for details.}
 
 \item{top_per_celltype}{Integer. Number of top genes per cell type in the
 dotplot. Default: 5.}
@@ -74,12 +73,12 @@ fGSEA filtering. Default: 100.}
 \item{fgsea_seed}{Integer. Random seed for reproducible fGSEA results.
 Default: 42.}
 
-\item{fgsea_exclude_contamination}{Logical. If \code{TRUE}, drops genes
-classified as contamination (significant in
-\code{>= contamination_threshold} cell types) from the fGSEA ranked
+\item{fgsea_exclude_broad}{Logical. If \code{TRUE}, drops genes
+classified as broad-expression (significant in
+\code{>= broad_threshold} cell types) from the fGSEA ranked
 list. Useful for separating cell-type-specific pathway signals from
-ambient-RNA artefacts, but heuristic — see the "Limitations of
-contamination filtering" section of \code{\link{run_ripple_fgsea}}
+ambient-RNA artefacts, but heuristic — see the "Limitations of the
+broad-class filter" section of \code{\link{run_ripple_fgsea}}
 before reporting filtered results. Default: \code{FALSE}.}
 
 \item{stage2_dir}{Character or NULL. Path to Stage 2 results directory.
@@ -101,7 +100,8 @@ The function generates the following panels (saved as individual PDFs):
 \item{P2}{Dotplot of top cell-type-specific genes.}
 \item{P3}{Multi-panel volcano per cell type.}
 \item{P6}{Heatmap of top specific genes.}
-\item{P7}{Contamination candidates table (CSV).}
+\item{P7}{Broad-class candidates table (CSV; filename
+\code{contamination_candidates.csv} retained for back-compat).}
 \item{P8-9}{fGSEA pathway enrichment heatmap and dotplot (if
 \code{run_fgsea = TRUE}).}
 \item{P10}{Stage 2 classification breakdown (if \code{stage2_dir}

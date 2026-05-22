@@ -9,7 +9,7 @@ plot_gene_counts_by_celltype(
   fdr_col = "fisher_fdr",
   coef_col = "median_coef",
   fdr_threshold = 0.05,
-  contamination_threshold = 4,
+  broad_threshold = 4,
   query_label = "Query",
   cell_type_order = NULL
 )
@@ -28,11 +28,10 @@ Typically the output of \code{\link{run_ripple}} or
 
 \item{fdr_threshold}{Numeric. FDR cutoff (default: \code{0.05}).}
 
-\item{contamination_threshold}{Integer. Number of cell types at or above
-which a gene is flagged as "contamination" (default: \code{4}).
+\item{broad_threshold}{Integer. Number of cell types at or above
+which a gene is flagged as "broad" (default: \code{4}).
 The default is illustrative -- adapt to your panel size and
-annotation granularity. See "Choosing
-\code{contamination_threshold}" in
+annotation granularity. See "Choosing \code{broad_threshold}" in
 \code{\link{classify_gene_specificity}} for guidance.}
 
 \item{query_label}{Character. Display label for the query cell type
@@ -49,13 +48,14 @@ A \code{ggplot2} object.
 \description{
 Builds a stacked bar chart of significant gene counts per target cell type,
 split by direction (induced vs repressed) and by specificity class
-(specific + moderate = cell-type-restricted signal; ubiquitous + contamination
-= potentially ambient RNA / segmentation artefacts).
+(specific + moderate = cell-type-restricted signal; ubiquitous + broad =
+broadly-expressed, the heuristic flag for potential ambient RNA / segmentation
+artefacts).
 }
 \details{
 Matches the stacked barplot used in the original HyMy / TDLN analysis and
 extends the plain induced/repressed bar chart by surfacing the
-contamination-flagged portion of each bar.
+broad-class portion of each bar.
 }
 \examples{
 \dontrun{

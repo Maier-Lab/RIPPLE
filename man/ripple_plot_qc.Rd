@@ -8,7 +8,7 @@ ripple_plot_qc(
   results_dir,
   query_signature_genes = NULL,
   fdr_threshold = 0.05,
-  contamination_threshold = 4L,
+  broad_threshold = 4L,
   query_label = "Query",
   top_n_bleed = 15L,
   output_file = NULL,
@@ -28,10 +28,10 @@ for ambient RNA / segmentation contamination (a query marker showing as
 
 \item{fdr_threshold}{Numeric. Significance cutoff (default: 0.05).}
 
-\item{contamination_threshold}{Integer. Min number of cell types where a
-gene is significant for the contamination class (default: \code{4}).
-The default is illustrative -- tune for your panel size and
-annotation granularity. See
+\item{broad_threshold}{Integer. Min number of cell types where a
+gene is significant to be flagged as the broad-expression class
+(default: \code{4}). The default is illustrative -- tune for your
+panel size and annotation granularity. See
 \code{\link{classify_gene_specificity}} for guidance.}
 
 \item{query_label}{Character. Display label for the query cell type
@@ -54,9 +54,10 @@ A \code{patchwork} object (returned invisibly when
 Multi-panel QC dashboard composed from the artefacts written by
 \code{\link{run_ripple}}. Bundles replicate-quality panels (per-sample
 distance density, cell composition, sign consistency, dispersion) with
-specificity / contamination panels (gene counts split by direction and
-specificity class, specificity breakdown, top widely-shared genes with
-optional query-marker bleed-through highlighting).
+specificity panels (gene counts split by direction and specificity
+class, specificity breakdown, top widely-shared genes with optional
+query-marker bleed-through highlighting -- the latter is the
+smoking-gun pattern for ambient-RNA contamination).
 }
 \details{
 Reads only files written under \code{results_dir}:

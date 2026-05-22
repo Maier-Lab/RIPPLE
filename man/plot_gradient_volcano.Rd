@@ -45,13 +45,14 @@ Ignored when \code{label_genes} is supplied.}
 \item{exclude_specificity_class}{Optional character vector. Specificity-class
 labels to exclude from the \emph{label-selection pool only} (genes still
 appear as dots, just without text labels). Typical use:
-\code{exclude_specificity_class = "contamination"} to skip ambient-RNA /
-query-signature genes that the cross-cell-type heuristic flagged. If set,
-the input \code{results} must carry a \code{specificity_class} column
-(produced by \code{classify_gene_specificity()} or
-\code{run_ripple_atlas()}). Default \code{NULL} preserves the prior
-labelling behaviour. Ignored when \code{label_genes} is supplied (the
-user has explicitly chosen which genes to label).}
+\code{exclude_specificity_class = "broad"} to skip the broad-expression
+class (heuristic proxy for ambient-RNA / query-signature genes flagged
+by the cross-cell-type heuristic). If set, the input \code{results}
+must carry a \code{specificity_class} column (produced by
+\code{classify_gene_specificity()} or \code{run_ripple_atlas()}).
+Default \code{NULL} preserves the prior labelling behaviour. Ignored
+when \code{label_genes} is supplied (the user has explicitly chosen
+which genes to label).}
 
 \item{label_genes}{Optional character vector. When supplied, these exact
 genes are labelled (subject to availability in \code{results}), instead
@@ -111,10 +112,10 @@ plot_gradient_volcano(
   query_label = "Tumor"
 )
 
-# Skip contamination-flagged genes when picking labels:
+# Skip broad-class genes when picking labels:
 plot_gradient_volcano(
   results,
-  exclude_specificity_class = "contamination"
+  exclude_specificity_class = "broad"
 )
 
 # Curated label set (e.g. T zone positive controls):

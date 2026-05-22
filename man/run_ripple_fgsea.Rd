@@ -16,9 +16,9 @@ run_ripple_fgsea(
   n_perm = 10000,
   min_genes = 100,
   seed = 42,
-  exclude_contamination = FALSE,
-  contamination_threshold = 4L,
-  contamination_sig_threshold = NULL,
+  exclude_broad = FALSE,
+  broad_threshold = 4L,
+  broad_sig_threshold = NULL,
   exclude_specificity_class = NULL
 )
 }
@@ -54,34 +54,35 @@ Default: 100. Lower for small custom gene panels.}
 \item{seed}{Integer. Random seed for fGSEA permutations. Set to ensure
 reproducibility. Default: 42.}
 
-\item{exclude_contamination}{Logical. If \code{TRUE}, drops genes flagged
-as cross-cell-type contamination from the ranked list before fGSEA.
-When the input does not already carry a \code{specificity_class}
-column, \code{\link{classify_gene_specificity}} is called internally
-with \code{contamination_threshold} to compute it. Default \code{FALSE}.
+\item{exclude_broad}{Logical. If \code{TRUE}, drops genes flagged as the
+broad-expression class (significant in many cell types -- the
+cross-cell-type heuristic for ambient RNA / segmentation artefacts)
+from the ranked list before fGSEA. When the input does not already
+carry a \code{specificity_class} column,
+\code{\link{classify_gene_specificity}} is called internally with
+\code{broad_threshold} to compute it. Default \code{FALSE}.
 See "Limitations" below before turning this on.}
 
-\item{contamination_threshold}{Integer. Minimum number of cell types in
-which a gene must be significant (at
-\code{contamination_sig_threshold}) to be classified as
-contamination. Used only when \code{exclude_contamination = TRUE}
-and \code{specificity_class} is not already present. Default:
-\code{4L} -- illustrative; tune to your panel size and annotation
-granularity (see "Choosing \code{contamination_threshold}" in
-\code{\link{classify_gene_specificity}}).}
+\item{broad_threshold}{Integer. Minimum number of cell types in which a
+gene must be significant (at \code{broad_sig_threshold}) to be
+classified as broad-expression. Used only when
+\code{exclude_broad = TRUE} and \code{specificity_class} is not
+already present. Default: \code{4L} -- illustrative; tune to your
+panel size and annotation granularity (see "Choosing
+\code{broad_threshold}" in \code{\link{classify_gene_specificity}}).}
 
-\item{contamination_sig_threshold}{Numeric or character. Stricter
-significance bar for the contamination tally. \code{NULL} (default)
-uses \code{fdr_col} < 0.05 (any "*" hit counts). Pass \code{"**"}
+\item{broad_sig_threshold}{Numeric or character. Stricter significance
+bar for the broad-class tally. \code{NULL} (default) uses
+\code{fdr_col} < 0.05 (any "*" hit counts). Pass \code{"**"}
 (FDR < 0.01), \code{"***"} (FDR < 0.001), or a numeric to require a
 higher significance bar -- this makes the filter \strong{looser}
 (fewer genes flagged). See \code{\link{classify_gene_specificity}}
 for the full discussion.}
 
 \item{exclude_specificity_class}{Optional character vector of
-specificity-class labels (e.g. \code{"contamination"}) to drop from the
-ranked list. Lower-level alternative to \code{exclude_contamination}
-when you want to drop other classes (e.g. \code{c("contamination",
+specificity-class labels (e.g. \code{"broad"}) to drop from the
+ranked list. Lower-level alternative to \code{exclude_broad}
+when you want to drop other classes (e.g. \code{c("broad",
   "ubiquitous")}). Requires the input to carry a \code{specificity_class}
 column. Default \code{NULL}.}
 }
@@ -103,8 +104,8 @@ The function:
 \enumerate{
 \item Loads gene sets from msigdbr if \code{gene_sets} is a string,
 or uses the provided named list directly.
-\item Optionally classifies and drops contamination-class genes (see
-\code{exclude_contamination}).
+\item Optionally classifies and drops broad-class genes (see
+\code{exclude_broad}).
 \item For each cell type, creates a ranked gene list sorted by
 \code{coef_col} values (named by gene).
 \item Runs \code{fgsea::fgsea()} with the specified parameters.
@@ -113,36 +114,39 @@ or uses the provided named list directly.
 
 Cell types with fewer than \code{min_genes} ranked genes are skipped.
 }
-\section{Limitations of contamination filtering}{
+\section{Limitations of the broad-class filter}{
 
-Setting \code{exclude_contamination = TRUE} (or
-\code{exclude_specificity_class = "contamination"}) is a useful sanity
-check, but it is a \strong{heuristic} that can both over- and
-under-correct. Be aware of the following before reporting filtered
-enrichments:
+Setting \code{exclude_broad = TRUE} (or
+\code{exclude_specificity_class = "broad"}) is a useful sanity
+check, but the "broad" label is a \strong{heuristic} proxy for
+ambient-RNA / cross-cell-type contamination — not a measurement of
+it. The filter can both over- and under-correct. Be aware before
+reporting filtered enrichments:
 \itemize{
-\item \strong{Loses real biology when contamination + induction co-occur.}
-A gene can be both genuinely induced near the query \emph{and}
-contaminated by ambient RNA from query cells (e.g. MIF in the CosMx
-NSCLC walkthrough). Filtering removes the gene from every cell type's
-ranking, including cell types where the induction is real.
+\item \strong{Loses real biology when broad expression + induction
+co-occur.} A gene can be both genuinely induced near the query
+\emph{and} inflated by ambient RNA from query cells (e.g. MIF in
+the CosMx NSCLC walkthrough). Filtering removes the gene from
+every cell type's ranking, including cell types where the
+induction is real.
 \item \strong{The threshold is panel-dependent.} The default
-\code{contamination_threshold = 4} assumes ~10-20 cell types in the
+\code{broad_threshold = 4} assumes ~10-20 cell types in the
 panel. With 3 cell types the cutoff is unreachable; with 30 fine
 subtypes it is too lenient. Re-tune for your annotation granularity.
 \item \strong{Removes genes globally, not per cell type.} A gene
-classified as contamination in the dataset as a whole is dropped from
-every cell type's ranking, even where its expression is genuinely
-specific.
-\item \strong{Multi-cell-type biology is not contamination.} Many
+classified as broad-expression in the dataset as a whole is
+dropped from every cell type's ranking, even where its expression
+is genuinely specific.
+\item \strong{Multi-cell-type biology is not ambient RNA.} Many
 cytokines, MHC genes, and stress-response genes are legitimately
-expressed across many cell types. Filtering may remove signal that
-reflects real shared biology.
+expressed across many cell types and will land in the broad
+class. Filtering may remove signal that reflects real shared
+biology.
 \item \strong{Rank-based tests are panel-size sensitive.} Dropping
 genes shifts the ranks of all remaining genes; NES values from
 filtered and unfiltered runs are not directly comparable. Always
-report whether the filter was applied and ideally show the unfiltered
-result alongside.
+report whether the filter was applied and ideally show the
+unfiltered result alongside.
 }
 Recommended use: run fGSEA both with and without the filter, compare
 top pathways, and treat large discrepancies as a flag for further

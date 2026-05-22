@@ -11,7 +11,7 @@ utils::globalVariables(c(
   "enrichment_score",
   "fdr", "fdr_fisher", "fisher_fdr", "fisher_pval",
   "gene", "gene_safe", "gradient_score",
-  "is_combined", "is_contamination", "is_query_marker", "is_sig", "is_target",
+  "is_broad", "is_combined", "is_query_marker", "is_sig", "is_target",
   "leadingEdge", "ligand", "ligand_pct_query", "lower",
   "mean_abs_nes", "mean_nes", "mean_val", "median_coef", "median_dispersion", "median_per_sample_score", "morans_i",
   "n_celltypes", "n_celltypes_strict", "n_control", "n_overlap", "n_query_cells", "ncells_sum",

@@ -117,31 +117,32 @@ NULL
 #'   Default: 100. Lower for small custom gene panels.
 #' @param seed Integer. Random seed for fGSEA permutations. Set to ensure
 #'   reproducibility. Default: 42.
-#' @param exclude_contamination Logical. If \code{TRUE}, drops genes flagged
-#'   as cross-cell-type contamination from the ranked list before fGSEA.
-#'   When the input does not already carry a \code{specificity_class}
-#'   column, \code{\link{classify_gene_specificity}} is called internally
-#'   with \code{contamination_threshold} to compute it. Default \code{FALSE}.
+#' @param exclude_broad Logical. If \code{TRUE}, drops genes flagged as the
+#'   broad-expression class (significant in many cell types -- the
+#'   cross-cell-type heuristic for ambient RNA / segmentation artefacts)
+#'   from the ranked list before fGSEA. When the input does not already
+#'   carry a \code{specificity_class} column,
+#'   \code{\link{classify_gene_specificity}} is called internally with
+#'   \code{broad_threshold} to compute it. Default \code{FALSE}.
 #'   See "Limitations" below before turning this on.
-#' @param contamination_threshold Integer. Minimum number of cell types in
-#'   which a gene must be significant (at
-#'   \code{contamination_sig_threshold}) to be classified as
-#'   contamination. Used only when \code{exclude_contamination = TRUE}
-#'   and \code{specificity_class} is not already present. Default:
-#'   \code{4L} -- illustrative; tune to your panel size and annotation
-#'   granularity (see "Choosing \code{contamination_threshold}" in
-#'   \code{\link{classify_gene_specificity}}).
-#' @param contamination_sig_threshold Numeric or character. Stricter
-#'   significance bar for the contamination tally. \code{NULL} (default)
-#'   uses \code{fdr_col} < 0.05 (any "*" hit counts). Pass \code{"**"}
+#' @param broad_threshold Integer. Minimum number of cell types in which a
+#'   gene must be significant (at \code{broad_sig_threshold}) to be
+#'   classified as broad-expression. Used only when
+#'   \code{exclude_broad = TRUE} and \code{specificity_class} is not
+#'   already present. Default: \code{4L} -- illustrative; tune to your
+#'   panel size and annotation granularity (see "Choosing
+#'   \code{broad_threshold}" in \code{\link{classify_gene_specificity}}).
+#' @param broad_sig_threshold Numeric or character. Stricter significance
+#'   bar for the broad-class tally. \code{NULL} (default) uses
+#'   \code{fdr_col} < 0.05 (any "*" hit counts). Pass \code{"**"}
 #'   (FDR < 0.01), \code{"***"} (FDR < 0.001), or a numeric to require a
 #'   higher significance bar -- this makes the filter \strong{looser}
 #'   (fewer genes flagged). See \code{\link{classify_gene_specificity}}
 #'   for the full discussion.
 #' @param exclude_specificity_class Optional character vector of
-#'   specificity-class labels (e.g. \code{"contamination"}) to drop from the
-#'   ranked list. Lower-level alternative to \code{exclude_contamination}
-#'   when you want to drop other classes (e.g. \code{c("contamination",
+#'   specificity-class labels (e.g. \code{"broad"}) to drop from the
+#'   ranked list. Lower-level alternative to \code{exclude_broad}
+#'   when you want to drop other classes (e.g. \code{c("broad",
 #'   "ubiquitous")}). Requires the input to carry a \code{specificity_class}
 #'   column. Default \code{NULL}.
 #'
@@ -149,35 +150,38 @@ NULL
 #'   pval, padj, ES, NES, size, leadingEdge. The leadingEdge column contains
 #'   comma-separated gene names.
 #'
-#' @section Limitations of contamination filtering:
-#' Setting \code{exclude_contamination = TRUE} (or
-#' \code{exclude_specificity_class = "contamination"}) is a useful sanity
-#' check, but it is a \strong{heuristic} that can both over- and
-#' under-correct. Be aware of the following before reporting filtered
-#' enrichments:
+#' @section Limitations of the broad-class filter:
+#' Setting \code{exclude_broad = TRUE} (or
+#' \code{exclude_specificity_class = "broad"}) is a useful sanity
+#' check, but the "broad" label is a \strong{heuristic} proxy for
+#' ambient-RNA / cross-cell-type contamination — not a measurement of
+#' it. The filter can both over- and under-correct. Be aware before
+#' reporting filtered enrichments:
 #' \itemize{
-#'   \item \strong{Loses real biology when contamination + induction co-occur.}
-#'     A gene can be both genuinely induced near the query \emph{and}
-#'     contaminated by ambient RNA from query cells (e.g. MIF in the CosMx
-#'     NSCLC walkthrough). Filtering removes the gene from every cell type's
-#'     ranking, including cell types where the induction is real.
+#'   \item \strong{Loses real biology when broad expression + induction
+#'     co-occur.} A gene can be both genuinely induced near the query
+#'     \emph{and} inflated by ambient RNA from query cells (e.g. MIF in
+#'     the CosMx NSCLC walkthrough). Filtering removes the gene from
+#'     every cell type's ranking, including cell types where the
+#'     induction is real.
 #'   \item \strong{The threshold is panel-dependent.} The default
-#'     \code{contamination_threshold = 4} assumes ~10-20 cell types in the
+#'     \code{broad_threshold = 4} assumes ~10-20 cell types in the
 #'     panel. With 3 cell types the cutoff is unreachable; with 30 fine
 #'     subtypes it is too lenient. Re-tune for your annotation granularity.
 #'   \item \strong{Removes genes globally, not per cell type.} A gene
-#'     classified as contamination in the dataset as a whole is dropped from
-#'     every cell type's ranking, even where its expression is genuinely
-#'     specific.
-#'   \item \strong{Multi-cell-type biology is not contamination.} Many
+#'     classified as broad-expression in the dataset as a whole is
+#'     dropped from every cell type's ranking, even where its expression
+#'     is genuinely specific.
+#'   \item \strong{Multi-cell-type biology is not ambient RNA.} Many
 #'     cytokines, MHC genes, and stress-response genes are legitimately
-#'     expressed across many cell types. Filtering may remove signal that
-#'     reflects real shared biology.
+#'     expressed across many cell types and will land in the broad
+#'     class. Filtering may remove signal that reflects real shared
+#'     biology.
 #'   \item \strong{Rank-based tests are panel-size sensitive.} Dropping
 #'     genes shifts the ranks of all remaining genes; NES values from
 #'     filtered and unfiltered runs are not directly comparable. Always
-#'     report whether the filter was applied and ideally show the unfiltered
-#'     result alongside.
+#'     report whether the filter was applied and ideally show the
+#'     unfiltered result alongside.
 #' }
 #' Recommended use: run fGSEA both with and without the filter, compare
 #' top pathways, and treat large discrepancies as a flag for further
@@ -188,8 +192,8 @@ NULL
 #' \enumerate{
 #'   \item Loads gene sets from msigdbr if \code{gene_sets} is a string,
 #'     or uses the provided named list directly.
-#'   \item Optionally classifies and drops contamination-class genes (see
-#'     \code{exclude_contamination}).
+#'   \item Optionally classifies and drops broad-class genes (see
+#'     \code{exclude_broad}).
 #'   \item For each cell type, creates a ranked gene list sorted by
 #'     \code{coef_col} values (named by gene).
 #'   \item Runs \code{fgsea::fgsea()} with the specified parameters.
@@ -219,9 +223,9 @@ run_ripple_fgsea <- function(results,
                              n_perm = 10000,
                              min_genes = 100,
                              seed = 42,
-                             exclude_contamination = FALSE,
-                             contamination_threshold = 4L,
-                             contamination_sig_threshold = NULL,
+                             exclude_broad = FALSE,
+                             broad_threshold = 4L,
+                             broad_sig_threshold = NULL,
                              exclude_specificity_class = NULL) {
   # --- Validate inputs ---
   if (!requireNamespace("fgsea", quietly = TRUE)) {
@@ -265,44 +269,44 @@ run_ripple_fgsea <- function(results,
     message("  Filtered to FDR < ", fdr_threshold, ": ", nrow(dt), " rows")
   }
 
-  # --- Optional contamination filter (high-level convenience) ---
-  if (isTRUE(exclude_contamination)) {
+  # --- Optional broad-class filter (high-level convenience) ---
+  if (isTRUE(exclude_broad)) {
     if (!"specificity_class" %in% names(dt)) {
       spec_dt <- classify_gene_specificity(
         dt,
-        fdr_col                     = fdr_col,
-        fdr_threshold               = 0.05,
-        contamination_threshold     = contamination_threshold,
-        contamination_sig_threshold = contamination_sig_threshold
+        fdr_col             = fdr_col,
+        fdr_threshold       = 0.05,
+        broad_threshold     = broad_threshold,
+        broad_sig_threshold = broad_sig_threshold
       )
-      contam_genes <- spec_dt[
-        specificity_class == "contamination", unique(gene)
+      broad_genes <- spec_dt[
+        specificity_class == "broad", unique(gene)
       ]
       n_before <- nrow(dt)
-      dt <- dt[!gene %in% contam_genes]
-      sig_label <- if (is.null(contamination_sig_threshold)) {
+      dt <- dt[!gene %in% broad_genes]
+      sig_label <- if (is.null(broad_sig_threshold)) {
         "FDR < 0.05"
-      } else if (is.character(contamination_sig_threshold)) {
-        paste0("significance ", contamination_sig_threshold)
+      } else if (is.character(broad_sig_threshold)) {
+        paste0("significance ", broad_sig_threshold)
       } else {
-        paste0("FDR < ", contamination_sig_threshold)
+        paste0("FDR < ", broad_sig_threshold)
       }
       message(
-        "  exclude_contamination: dropped ", length(contam_genes),
-        " gene(s) flagged as contamination ",
-        "(>= ", contamination_threshold, " cell types at ",
+        "  exclude_broad: dropped ", length(broad_genes),
+        " gene(s) in the broad-expression class ",
+        "(>= ", broad_threshold, " cell types at ",
         sig_label, "); ",
         n_before - nrow(dt), " row(s) removed; ",
         nrow(dt), " row(s) remain"
       )
     } else {
       n_before <- nrow(dt)
-      dt <- dt[specificity_class != "contamination" |
+      dt <- dt[specificity_class != "broad" |
                  is.na(specificity_class)]
       message(
-        "  exclude_contamination: dropped ",
+        "  exclude_broad: dropped ",
         n_before - nrow(dt),
-        " row(s) with specificity_class == 'contamination'; ",
+        " row(s) with specificity_class == 'broad'; ",
         nrow(dt), " row(s) remain"
       )
     }
@@ -403,12 +407,15 @@ run_ripple_fgsea <- function(results,
 #' Classify gene specificity across cell types
 #'
 #' For each significant gene, counts how many cell types it is significant in
-#' and classifies it as specific, moderate, ubiquitous, or contamination.
+#' and classifies it as specific, moderate, ubiquitous, or broad.
 #'
-#' Genes significant in many cell types are more likely to be segmentation
-#' artifacts (query transcripts leaking into neighboring cells) than genuine
-#' paracrine effects. This function provides a simple classification to flag
-#' such potential artifacts.
+#' Genes significant in many cell types (the "broad" class) are more likely
+#' to be ambient-RNA / segmentation artefacts (query transcripts leaking
+#' into neighboring cells) than genuine paracrine effects -- but they can
+#' also reflect real shared biology (cytokines, MHC, stress response). The
+#' broad class is a \strong{heuristic flag}, not a measurement of
+#' contamination; treat it as a candidate list for inspection rather than a
+#' deletion list.
 #'
 #' @param results \code{data.table} with columns: gene, cell_type, and a
 #'   significance column specified by \code{fdr_col}.
@@ -418,23 +425,22 @@ run_ripple_fgsea <- function(results,
 #'   what counts as "significant in a cell type" for the
 #'   specific/moderate/ubiquitous classes and for the
 #'   \code{n_celltypes} count. Default: 0.05.
-#' @param contamination_threshold Integer. Genes significant in at least this
-#'   many cell types (at \code{contamination_sig_threshold}) are flagged
-#'   as "contamination". Default: \code{4}. \strong{This default is
-#'   illustrative, not universal -- you should pick a value appropriate
-#'   to your dataset.} See "Choosing \code{contamination_threshold}"
-#'   below.
-#' @param contamination_sig_threshold Numeric or character. Stricter
-#'   significance cutoff used \emph{only} for the contamination flag. Lets
-#'   you require, e.g., \code{**} significance (FDR < 0.01) before a gene
-#'   counts toward the contamination tally, while still allowing \code{*}
+#' @param broad_threshold Integer. Genes significant in at least this
+#'   many cell types (at \code{broad_sig_threshold}) are flagged as
+#'   "broad". Default: \code{4}. \strong{This default is illustrative,
+#'   not universal -- you should pick a value appropriate to your
+#'   dataset.} See "Choosing \code{broad_threshold}" below.
+#' @param broad_sig_threshold Numeric or character. Stricter significance
+#'   cutoff used \emph{only} for the broad-class flag. Lets you require,
+#'   e.g., \code{**} significance (FDR < 0.01) before a gene counts
+#'   toward the broad-class tally, while still allowing \code{*}
 #'   (FDR < 0.05) for the broader specific/moderate/ubiquitous classes.
 #'   Accepts a numeric FDR (e.g. \code{0.01}) or a star string:
 #'   \code{"*"} -> 0.05, \code{"**"} -> 0.01, \code{"***"} -> 0.001,
 #'   \code{"****"} -> 1e-4. Default \code{NULL} -> use \code{fdr_threshold}
-#'   (back-compat: any "*"-significant gene contributes). Tightening this
-#'   makes the contamination filter \strong{looser} (fewer genes flagged)
-#'   because each cell-type "hit" must clear a higher bar.
+#'   (any "*"-significant gene contributes). Tightening this makes the
+#'   broad-class filter \strong{looser} (fewer genes flagged) because
+#'   each cell-type "hit" must clear a higher bar.
 #'
 #' @return A \code{data.table} with columns:
 #' \describe{
@@ -442,17 +448,19 @@ run_ripple_fgsea <- function(results,
 #'   \item{n_celltypes}{Integer. Number of cell types where the gene is
 #'     significant at \code{fdr_threshold} (the loose cutoff).}
 #'   \item{n_celltypes_strict}{Integer. Number of cell types where the gene
-#'     is significant at \code{contamination_sig_threshold}. Equal to
+#'     is significant at \code{broad_sig_threshold}. Equal to
 #'     \code{n_celltypes} when the two thresholds match (the default).}
 #'   \item{celltypes}{Character. Comma-separated list of cell type names
 #'     (using the loose \code{fdr_threshold}).}
 #'   \item{specificity_class}{Character. One of: "specific" (1 cell type),
-#'     "moderate" (2-3 cell types), "ubiquitous" (4+ but below contamination
-#'     threshold), or "contamination" (\code{n_celltypes_strict >=
-#'     contamination_threshold}).}
+#'     "moderate" (2-3 cell types), "ubiquitous" (4+ but below the broad
+#'     threshold), or "broad" (\code{n_celltypes_strict >=
+#'     broad_threshold}). "broad" is the descriptive name for the class;
+#'     it is a heuristic proxy for ambient-RNA / cross-cell-type
+#'     artefacts but not a measurement of them.}
 #' }
 #'
-#' @section Choosing \code{contamination_threshold}:
+#' @section Choosing \code{broad_threshold}:
 #' There is no universally correct cutoff. The right value depends on
 #' three things:
 #' \itemize{
@@ -468,7 +476,7 @@ run_ripple_fgsea <- function(results,
 #'     "myeloid") share fewer marker genes than fine subtypes (e.g.
 #'     "CD4 memory", "CD8 effector", "Treg"). Fine annotations need a
 #'     larger cutoff to avoid flagging real lineage-shared biology as
-#'     contamination.
+#'     broad-expression.
 #'   \item \strong{Biological prior.} Cytokines, MHC genes, ribosomal
 #'     genes, and stress-response programs are legitimately expressed
 #'     across many cell types -- the cross-cell-type heuristic cannot
@@ -476,28 +484,27 @@ run_ripple_fgsea <- function(results,
 #'     genes and decide whether the cutoff is doing what you want.
 #' }
 #' \strong{Recommended workflow:} run with the default first, look at
-#' the flagged gene list (\code{spec[specificity_class ==
-#' "contamination"]}), and adjust up or down. A useful sanity check is
-#' to plot \code{n_celltypes} as a histogram across all significant
-#' genes -- the cutoff should sit in the right tail, separating clear
-#' multi-cell-type genes from cell-type-specific signal. Whatever value
-#' you choose, report it explicitly in the methods.
+#' the flagged gene list (\code{spec[specificity_class == "broad"]}),
+#' and adjust up or down. A useful sanity check is to plot
+#' \code{n_celltypes} as a histogram across all significant genes -- the
+#' cutoff should sit in the right tail, separating clear multi-cell-type
+#' genes from cell-type-specific signal. Whatever value you choose,
+#' report it explicitly in the methods.
 #'
-#' @section Tuning \code{contamination_sig_threshold} (the significance bar):
-#' The contamination flag has \emph{two} dials:
+#' @section Tuning \code{broad_sig_threshold} (the significance bar):
+#' The broad-class flag has \emph{two} dials:
 #' \itemize{
-#'   \item \code{contamination_threshold} -- how many cell types
-#'     (default \code{4}).
-#'   \item \code{contamination_sig_threshold} -- how strictly significant
-#'     each "hit" must be (default \code{NULL} -> uses
-#'     \code{fdr_threshold}, i.e. any \code{*} gene counts).
+#'   \item \code{broad_threshold} -- how many cell types (default \code{4}).
+#'   \item \code{broad_sig_threshold} -- how strictly significant each
+#'     "hit" must be (default \code{NULL} -> uses \code{fdr_threshold},
+#'     i.e. any \code{*} gene counts).
 #' }
 #' Tightening the significance bar (e.g. \code{"**"} for FDR < 0.01)
 #' makes the filter \strong{looser overall} -- a gene only counts as a
 #' "hit" in cell types where the signal is unambiguous, so fewer genes
 #' reach the cell-type tally and fewer are flagged. Use this when the
 #' default flags genes you believe are real biology, or when you want
-#' the contamination class to capture only the most blatant ambient-RNA
+#' the broad class to capture only the most blatant ambient-RNA
 #' offenders. Conversely, leave it at the default (or use \code{NULL})
 #' to be more aggressive about flagging.
 #'
@@ -506,8 +513,8 @@ run_ripple_fgsea <- function(results,
 #' results <- data.table::fread("all_genes_results.csv")
 #' spec <- classify_gene_specificity(results, fdr_threshold = 0.05)
 #' table(spec$specificity_class)
-#' # Flag contamination genes for downstream filtering
-#' contam_genes <- spec[specificity_class == "contamination"]$gene
+#' # Flag broad-class genes for downstream filtering
+#' broad_genes <- spec[specificity_class == "broad"]$gene
 #' }
 #'
 #' @importFrom data.table data.table uniqueN fifelse
@@ -515,8 +522,8 @@ run_ripple_fgsea <- function(results,
 classify_gene_specificity <- function(results,
                                       fdr_col = "fisher_fdr",
                                       fdr_threshold = 0.05,
-                                      contamination_threshold = 4,
-                                      contamination_sig_threshold = NULL) {
+                                      broad_threshold = 4,
+                                      broad_sig_threshold = NULL) {
   if (!inherits(results, "data.table")) {
     results <- data.table::as.data.table(results)
   }
@@ -530,34 +537,34 @@ classify_gene_specificity <- function(results,
     )
   }
 
-  # Resolve contamination_sig_threshold:
-  #   NULL -> use fdr_threshold (back-compat)
+  # Resolve broad_sig_threshold:
+  #   NULL -> use fdr_threshold (any "*" hit counts)
   #   "*" / "**" / "***" / "****" -> 0.05 / 0.01 / 0.001 / 1e-4
   #   numeric -> as-is
-  if (is.null(contamination_sig_threshold)) {
+  if (is.null(broad_sig_threshold)) {
     cs_thr <- fdr_threshold
-  } else if (is.character(contamination_sig_threshold)) {
+  } else if (is.character(broad_sig_threshold)) {
     star_map <- c(`*` = 0.05, `**` = 0.01, `***` = 0.001, `****` = 1e-4)
-    if (!contamination_sig_threshold %in% names(star_map)) {
+    if (!broad_sig_threshold %in% names(star_map)) {
       stop(
-        "contamination_sig_threshold must be NULL, a numeric FDR, or one ",
+        "broad_sig_threshold must be NULL, a numeric FDR, or one ",
         "of '*', '**', '***', '****'.", call. = FALSE
       )
     }
-    cs_thr <- unname(star_map[contamination_sig_threshold])
-  } else if (is.numeric(contamination_sig_threshold) &&
-             length(contamination_sig_threshold) == 1) {
-    cs_thr <- contamination_sig_threshold
+    cs_thr <- unname(star_map[broad_sig_threshold])
+  } else if (is.numeric(broad_sig_threshold) &&
+             length(broad_sig_threshold) == 1) {
+    cs_thr <- broad_sig_threshold
   } else {
     stop(
-      "contamination_sig_threshold must be NULL, a single numeric FDR, ",
+      "broad_sig_threshold must be NULL, a single numeric FDR, ",
       "or one of '*', '**', '***', '****'.", call. = FALSE
     )
   }
   if (cs_thr > fdr_threshold) {
     warning(
-      "contamination_sig_threshold (", cs_thr, ") is looser than ",
-      "fdr_threshold (", fdr_threshold, "); contamination flag will be ",
+      "broad_sig_threshold (", cs_thr, ") is looser than ",
+      "fdr_threshold (", fdr_threshold, "); broad-class flag will be ",
       "MORE aggressive than the overall significance gate.",
       call. = FALSE
     )
@@ -581,18 +588,18 @@ classify_gene_specificity <- function(results,
     celltypes   = paste(sort(unique(as.character(cell_type))), collapse = ", ")
   ), by = gene]
 
-  # Strict set: significant at contamination_sig_threshold (drives the
-  # contamination flag only).
+  # Strict set: significant at broad_sig_threshold (drives the
+  # broad-class flag only).
   strict <- results[!is.na(get(fdr_col)) & get(fdr_col) < cs_thr,
                     .(n_celltypes_strict = data.table::uniqueN(cell_type)),
                     by = gene]
   gene_counts <- merge(gene_counts, strict, by = "gene", all.x = TRUE)
   gene_counts[is.na(n_celltypes_strict), n_celltypes_strict := 0L]
 
-  # Classify: contamination first (uses strict count), then
+  # Classify: broad first (uses strict count), then
   # specific/moderate/ubiquitous (uses loose count).
   gene_counts[, specificity_class := data.table::fifelse(
-    n_celltypes_strict >= contamination_threshold, "contamination",
+    n_celltypes_strict >= broad_threshold, "broad",
     data.table::fifelse(
       n_celltypes == 1, "specific",
       data.table::fifelse(

@@ -8,7 +8,7 @@ plot_specificity_breakdown(
   results,
   fdr_col = "fisher_fdr",
   fdr_threshold = 0.05,
-  contamination_threshold = 4
+  broad_threshold = 4
 )
 }
 \arguments{
@@ -22,11 +22,10 @@ Typically the output of \code{\link{run_ripple}} or
 
 \item{fdr_threshold}{Numeric. FDR cutoff (default: \code{0.05}).}
 
-\item{contamination_threshold}{Integer. Number of cell types at or above
-which a gene is flagged as "contamination" (default: \code{4}).
+\item{broad_threshold}{Integer. Number of cell types at or above
+which a gene is flagged as "broad" (default: \code{4}).
 The default is illustrative -- adapt to your panel size and
-annotation granularity. See "Choosing
-\code{contamination_threshold}" in
+annotation granularity. See "Choosing \code{broad_threshold}" in
 \code{\link{classify_gene_specificity}} for guidance.}
 }
 \value{
@@ -34,15 +33,16 @@ A \code{ggplot2} object.
 }
 \description{
 Produces a compact bar chart of significant genes, one bar per specificity
-class (specific, moderate, ubiquitous, contamination). Designed for the
+class (specific, moderate, ubiquitous, broad). Designed for the
 "breakdown" figure used in the TDLN analysis: it shows at a glance how much
-of the significant-gene pool is cell-type-restricted versus shared across
-many cell types (i.e., plausible contamination).
+of the significant-gene pool is cell-type-restricted versus broadly
+expressed across many cell types (the heuristic flag for potential
+ambient-RNA / segmentation artefacts).
 }
 \examples{
 \dontrun{
 results <- fread("all_genes_results.csv")
-plot_specificity_breakdown(results, contamination_threshold = 5)
+plot_specificity_breakdown(results, broad_threshold = 5)
 }
 
 }

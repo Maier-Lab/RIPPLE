@@ -137,26 +137,29 @@ cat(nrow(results), "gene x cell_type combinations tested\n")
 cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0.05\n")
 ```
 
-## Pre-flight: contamination check (run this early!)
+## Pre-flight: specificity check (run this early!)
 
-> **Strongly recommended:** run the contamination check **before** any
+> **Strongly recommended:** run the specificity check **before** any
 > downstream interpretation, top-hit listing, or pathway enrichment.
-> Cross-cell-type "contamination" genes are genes that come up significant
-> in many cell types simultaneously, typically ambient RNA from highly expressed query markers or cells in their microenvironment,
-> will otherwise dominate every "top hits" table and every fGSEA leading
-> edge, masking the cell-type-specific biology that RIPPLE is designed
-> to surface.
+> The **broad-expression class** — genes that come up significant in
+> many cell types simultaneously, typically ribosomal genes, MHC
+> housekeeping, and ambient RNA from highly expressed query markers —
+> will otherwise dominate every "top hits" table and every fGSEA
+> leading edge, masking the cell-type-specific biology that RIPPLE is
+> designed to surface. The "broad" label is a heuristic flag for
+> potential ambient-RNA / segmentation contamination, not a
+> measurement of it; treat it as a candidate list for inspection.
 
 `classify_gene_specificity()` returns one row per significant gene with
 the number of cell types it appears in and a four-level class
-(`specific`, `moderate`, `ubiquitous`, `contamination`). We compute it
+(`specific`, `moderate`, `ubiquitous`, `broad`). We compute it
 **once**, here, and reuse it everywhere downstream.
 
-**A note on the contamination settings.** There is no universally
-correct cutoff. `classify_gene_specificity()` exposes **two**
-dials — both should be reported in your methods:
+**A note on the broad-class dials.** There is no universally correct
+cutoff. `classify_gene_specificity()` exposes **two** dials — both
+should be reported in your methods:
 
-1. **`contamination_threshold`** (how many cell types). Default `4` is
+1. **`broad_threshold`** (how many cell types). Default `4` is
    sensible for the ~10-20 cell-type panel here (and for the original
    HyMy / TDLN analyses), but tune to your data:
    - **Few cell types (≤ 5):** a cutoff of 4 is barely reachable;
@@ -167,31 +170,30 @@ dials — both should be reported in your methods:
      significant genes. The cutoff should sit in the right tail,
      separating clear multi-cell-type genes from cell-type-specific
      signal.
-2. **`contamination_sig_threshold`** (how strictly significant each
-   "hit" must be). Default `NULL` means any `*`-significant
-   (FDR < 0.05) hit counts toward the contamination tally. Tighten to
-   `"**"` (FDR < 0.01) or `"***"` (FDR < 0.001) to make the filter
-   **looser overall**; a gene only counts as a hit in cell types
-   where the signal is unambiguous, so fewer genes get flagged. Useful
-   when the default classifies as "contamination" things you believe
-   are real biology.
+2. **`broad_sig_threshold`** (how strictly significant each "hit"
+   must be). Default `NULL` means any `*`-significant (FDR < 0.05)
+   hit counts toward the broad-class tally. Tighten to `"**"`
+   (FDR < 0.01) or `"***"` (FDR < 0.001) to make the filter **looser
+   overall** — a gene only counts as a hit in cell types where the
+   signal is unambiguous, so fewer genes get flagged. Useful when the
+   default classifies as "broad" things you believe are real biology.
 
-```{r preflight-contam}
+```{r preflight-broad}
 spec <- classify_gene_specificity(
   results,
-  fdr_threshold               = 0.05,
-  contamination_threshold     = 4,     # tune for your panel; see note above
-  contamination_sig_threshold = NULL   # NULL == any "*" hit counts;
-                                       # use "**" / "***" to require
-                                       # stricter sig per hit
+  fdr_threshold       = 0.05,
+  broad_threshold     = 4,     # tune for your panel; see note above
+  broad_sig_threshold = NULL   # NULL == any "*" hit counts;
+                                # use "**" / "***" to require
+                                # stricter sig per hit
 )
 
 table(spec$specificity_class)
 
-# Genes flagged as contamination to be deprioritised in top-hit lists
-contam_genes <- spec[specificity_class == "contamination", unique(gene)]
-cat("Contamination-flagged genes:", length(contam_genes), "\n")
-head(spec[specificity_class == "contamination"][order(-n_celltypes)], 10)
+# Genes flagged as broad — to be deprioritised in top-hit lists
+broad_genes <- spec[specificity_class == "broad", unique(gene)]
+cat("Broad-class genes:", length(broad_genes), "\n")
+head(spec[specificity_class == "broad"][order(-n_celltypes)], 10)
 ```
 
 ```{r preflight-clean}
@@ -201,42 +203,43 @@ head(spec[specificity_class == "contamination"][order(-n_celltypes)], 10)
 # `results_clean`. This way a flagged gene like MIF is still visible as
 # a dot on the volcano, but it does NOT crowd out the cell-type-specific
 # hits in the labelled set.
-results_clean <- results[!gene %in% contam_genes]
+results_clean <- results[!gene %in% broad_genes]
 cat(nrow(results),       "rows in `results` (unfiltered)\n")
-cat(nrow(results_clean), "rows in `results_clean` (contamination removed)\n")
+cat(nrow(results_clean), "rows in `results_clean` (broad class removed)\n")
 ```
 
-> **⚠ Limitations of contamination filtering: read before reporting
+> **⚠ Limitations of broad-class filtering — read before reporting
 > filtered results:**
 >
-> - **Loses real biology when contamination + induction co-occur.**
->   A gene can be both genuinely induced near the query *and* contaminated
+> - **Loses real biology when broad-expression + induction co-occur.**
+>   A gene can be both genuinely induced near the query *and* inflated
 >   by ambient RNA from query cells (MIF in this dataset is a textbook
->   example). Filtering removes the gene from every cell type's ranking,
->   including those where the induction is real. Always inspect the
->   contamination list and decide.
-> - **The threshold is panel-dependent.** Default
->   `contamination_threshold = 4` assumes ~10-20 cell types in the panel.
->   With 3 cell types the cutoff is unreachable; with 30 fine subtypes
->   it is too lenient. Re-tune for your annotation granularity.
+>   example). Filtering removes the gene from every cell type's
+>   ranking, including those where the induction is real. Always
+>   inspect the broad-class list and decide case-by-case.
+> - **The threshold is panel-dependent.** Default `broad_threshold = 4`
+>   assumes ~10-20 cell types in the panel. With 3 cell types the
+>   cutoff is unreachable; with 30 fine subtypes it is too lenient.
+>   Re-tune for your annotation granularity.
 > - **Removes genes globally, not per cell type.** A gene flagged
 >   dataset-wide is dropped from every column. A gene that's
->   contamination across most cell types may still be a real signal in
->   the one cell type that biologically expresses it.
-> - **Multi-cell-type biology is not contamination.** Cytokines, MHC
+>   broad-expression across most cell types may still be a real signal
+>   in the one cell type that biologically expresses it.
+> - **Multi-cell-type biology is not ambient RNA.** Cytokines, MHC
 >   class II genes, and stress-response programs are legitimately
->   expressed across many cell types — the heuristic cannot tell them
->   apart from ambient RNA on its own.
-> - **Rank-based tests are panel-size sensitive.** Dropping genes shifts
->   the ranks of all remaining genes; NES values from filtered and
->   unfiltered fGSEA runs are not directly comparable. Always report
->   whether the filter was applied and ideally show both.
+>   expressed across many cell types and will land in the broad class
+>   — the heuristic cannot tell them apart from ambient RNA on its
+>   own.
+> - **Rank-based tests are panel-size sensitive.** Dropping genes
+>   shifts the ranks of all remaining genes; NES values from filtered
+>   and unfiltered fGSEA runs are not directly comparable. Always
+>   report whether the filter was applied and ideally show both.
 >
 > **Recommended workflow:** classify upfront (this section), keep both
 > `results` (full) and `results_clean` (filtered) in scope, plot all
 > genes as background but label / report top hits from `results_clean`,
-> and run fGSEA both with and without `exclude_contamination = TRUE`
-> (Panel D below).
+> and run fGSEA both with and without `exclude_broad = TRUE` (Panel D
+> below).
 
 # Reproducing paper Figure 4
 
@@ -249,18 +252,18 @@ each panel with the same cached inputs.
 ```{r fig4-A, fig.width = 9, fig.height = 5}
 plot_gene_counts_by_celltype(
   results,
-  query_label             = "Tumor",
-  contamination_threshold = 4
+  query_label     = "Tumor",
+  broad_threshold = 4
 )
 ```
 
 Each bar is split into two pieces by direction (induced near tumor vs
 repressed near tumor) AND by specificity class — the faded portion is
-the "ubiquitous / contamination" fraction (genes significant in ≥ 4
-cell types). This separation is the key QC view: a tall bar is only
+the "ubiquitous / broad" fraction (genes significant in ≥ 4 cell
+types). This separation is the key QC view: a tall bar is only
 biologically interesting if its solid portion dominates. Fibroblasts
 and macrophages are the most transcriptionally remodelled cell types
-near tumor; both show a healthy specific-to-contamination ratio.
+near tumor; both show a healthy specific-to-broad ratio.
 
 ## Panel B — Fibroblast gradient volcano
 
@@ -276,11 +279,10 @@ plot_gradient_volcano(
 
 For the published figure we emphasise direction with red/blue colouring
 and label a curated gene set. Note the labelling strategy: **all** genes
-are still plotted as background dots (so the contamination-flagged
-genes remain visible for interpretation), but the labelled set is
-restricted to genes that are NOT in the contamination list, with a
-couple of contamination genes (MIF, IGKC) kept explicitly so we can
-discuss them.
+are still plotted as background dots (so the broad-class genes remain
+visible for interpretation), but the labelled set is restricted to
+genes that are NOT in the broad list, with a couple of broad-class
+genes (MIF, IGKC) kept explicitly so we can discuss them.
 
 ```{r fig4-B-paper, fig.width = 8, fig.height = 6}
 fib <- results[cell_type == "fibroblast"]    # all genes for the scatter
@@ -296,11 +298,11 @@ top_clean_fib <- results_clean[
   cell_type == "fibroblast" & fisher_fdr < 0.05
 ][order(fisher_fdr)][1:12]$gene
 
-# Plus a couple of contamination-flagged genes we want to discuss
-# explicitly (see "Key fibroblast hits" below).
-discuss_contam <- c("MIF", "IGKC", "JCHAIN", "RPL22")
+# Plus a couple of broad-class genes we want to discuss explicitly
+# (see "Key fibroblast hits" below).
+discuss_broad <- c("MIF", "IGKC", "JCHAIN", "RPL22")
 
-label_fib <- unique(c(top_clean_fib, discuss_contam))
+label_fib <- unique(c(top_clean_fib, discuss_broad))
 fib[, to_label := gene %in% label_fib & fisher_fdr < 0.05]
 
 ggplot(fib, aes(x = median_coef, y = neg_log10_fdr)) +
@@ -334,17 +336,18 @@ ggplot(fib, aes(x = median_coef, y = neg_log10_fdr)) +
   fibroblasts; its repression near tumor reflects phenotypic switching
   to a CAF state.
 
-**Contamination-flagged hits (kept on the plot, excluded from the
-clean top-hit list):**
+**Broad-class hits (kept on the plot, excluded from the clean
+top-hit list):**
 
 - **MIF** (induced): macrophage migration inhibitory factor — a
   well-known tumor-derived cytokine. *However*, MIF also appears as
-  significant in 9 cell types and is flagged by the contamination
-  check. This is the canonical "contamination + induction" case from
-  the limitations note above: MIF is plausibly both a real fibroblast
-  signal AND inflated by ambient RNA from highly MIF-expressing tumor
-  cells. We still show it on the plot, but we did not let it compete
-  for label slots with cell-type-specific hits.
+  significant in 9 cell types and is flagged by the broad-class
+  heuristic. This is the canonical "broad expression + induction"
+  case from the limitations note above: MIF is plausibly both a real
+  fibroblast signal AND inflated by ambient RNA from highly
+  MIF-expressing tumor cells. We still show it on the plot, but we
+  did not let it compete for label slots with cell-type-specific
+  hits.
 - **IGKC / JCHAIN / RPL22**: immunoglobulin and ribosomal genes
   detected in fibroblasts at high significance — almost certainly
   ambient RNA from nearby plasma cells / leakage.
@@ -383,7 +386,7 @@ All five patients show a consistent negative coefficient — MIF RNA
 counts increase near tumor in every replicate. Reproducibility alone
 does not rule out systematic ambient RNA (both real induction and
 ambient RNA can be reproducible across replicates), which is why the
-contamination check below is a separate QC step.
+specificity check below is a separate QC step.
 
 ## Panel D — Pathway enrichment (fGSEA dotplot)
 
@@ -419,42 +422,42 @@ red is induced in tumor-proximal fibroblasts and macrophages) and
 tumor-proximal myeloid + lymphoid cells) light up across multiple
 stromal/immune cell types.
 
-### Robust pathway enrichment: dropping contamination genes
+### Robust pathway enrichment: dropping broad-class genes
 
-The same contamination genes we filtered out of the volcano label sets
+The same broad-class genes we filtered out of the volcano label sets
 also dominate fGSEA leading edges (ribosomal genes, MHC housekeeping,
 ambient-RNA-prone markers light up `INTERFERON_GAMMA_RESPONSE`,
 `TNFA_SIGNALING_VIA_NFKB`, etc. in cell types where they don't really
-belong). `run_ripple_fgsea()` accepts `exclude_contamination = TRUE` to
-drop them before ranking, **using the same heuristic** as the
-upfront classification above.
+belong). `run_ripple_fgsea()` accepts `exclude_broad = TRUE` to drop
+them before ranking — **using the same heuristic** as the upfront
+classification above.
 
 ```{r fgsea-filtered, eval = FALSE}
 # Using the same threshold we picked in the pre-flight section.
 fgsea_filtered <- run_ripple_fgsea(
   results,
-  gene_sets               = "hallmark",
-  organism                = "human",
-  exclude_contamination   = TRUE,
-  contamination_threshold = 4
+  gene_sets       = "hallmark",
+  organism        = "human",
+  exclude_broad   = TRUE,
+  broad_threshold = 4
 )
 
 # Side-by-side: with and without filter
 plot_fgsea_dotplot(fgsea_dt,       padj_threshold = 0.1, top_n = 12) +
   ggplot2::labs(title = "fGSEA -- all genes")
 plot_fgsea_dotplot(fgsea_filtered, padj_threshold = 0.1, top_n = 12) +
-  ggplot2::labs(title = "fGSEA -- contamination genes excluded")
+  ggplot2::labs(title = "fGSEA -- broad-class genes excluded")
 ```
 
 When the panels are very similar, the unfiltered enrichment is robust
 to the most obvious ambient RNA. When they differ substantially, the
-filter is removing real signal, contamination, or both; so investigate
-the dropped leading-edge genes before reporting either version as the
-answer. The full caveat list lives in the
-[Pre-flight: contamination check] section above (and in
-`?run_ripple_fgsea`); the most important one for fGSEA specifically is
-that NES values are panel-size-sensitive and **not directly comparable
-between filtered and unfiltered runs**.
+filter is removing real signal, broad-class biology, or both —
+investigate the dropped leading-edge genes before reporting either
+version as the answer. The full caveat list lives in the
+[Pre-flight: specificity check] section above (and in
+`?run_ripple_fgsea`); the most important one for fGSEA specifically
+is that NES values are panel-size-sensitive and **not directly
+comparable between filtered and unfiltered runs**.
 
 ## Panel E — Top tumor → fibroblast ligand–receptor pairs
 
@@ -516,7 +519,7 @@ source("paper/render_figures.R")
 # writes paper/figures/fig_4_cosmx.{pdf,png}
 ```
 
-# Beyond Figure 4: macrophage deep-dive, contamination, and QC
+# Beyond Figure 4: macrophage deep-dive, specificity, and QC
 
 ## Macrophage gradient volcano
 
@@ -537,7 +540,7 @@ mac[, direction := fifelse(
 # top hits from `results_clean` (cell-type-specific signal) plus a
 # curated set of biologically interesting macrophage markers (some of
 # which — e.g. MHC II — are multi-cell-type by nature and therefore
-# appear in `contam_genes`; we keep them because the macrophage
+# appear in `broad_genes`; we keep them because the macrophage
 # induction is the biological point of interest).
 top_clean_mac <- results_clean[
   cell_type == "macrophage" & fisher_fdr < 0.05
@@ -595,13 +598,13 @@ distance from the tumor.
 
 # Specificity breakdown plot and QC dashboard
 
-The contamination check itself was already run upfront (see
-[Pre-flight: contamination check]); the `spec` object and `contam_genes`
+The specificity check itself was already run upfront (see
+[Pre-flight: specificity check]); the `spec` object and `broad_genes`
 vector are still in scope. `plot_specificity_breakdown()` summarises
 the four classes as a one-glance bar:
 
 ```{r breakdown, fig.width = 7, fig.height = 4}
-plot_specificity_breakdown(results, contamination_threshold = 4)
+plot_specificity_breakdown(results, broad_threshold = 4)
 ```
 
 Genes like **HLA-E**, **KRT19**, **MIF**, and **RPL22** are flagged
@@ -638,8 +641,8 @@ biologically interpretable spatial gradients in a multi-patient dataset:
 
 1. **Fibroblasts** show the strongest tumor-proximity remodelling
    (129 genes), including CAF activation markers (IGFBP5, THBS1) and
-   ECM genes. Top hits flagged as contamination (MIF, KRT19) should be
-   validated independently.
+   ECM genes. Top hits flagged in the broad-expression class (MIF,
+   KRT19) should be validated independently.
 2. **Macrophages** show a polarised response (94 genes), with
    tumor-proximity induction of antigen presentation (HLA-DRA,
    HLA-DPA1) and cytoskeletal remodelling (TUBB, S100A6).

@@ -10,7 +10,7 @@ test_that("classify_gene_specificity classifies genes by cell-type breadth", {
       "SPECIFIC_A", "SPECIFIC_A",    # sig in 1 ct only
       "MODERATE_B", "MODERATE_B", "MODERATE_B",
       "UBIQUITOUS_C", "UBIQUITOUS_C", "UBIQUITOUS_C",
-      "CONTAM_D", "CONTAM_D", "CONTAM_D", "CONTAM_D", "CONTAM_D"
+      "BROAD_D", "BROAD_D", "BROAD_D", "BROAD_D", "BROAD_D"
     ),
     cell_type = c(
       "CT1", "CT2",
@@ -22,18 +22,18 @@ test_that("classify_gene_specificity classifies genes by cell-type breadth", {
       0.001, 0.5,                      # SPECIFIC_A: sig in CT1 only
       0.001, 0.001, 0.02,              # MODERATE_B: sig in 3 ct
       0.001, 0.001, 0.001,             # UBIQUITOUS_C: sig in 3 ct (boundary)
-      0.001, 0.001, 0.001, 0.001, 0.01 # CONTAM_D: sig in 5 ct
+      0.001, 0.001, 0.001, 0.001, 0.01 # BROAD_D: sig in 5 ct
     )
   )
 
   spec <- classify_gene_specificity(
     results,
-    fdr_threshold = 0.05, contamination_threshold = 4
+    fdr_threshold = 0.05, broad_threshold = 4
   )
 
   expect_s3_class(spec, "data.table")
   expect_setequal(spec$gene, c(
-    "SPECIFIC_A", "MODERATE_B", "UBIQUITOUS_C", "CONTAM_D"
+    "SPECIFIC_A", "MODERATE_B", "UBIQUITOUS_C", "BROAD_D"
   ))
   expect_equal(
     spec[gene == "SPECIFIC_A"]$specificity_class, "specific"
@@ -41,21 +41,21 @@ test_that("classify_gene_specificity classifies genes by cell-type breadth", {
   expect_equal(
     spec[gene == "MODERATE_B"]$specificity_class, "moderate"
   )
-  # UBIQUITOUS_C is sig in 3 ct — below contamination_threshold, so "moderate"
+  # UBIQUITOUS_C is sig in 3 ct — below broad_threshold, so "moderate"
   expect_equal(
     spec[gene == "UBIQUITOUS_C"]$specificity_class, "moderate"
   )
   expect_equal(
-    spec[gene == "CONTAM_D"]$specificity_class, "contamination"
+    spec[gene == "BROAD_D"]$specificity_class, "broad"
   )
-  expect_equal(spec[gene == "CONTAM_D"]$n_celltypes, 5L)
+  expect_equal(spec[gene == "BROAD_D"]$n_celltypes, 5L)
 })
 
-test_that("classify_gene_specificity respects contamination_sig_threshold", {
+test_that("classify_gene_specificity respects broad_sig_threshold", {
   # Gene SHARED is significant in 4 cell types at FDR < 0.05 (default
-  # contamination call), but only at strong significance (FDR < 0.001) in
+  # broad-class call), but only at strong significance (FDR < 0.001) in
   # ONE of those 4 cell types. Tightening the significance bar should
-  # therefore demote it from "contamination" to a non-contamination class.
+  # therefore demote it from "broad" to a non-broad class.
   results <- data.table::data.table(
     gene = c(
       "SHARED", "SHARED", "SHARED", "SHARED",
@@ -71,22 +71,22 @@ test_that("classify_gene_specificity respects contamination_sig_threshold", {
     )
   )
 
-  # Default behaviour (any * counts) -> SHARED hits 4 cell types -> contamination
+  # Default behaviour (any * counts) -> SHARED hits 4 cell types -> broad
   spec_default <- classify_gene_specificity(
-    results, fdr_threshold = 0.05, contamination_threshold = 4
+    results, fdr_threshold = 0.05, broad_threshold = 4
   )
   expect_equal(spec_default[gene == "SHARED"]$specificity_class,
-               "contamination")
+               "broad")
   expect_equal(spec_default[gene == "SHARED"]$n_celltypes, 4L)
   expect_equal(spec_default[gene == "SHARED"]$n_celltypes_strict, 4L)
 
   # Tighten to ** (FDR < 0.01) -> SHARED only hits CT1 strictly -> NOT
-  # contamination; classified by loose count (4 -> "ubiquitous" since
-  # n_celltypes >= 4 and not contam).
+  # broad; classified by loose count (4 -> "ubiquitous" since
+  # n_celltypes >= 4 and not broad).
   spec_strict <- classify_gene_specificity(
     results, fdr_threshold = 0.05,
-    contamination_threshold = 4,
-    contamination_sig_threshold = "**"
+    broad_threshold     = 4,
+    broad_sig_threshold = "**"
   )
   expect_equal(spec_strict[gene == "SHARED"]$specificity_class,
                "ubiquitous")
@@ -96,8 +96,8 @@ test_that("classify_gene_specificity respects contamination_sig_threshold", {
   # Numeric threshold matches the star convention
   spec_numeric <- classify_gene_specificity(
     results, fdr_threshold = 0.05,
-    contamination_threshold = 4,
-    contamination_sig_threshold = 0.01
+    broad_threshold     = 4,
+    broad_sig_threshold = 0.01
   )
   expect_equal(spec_numeric[gene == "SHARED"]$specificity_class,
                spec_strict[gene == "SHARED"]$specificity_class)
@@ -105,14 +105,14 @@ test_that("classify_gene_specificity respects contamination_sig_threshold", {
   # Bad string -> error
   expect_error(
     classify_gene_specificity(results,
-                              contamination_sig_threshold = "bogus"),
+                              broad_sig_threshold = "bogus"),
     "must be NULL"
   )
 
   # Looser sig_threshold than fdr_threshold -> warning
   expect_warning(
     classify_gene_specificity(results, fdr_threshold = 0.01,
-                              contamination_sig_threshold = 0.05),
+                              broad_sig_threshold = 0.05),
     "MORE aggressive"
   )
 })
@@ -225,18 +225,18 @@ test_that("run_ripple_fgsea runs with a custom gene_sets list", {
 })
 
 
-test_that("run_ripple_fgsea exclude_contamination drops cross-cell-type genes", {
+test_that("run_ripple_fgsea exclude_broad drops cross-cell-type genes", {
   skip_if_not_installed("fgsea")
 
-  # 5 cell types; CONTAM_* are significant in all 5 (>= threshold = 4).
+  # 5 cell types; BROAD_* are significant in all 5 (>= threshold = 4).
   # SPECIFIC_* are significant only in T_cell.
   set.seed(2)
   ct_levels <- c("T_cell", "Macrophage", "Fibroblast", "B_cell", "DC")
   results <- data.table::rbindlist(lapply(ct_levels, function(ct) {
     data.table::data.table(
-      gene        = c(paste0("CONTAM_", 1:5),
+      gene        = c(paste0("BROAD_",    1:5),
                       paste0("SPECIFIC_", 1:5),
-                      paste0("BG_",      1:20)),
+                      paste0("BG_",       1:20)),
       cell_type   = ct,
       median_coef = c(
         -0.01 + stats::rnorm(5, 0, 5e-4),
@@ -245,7 +245,7 @@ test_that("run_ripple_fgsea exclude_contamination drops cross-cell-type genes", 
         stats::rnorm(20, 0, 5e-4)
       ),
       fisher_fdr  = c(
-        rep(1e-5, 5),                                  # CONTAM_*: sig everywhere
+        rep(1e-5, 5),                                  # BROAD_*: sig everywhere
         if (ct == "T_cell") rep(1e-5, 5) else runif(5, 0.2, 1),
         runif(20, 0.2, 1)
       )
@@ -253,7 +253,7 @@ test_that("run_ripple_fgsea exclude_contamination drops cross-cell-type genes", 
   }))
 
   gene_sets <- list(
-    CONTAM_SET   = paste0("CONTAM_",   1:5),
+    BROAD_SET    = paste0("BROAD_",    1:5),
     SPECIFIC_SET = paste0("SPECIFIC_", 1:5)
   )
 
@@ -264,20 +264,20 @@ test_that("run_ripple_fgsea exclude_contamination drops cross-cell-type genes", 
     n_perm = 1000, seed = 42
   ))
 
-  # With filter — CONTAM_* should be dropped
+  # With filter — BROAD_* should be dropped
   filtered <- suppressMessages(run_ripple_fgsea(
     results, gene_sets = gene_sets, coef_col = "median_coef",
     min_size = 3, max_size = 100, min_genes = 10,
     n_perm = 1000, seed = 42,
-    exclude_contamination   = TRUE,
-    contamination_threshold = 4L
+    exclude_broad   = TRUE,
+    broad_threshold = 4L
   ))
 
-  # Unfiltered: CONTAM_SET tested in every cell type
-  expect_setequal(unique(unfiltered$pathway), c("CONTAM_SET", "SPECIFIC_SET"))
+  # Unfiltered: BROAD_SET tested in every cell type
+  expect_setequal(unique(unfiltered$pathway), c("BROAD_SET", "SPECIFIC_SET"))
 
-  # Filtered: CONTAM_SET should NOT be present (no genes left for that set)
-  expect_false("CONTAM_SET" %in% unique(filtered$pathway))
+  # Filtered: BROAD_SET should NOT be present (no genes left for that set)
+  expect_false("BROAD_SET" %in% unique(filtered$pathway))
   expect_true("SPECIFIC_SET" %in% unique(filtered$pathway))
 })
 
@@ -331,10 +331,10 @@ test_that("downstream stages chain off a single run_ripple run", {
   spec <- classify_gene_specificity(merged, fdr_threshold = 0.05)
   expect_s3_class(spec, "data.table")
   # Planted signal is T_cell-specific — the 10 planted genes should appear
-  # as either specific or moderate (not contamination)
+  # as either specific or moderate (not broad)
   planted <- spec[grepl("^INDUCED|^REPRESSED", gene)]
   expect_true(nrow(planted) >= 1)
-  expect_true(!any(planted$specificity_class == "contamination"))
+  expect_true(!any(planted$specificity_class == "broad"))
 
   # --- run_ripple_confounder with Fibroblast as control ---
   stage2 <- suppressMessages(run_ripple_confounder(

@@ -22,20 +22,20 @@ NULL
 #' Build the gene counts stacked bar chart (Panel 1)
 #' @noRd
 .panel_gene_counts <- function(sig_results, coef_col, fdr_threshold,
-                               query_label, contamination_threshold) {
+                               query_label, broad_threshold) {
   induced_label <- paste0(query_label, "-induced")
   repressed_label <- paste0(query_label, "-repressed")
 
   count_by_dir <- sig_results[, .(
     total = .N,
     specific = sum(specificity_class %in% c("specific", "moderate")),
-    contamination = sum(specificity_class %in% c("ubiquitous", "contamination"))
+    broad    = sum(specificity_class %in% c("ubiquitous", "broad"))
   ), by = .(cell_type, direction)]
 
   count_long <- data.table::melt(
     count_by_dir,
     id.vars = c("cell_type", "direction"),
-    measure.vars = c("specific", "contamination"),
+    measure.vars = c("specific", "broad"),
     variable.name = "type", value.name = "count"
   )
 
@@ -43,16 +43,16 @@ NULL
     c("#D95F02", "#FDAE6B", "#1B9E77", "#A1D99B"),
     c(
       paste0("specific.", induced_label),
-      paste0("contamination.", induced_label),
+      paste0("broad.",    induced_label),
       paste0("specific.", repressed_label),
-      paste0("contamination.", repressed_label)
+      paste0("broad.",    repressed_label)
     )
   )
 
   direction_labels <- stats::setNames(
     c(
-      "Induced (specific)", "Induced (ubiquitous)",
-      "Repressed (specific)", "Repressed (ubiquitous)"
+      "Induced (specific)", "Induced (broad)",
+      "Repressed (specific)", "Repressed (broad)"
     ),
     names(direction_colors)
   )
@@ -73,8 +73,8 @@ NULL
       title = "Significant Spatial Gradients per Cell Type",
       subtitle = paste0(
         "FDR < ", fdr_threshold,
-        " | Faded = potential contamination (sig in >=",
-        contamination_threshold, " cell types)"
+        " | Faded = broad-expression class (sig in >=",
+        broad_threshold, " cell types)"
       ),
       x = NULL, y = "Number of significant genes"
     ) +
@@ -156,7 +156,7 @@ NULL
 #' @noRd
 .panel_multi_volcano <- function(all_results, sig_results, coef_col, sig_col,
                                  fdr_threshold, query_label,
-                                 contamination_genes) {
+                                 broad_genes) {
   induced_label <- paste0(query_label, "-induced")
   repressed_label <- paste0(query_label, "-repressed")
   direction_colors <- stats::setNames(
@@ -166,10 +166,10 @@ NULL
 
   volcano_data <- data.table::copy(all_results)
   volcano_data[, neg_log10_fdr := -log10(pmax(get(sig_col), 1e-50))]
-  volcano_data[, is_contamination := gene %in% contamination_genes]
+  volcano_data[, is_broad := gene %in% broad_genes]
 
   # Label top specific genes per cell type
-  label_genes <- sig_results[!gene %in% contamination_genes][
+  label_genes <- sig_results[!gene %in% broad_genes][
     order(-abs(get(coef_col))), utils::head(.SD, 20),
     by = cell_type
   ]
@@ -191,17 +191,17 @@ NULL
   ) +
     # Non-significant
     ggplot2::geom_point(
-      data = volcano_data[get(sig_col) >= fdr_threshold & !is_contamination],
+      data = volcano_data[get(sig_col) >= fdr_threshold & !is_broad],
       color = "grey80", size = 0.3, alpha = 0.3
     ) +
-    # Contamination
+    # Broad-class (heuristic ambient-RNA flag)
     ggplot2::geom_point(
-      data = volcano_data[is_contamination == TRUE & get(sig_col) < fdr_threshold],
+      data = volcano_data[is_broad == TRUE & get(sig_col) < fdr_threshold],
       color = "#FDAE6B", size = 1.2, alpha = 0.6, shape = 4, stroke = 0.6
     ) +
     # Significant
     ggplot2::geom_point(
-      data = volcano_data[get(sig_col) < fdr_threshold & !is_contamination],
+      data = volcano_data[get(sig_col) < fdr_threshold & !is_broad],
       ggplot2::aes(color = .data$direction), size = 0.5, alpha = 0.4
     ) +
     ggrepel::geom_text_repel(
@@ -223,7 +223,7 @@ NULL
       title = "Spatial Gradient Volcanos Across Cell Types",
       subtitle = paste0(
         "Labels = top cell-type-specific genes | ",
-        "x = potential contamination (sig in >= many cell types)"
+        "x = broad-expression class (sig in >= many cell types)"
       ),
       x = paste0(
         "Coefficient [", coef_col,
@@ -333,17 +333,16 @@ NULL
 #' @param sig_col Character. Column name for the significance measure.
 #'   Default: "fisher_fdr".
 #' @param fdr_threshold Numeric. Significance cutoff. Default: 0.05.
-#' @param contamination_threshold Integer. Flag genes significant in at least
-#'   this many cell types as potential contamination. Default: \code{4}
-#'   -- this is illustrative only; tune for your panel size and
-#'   annotation granularity. See "Choosing
-#'   \code{contamination_threshold}" in
+#' @param broad_threshold Integer. Flag genes significant in at least
+#'   this many cell types as the broad-expression class (heuristic
+#'   proxy for ambient-RNA artefacts). Default: \code{4} -- this is
+#'   illustrative only; tune for your panel size and annotation
+#'   granularity. See "Choosing \code{broad_threshold}" in
 #'   \code{\link{classify_gene_specificity}} for guidance.
-#' @param contamination_sig_threshold Numeric or character. Stricter
-#'   significance bar for the contamination tally (e.g. \code{"**"} for
-#'   FDR < 0.01). \code{NULL} (default) keeps the back-compat behaviour
-#'   (any \code{*} hit counts). See \code{\link{classify_gene_specificity}}
-#'   for details.
+#' @param broad_sig_threshold Numeric or character. Stricter
+#'   significance bar for the broad-class tally (e.g. \code{"**"} for
+#'   FDR < 0.01). \code{NULL} (default) means any \code{*} hit counts.
+#'   See \code{\link{classify_gene_specificity}} for details.
 #' @param top_per_celltype Integer. Number of top genes per cell type in the
 #'   dotplot. Default: 5.
 #' @param run_fgsea Logical. Whether to run pathway enrichment (requires
@@ -356,12 +355,12 @@ NULL
 #'   fGSEA filtering. Default: 100.
 #' @param fgsea_seed Integer. Random seed for reproducible fGSEA results.
 #'   Default: 42.
-#' @param fgsea_exclude_contamination Logical. If \code{TRUE}, drops genes
-#'   classified as contamination (significant in
-#'   \code{>= contamination_threshold} cell types) from the fGSEA ranked
+#' @param fgsea_exclude_broad Logical. If \code{TRUE}, drops genes
+#'   classified as broad-expression (significant in
+#'   \code{>= broad_threshold} cell types) from the fGSEA ranked
 #'   list. Useful for separating cell-type-specific pathway signals from
-#'   ambient-RNA artefacts, but heuristic — see the "Limitations of
-#'   contamination filtering" section of \code{\link{run_ripple_fgsea}}
+#'   ambient-RNA artefacts, but heuristic — see the "Limitations of the
+#'   broad-class filter" section of \code{\link{run_ripple_fgsea}}
 #'   before reporting filtered results. Default: \code{FALSE}.
 #' @param stage2_dir Character or NULL. Path to Stage 2 results directory.
 #'   If provided, adds classification panels. Default: NULL.
@@ -376,7 +375,8 @@ NULL
 #'   \item{P2}{Dotplot of top cell-type-specific genes.}
 #'   \item{P3}{Multi-panel volcano per cell type.}
 #'   \item{P6}{Heatmap of top specific genes.}
-#'   \item{P7}{Contamination candidates table (CSV).}
+#'   \item{P7}{Broad-class candidates table (CSV; filename
+#'     \code{contamination_candidates.csv} retained for back-compat).}
 #'   \item{P8-9}{fGSEA pathway enrichment heatmap and dotplot (if
 #'     \code{run_fgsea = TRUE}).}
 #'   \item{P10}{Stage 2 classification breakdown (if \code{stage2_dir}
@@ -410,15 +410,15 @@ run_ripple_atlas <- function(results_dir,
                              coef_col = "median_coef",
                              sig_col = "fisher_fdr",
                              fdr_threshold = 0.05,
-                             contamination_threshold = 4,
-                             contamination_sig_threshold = NULL,
+                             broad_threshold = 4,
+                             broad_sig_threshold = NULL,
                              top_per_celltype = 5,
                              run_fgsea = TRUE,
                              gene_sets = "hallmark",
                              organism = "mouse",
                              fgsea_min_genes = 100,
                              fgsea_seed = 42,
-                             fgsea_exclude_contamination = FALSE,
+                             fgsea_exclude_broad = FALSE,
                              stage2_dir = NULL,
                              verbose = TRUE) {
   # --- Setup ---
@@ -494,10 +494,10 @@ run_ripple_atlas <- function(results_dir,
   .msg("Classifying gene specificity...")
   gene_spec <- classify_gene_specificity(
     all_results,
-    fdr_col                     = sig_col,
-    fdr_threshold               = fdr_threshold,
-    contamination_threshold     = contamination_threshold,
-    contamination_sig_threshold = contamination_sig_threshold
+    fdr_col             = sig_col,
+    fdr_threshold       = fdr_threshold,
+    broad_threshold     = broad_threshold,
+    broad_sig_threshold = broad_sig_threshold
   )
 
   # Merge specificity into results
@@ -520,7 +520,7 @@ run_ripple_atlas <- function(results_dir,
   .msg(
     "  Specific: ", sum(gene_spec$specificity_class == "specific"),
     " | Moderate: ", sum(gene_spec$specificity_class == "moderate"),
-    " | Contamination: ", sum(gene_spec$specificity_class == "contamination")
+    " | Broad: ", sum(gene_spec$specificity_class == "broad")
   )
 
   # Cell type ordering by specific gene count
@@ -534,7 +534,7 @@ run_ripple_atlas <- function(results_dir,
   all_results[, cell_type := factor(cell_type, levels = ct_order)]
   sig_results[, cell_type := factor(cell_type, levels = ct_order)]
 
-  contamination_genes <- gene_spec[specificity_class == "contamination"]$gene
+  broad_genes <- gene_spec[specificity_class == "broad"]$gene
 
   # --- Panel 1: Gene counts bar chart ---
   .msg("Panel 1: Gene counts bar chart...")
@@ -542,7 +542,7 @@ run_ripple_atlas <- function(results_dir,
     {
       p1 <- .panel_gene_counts(
         sig_results, coef_col, fdr_threshold,
-        query_label, contamination_threshold
+        query_label, broad_threshold
       )
       f1 <- file.path(output_dir, "gene_counts_by_celltype.pdf")
       ggplot2::ggsave(f1, p1, width = 9, height = 6)
@@ -583,7 +583,7 @@ run_ripple_atlas <- function(results_dir,
       p3 <- .panel_multi_volcano(
         all_results, sig_results, coef_col, sig_col,
         fdr_threshold, query_label,
-        contamination_genes
+        broad_genes
       )
       f3 <- file.path(output_dir, "multi_volcano.pdf")
       ggplot2::ggsave(f3, p3, width = 14, height = 3.5 * ceiling(n_ct / 4))
@@ -613,21 +613,23 @@ run_ripple_atlas <- function(results_dir,
     error = function(e) .msg("  [ERROR] Panel 6: ", conditionMessage(e))
   )
 
-  # --- Panel 7: Contamination candidates ---
-  .msg("Panel 7: Contamination candidates...")
-  contamination_list <- gene_spec[specificity_class == "contamination"][
+  # --- Panel 7: Broad-class candidates ---
+  # CSV filename retained as contamination_candidates.csv for back-compat
+  # with downstream scripts and the bundled cached output.
+  .msg("Panel 7: Broad-class candidates...")
+  broad_list <- gene_spec[specificity_class == "broad"][
     order(-n_celltypes)
   ]
-  if (nrow(contamination_list) > 0) {
+  if (nrow(broad_list) > 0) {
     f7 <- file.path(output_dir, "contamination_candidates.csv")
-    data.table::fwrite(contamination_list, f7)
+    data.table::fwrite(broad_list, f7)
     saved_plots <- c(saved_plots, f7)
     .msg(
       "  Saved: contamination_candidates.csv (",
-      nrow(contamination_list), " genes)"
+      nrow(broad_list), " genes in the broad class)"
     )
   } else {
-    .msg("  No contamination candidates found")
+    .msg("  No broad-class candidates found")
   }
 
   # --- Panels 8-9: fGSEA pathway enrichment ---
@@ -641,13 +643,13 @@ run_ripple_atlas <- function(results_dir,
         {
           fgsea_results <- run_ripple_fgsea(
             all_results,
-            gene_sets                   = gene_sets, organism = organism,
-            coef_col                    = coef_col,  fdr_col  = sig_col,
-            min_genes                   = fgsea_min_genes,
-            seed                        = fgsea_seed,
-            exclude_contamination       = fgsea_exclude_contamination,
-            contamination_threshold     = contamination_threshold,
-            contamination_sig_threshold = contamination_sig_threshold
+            gene_sets           = gene_sets, organism = organism,
+            coef_col            = coef_col,  fdr_col  = sig_col,
+            min_genes           = fgsea_min_genes,
+            seed                = fgsea_seed,
+            exclude_broad       = fgsea_exclude_broad,
+            broad_threshold     = broad_threshold,
+            broad_sig_threshold = broad_sig_threshold
           )
 
           if (nrow(fgsea_results) > 0) {

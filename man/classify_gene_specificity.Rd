@@ -8,8 +8,8 @@ classify_gene_specificity(
   results,
   fdr_col = "fisher_fdr",
   fdr_threshold = 0.05,
-  contamination_threshold = 4,
-  contamination_sig_threshold = NULL
+  broad_threshold = 4,
+  broad_sig_threshold = NULL
 )
 }
 \arguments{
@@ -24,24 +24,23 @@ what counts as "significant in a cell type" for the
 specific/moderate/ubiquitous classes and for the
 \code{n_celltypes} count. Default: 0.05.}
 
-\item{contamination_threshold}{Integer. Genes significant in at least this
-many cell types (at \code{contamination_sig_threshold}) are flagged
-as "contamination". Default: \code{4}. \strong{This default is
-illustrative, not universal -- you should pick a value appropriate
-to your dataset.} See "Choosing \code{contamination_threshold}"
-below.}
+\item{broad_threshold}{Integer. Genes significant in at least this
+many cell types (at \code{broad_sig_threshold}) are flagged as
+"broad". Default: \code{4}. \strong{This default is illustrative,
+not universal -- you should pick a value appropriate to your
+dataset.} See "Choosing \code{broad_threshold}" below.}
 
-\item{contamination_sig_threshold}{Numeric or character. Stricter
-significance cutoff used \emph{only} for the contamination flag. Lets
-you require, e.g., \code{**} significance (FDR < 0.01) before a gene
-counts toward the contamination tally, while still allowing \code{*}
+\item{broad_sig_threshold}{Numeric or character. Stricter significance
+cutoff used \emph{only} for the broad-class flag. Lets you require,
+e.g., \code{**} significance (FDR < 0.01) before a gene counts
+toward the broad-class tally, while still allowing \code{*}
 (FDR < 0.05) for the broader specific/moderate/ubiquitous classes.
 Accepts a numeric FDR (e.g. \code{0.01}) or a star string:
 \code{"*"} -> 0.05, \code{"**"} -> 0.01, \code{"***"} -> 0.001,
 \code{"****"} -> 1e-4. Default \code{NULL} -> use \code{fdr_threshold}
-(back-compat: any "*"-significant gene contributes). Tightening this
-makes the contamination filter \strong{looser} (fewer genes flagged)
-because each cell-type "hit" must clear a higher bar.}
+(any "*"-significant gene contributes). Tightening this makes the
+broad-class filter \strong{looser} (fewer genes flagged) because
+each cell-type "hit" must clear a higher bar.}
 }
 \value{
 A \code{data.table} with columns:
@@ -50,27 +49,32 @@ A \code{data.table} with columns:
 \item{n_celltypes}{Integer. Number of cell types where the gene is
 significant at \code{fdr_threshold} (the loose cutoff).}
 \item{n_celltypes_strict}{Integer. Number of cell types where the gene
-is significant at \code{contamination_sig_threshold}. Equal to
+is significant at \code{broad_sig_threshold}. Equal to
 \code{n_celltypes} when the two thresholds match (the default).}
 \item{celltypes}{Character. Comma-separated list of cell type names
 (using the loose \code{fdr_threshold}).}
 \item{specificity_class}{Character. One of: "specific" (1 cell type),
-"moderate" (2-3 cell types), "ubiquitous" (4+ but below contamination
-threshold), or "contamination" (\code{n_celltypes_strict >=
-    contamination_threshold}).}
+"moderate" (2-3 cell types), "ubiquitous" (4+ but below the broad
+threshold), or "broad" (\code{n_celltypes_strict >=
+    broad_threshold}). "broad" is the descriptive name for the class;
+it is a heuristic proxy for ambient-RNA / cross-cell-type
+artefacts but not a measurement of them.}
 }
 }
 \description{
 For each significant gene, counts how many cell types it is significant in
-and classifies it as specific, moderate, ubiquitous, or contamination.
+and classifies it as specific, moderate, ubiquitous, or broad.
 }
 \details{
-Genes significant in many cell types are more likely to be segmentation
-artifacts (query transcripts leaking into neighboring cells) than genuine
-paracrine effects. This function provides a simple classification to flag
-such potential artifacts.
+Genes significant in many cell types (the "broad" class) are more likely
+to be ambient-RNA / segmentation artefacts (query transcripts leaking
+into neighboring cells) than genuine paracrine effects -- but they can
+also reflect real shared biology (cytokines, MHC, stress response). The
+broad class is a \strong{heuristic flag}, not a measurement of
+contamination; treat it as a candidate list for inspection rather than a
+deletion list.
 }
-\section{Choosing \code{contamination_threshold}}{
+\section{Choosing \code{broad_threshold}}{
 
 There is no universally correct cutoff. The right value depends on
 three things:
@@ -87,7 +91,7 @@ subtypes will pass without being flagged.
 "myeloid") share fewer marker genes than fine subtypes (e.g.
 "CD4 memory", "CD8 effector", "Treg"). Fine annotations need a
 larger cutoff to avoid flagging real lineage-shared biology as
-contamination.
+broad-expression.
 \item \strong{Biological prior.} Cytokines, MHC genes, ribosomal
 genes, and stress-response programs are legitimately expressed
 across many cell types -- the cross-cell-type heuristic cannot
@@ -95,30 +99,29 @@ tell them apart from ambient RNA on its own. Inspect the flagged
 genes and decide whether the cutoff is doing what you want.
 }
 \strong{Recommended workflow:} run with the default first, look at
-the flagged gene list (\code{spec[specificity_class ==
-"contamination"]}), and adjust up or down. A useful sanity check is
-to plot \code{n_celltypes} as a histogram across all significant
-genes -- the cutoff should sit in the right tail, separating clear
-multi-cell-type genes from cell-type-specific signal. Whatever value
-you choose, report it explicitly in the methods.
+the flagged gene list (\code{spec[specificity_class == "broad"]}),
+and adjust up or down. A useful sanity check is to plot
+\code{n_celltypes} as a histogram across all significant genes -- the
+cutoff should sit in the right tail, separating clear multi-cell-type
+genes from cell-type-specific signal. Whatever value you choose,
+report it explicitly in the methods.
 }
 
-\section{Tuning \code{contamination_sig_threshold} (the significance bar)}{
+\section{Tuning \code{broad_sig_threshold} (the significance bar)}{
 
-The contamination flag has \emph{two} dials:
+The broad-class flag has \emph{two} dials:
 \itemize{
-\item \code{contamination_threshold} -- how many cell types
-(default \code{4}).
-\item \code{contamination_sig_threshold} -- how strictly significant
-each "hit" must be (default \code{NULL} -> uses
-\code{fdr_threshold}, i.e. any \code{*} gene counts).
+\item \code{broad_threshold} -- how many cell types (default \code{4}).
+\item \code{broad_sig_threshold} -- how strictly significant each
+"hit" must be (default \code{NULL} -> uses \code{fdr_threshold},
+i.e. any \code{*} gene counts).
 }
 Tightening the significance bar (e.g. \code{"**"} for FDR < 0.01)
 makes the filter \strong{looser overall} -- a gene only counts as a
 "hit" in cell types where the signal is unambiguous, so fewer genes
 reach the cell-type tally and fewer are flagged. Use this when the
 default flags genes you believe are real biology, or when you want
-the contamination class to capture only the most blatant ambient-RNA
+the broad class to capture only the most blatant ambient-RNA
 offenders. Conversely, leave it at the default (or use \code{NULL})
 to be more aggressive about flagging.
 }
@@ -128,8 +131,8 @@ to be more aggressive about flagging.
 results <- data.table::fread("all_genes_results.csv")
 spec <- classify_gene_specificity(results, fdr_threshold = 0.05)
 table(spec$specificity_class)
-# Flag contamination genes for downstream filtering
-contam_genes <- spec[specificity_class == "contamination"]$gene
+# Flag broad-class genes for downstream filtering
+broad_genes <- spec[specificity_class == "broad"]$gene
 }
 
 }

@@ -238,13 +238,14 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
 #' @param exclude_specificity_class Optional character vector. Specificity-class
 #'   labels to exclude from the *label-selection pool only* (genes still
 #'   appear as dots, just without text labels). Typical use:
-#'   \code{exclude_specificity_class = "contamination"} to skip ambient-RNA /
-#'   query-signature genes that the cross-cell-type heuristic flagged. If set,
-#'   the input \code{results} must carry a \code{specificity_class} column
-#'   (produced by \code{classify_gene_specificity()} or
-#'   \code{run_ripple_atlas()}). Default \code{NULL} preserves the prior
-#'   labelling behaviour. Ignored when \code{label_genes} is supplied (the
-#'   user has explicitly chosen which genes to label).
+#'   \code{exclude_specificity_class = "broad"} to skip the broad-expression
+#'   class (heuristic proxy for ambient-RNA / query-signature genes flagged
+#'   by the cross-cell-type heuristic). If set, the input \code{results}
+#'   must carry a \code{specificity_class} column (produced by
+#'   \code{classify_gene_specificity()} or \code{run_ripple_atlas()}).
+#'   Default \code{NULL} preserves the prior labelling behaviour. Ignored
+#'   when \code{label_genes} is supplied (the user has explicitly chosen
+#'   which genes to label).
 #' @param label_genes Optional character vector. When supplied, these exact
 #'   genes are labelled (subject to availability in \code{results}), instead
 #'   of the top-N significant by FDR. Useful for manuscript figures where
@@ -292,10 +293,10 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
 #'   query_label = "Tumor"
 #' )
 #'
-#' # Skip contamination-flagged genes when picking labels:
+#' # Skip broad-class genes when picking labels:
 #' plot_gradient_volcano(
 #'   results,
-#'   exclude_specificity_class = "contamination"
+#'   exclude_specificity_class = "broad"
 #' )
 #'
 #' # Curated label set (e.g. T zone positive controls):
@@ -2003,12 +2004,13 @@ plot_k_diagnostics <- function(input,
 #'
 #' Builds a stacked bar chart of significant gene counts per target cell type,
 #' split by direction (induced vs repressed) and by specificity class
-#' (specific + moderate = cell-type-restricted signal; ubiquitous + contamination
-#' = potentially ambient RNA / segmentation artefacts).
+#' (specific + moderate = cell-type-restricted signal; ubiquitous + broad =
+#' broadly-expressed, the heuristic flag for potential ambient RNA / segmentation
+#' artefacts).
 #'
 #' Matches the stacked barplot used in the original HyMy / TDLN analysis and
 #' extends the plain induced/repressed bar chart by surfacing the
-#' contamination-flagged portion of each bar.
+#' broad-class portion of each bar.
 #'
 #' @param results \code{data.table} or data.frame with columns \code{gene},
 #'   \code{cell_type}, a significance column, and a coefficient column.
@@ -2019,11 +2021,10 @@ plot_k_diagnostics <- function(input,
 #' @param coef_col Character. Coefficient column name (default:
 #'   \code{"median_coef"}).
 #' @param fdr_threshold Numeric. FDR cutoff (default: \code{0.05}).
-#' @param contamination_threshold Integer. Number of cell types at or above
-#'   which a gene is flagged as "contamination" (default: \code{4}).
+#' @param broad_threshold Integer. Number of cell types at or above
+#'   which a gene is flagged as "broad" (default: \code{4}).
 #'   The default is illustrative -- adapt to your panel size and
-#'   annotation granularity. See "Choosing
-#'   \code{contamination_threshold}" in
+#'   annotation granularity. See "Choosing \code{broad_threshold}" in
 #'   \code{\link{classify_gene_specificity}} for guidance.
 #' @param query_label Character. Display label for the query cell type
 #'   (default: \code{"Query"}). Used in legend entries like
@@ -2048,7 +2049,7 @@ plot_gene_counts_by_celltype <- function(results,
                                          fdr_col = "fisher_fdr",
                                          coef_col = "median_coef",
                                          fdr_threshold = 0.05,
-                                         contamination_threshold = 4,
+                                         broad_threshold = 4,
                                          query_label = "Query",
                                          cell_type_order = NULL) {
   if (!inherits(results, "data.table")) {
@@ -2057,9 +2058,9 @@ plot_gene_counts_by_celltype <- function(results,
 
   spec <- classify_gene_specificity(
     results,
-    fdr_col = fdr_col,
-    fdr_threshold = fdr_threshold,
-    contamination_threshold = contamination_threshold
+    fdr_col         = fdr_col,
+    fdr_threshold   = fdr_threshold,
+    broad_threshold = broad_threshold
   )
   if (nrow(spec) == 0) {
     return(
@@ -2080,7 +2081,7 @@ plot_gene_counts_by_celltype <- function(results,
   )]
   sig[, type := data.table::fifelse(
     specificity_class %in% c("specific", "moderate"),
-    "specific", "contamination"
+    "specific", "broad"
   )]
 
   count_by_dir <- sig[, .N, by = .(cell_type, direction, type)]
@@ -2097,9 +2098,9 @@ plot_gene_counts_by_celltype <- function(results,
 
   fill_keys <- c(
     paste0("specific.", induced_label),
-    paste0("contamination.", induced_label),
+    paste0("broad.",    induced_label),
     paste0("specific.", repressed_label),
-    paste0("contamination.", repressed_label)
+    paste0("broad.",    repressed_label)
   )
   fill_colours <- stats::setNames(
     c("#B2182B", "#F4A582", "#2166AC", "#92C5DE"),
@@ -2107,9 +2108,9 @@ plot_gene_counts_by_celltype <- function(results,
   )
   fill_labels <- stats::setNames(
     c(paste0(induced_label, " (specific)"),
-      paste0(induced_label, " (ubiquitous/contam)"),
+      paste0(induced_label, " (broad)"),
       paste0(repressed_label, " (specific)"),
-      paste0(repressed_label, " (ubiquitous/contam)")),
+      paste0(repressed_label, " (broad)")),
     fill_keys
   )
 
@@ -2125,8 +2126,8 @@ plot_gene_counts_by_celltype <- function(results,
       x = NULL, y = "Significant genes",
       title = "Gradient genes per cell type",
       subtitle = sprintf(
-        "FDR < %g | faded = potential contamination (significant in >= %d cell types)",
-        fdr_threshold, contamination_threshold)
+        "FDR < %g | faded = broad-expression class (significant in >= %d cell types)",
+        fdr_threshold, broad_threshold)
     ) +
     theme_ripple(base_size = 13) +
     ggplot2::theme(
@@ -2142,10 +2143,11 @@ plot_gene_counts_by_celltype <- function(results,
 #' Summary bar of gene counts by specificity class
 #'
 #' Produces a compact bar chart of significant genes, one bar per specificity
-#' class (specific, moderate, ubiquitous, contamination). Designed for the
+#' class (specific, moderate, ubiquitous, broad). Designed for the
 #' "breakdown" figure used in the TDLN analysis: it shows at a glance how much
-#' of the significant-gene pool is cell-type-restricted versus shared across
-#' many cell types (i.e., plausible contamination).
+#' of the significant-gene pool is cell-type-restricted versus broadly
+#' expressed across many cell types (the heuristic flag for potential
+#' ambient-RNA / segmentation artefacts).
 #'
 #' @inheritParams plot_gene_counts_by_celltype
 #'
@@ -2154,7 +2156,7 @@ plot_gene_counts_by_celltype <- function(results,
 #' @examples
 #' \dontrun{
 #' results <- fread("all_genes_results.csv")
-#' plot_specificity_breakdown(results, contamination_threshold = 5)
+#' plot_specificity_breakdown(results, broad_threshold = 5)
 #' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_col geom_text scale_fill_manual labs
@@ -2163,16 +2165,16 @@ plot_gene_counts_by_celltype <- function(results,
 plot_specificity_breakdown <- function(results,
                                        fdr_col = "fisher_fdr",
                                        fdr_threshold = 0.05,
-                                       contamination_threshold = 4) {
+                                       broad_threshold = 4) {
   if (!inherits(results, "data.table")) {
     results <- data.table::as.data.table(results)
   }
 
   spec <- classify_gene_specificity(
     results,
-    fdr_col = fdr_col,
-    fdr_threshold = fdr_threshold,
-    contamination_threshold = contamination_threshold
+    fdr_col         = fdr_col,
+    fdr_threshold   = fdr_threshold,
+    broad_threshold = broad_threshold
   )
   if (nrow(spec) == 0) {
     return(
@@ -2185,11 +2187,11 @@ plot_specificity_breakdown <- function(results,
 
   # At threshold = 4 the "ubiquitous" range (4..threshold-1) is empty, so we
   # drop that class from the plot. At threshold >= 5 it becomes meaningful.
-  has_ubiquitous <- contamination_threshold > 4L
+  has_ubiquitous <- broad_threshold > 4L
   class_levels <- if (has_ubiquitous) {
-    c("specific", "moderate", "ubiquitous", "contamination")
+    c("specific", "moderate", "ubiquitous", "broad")
   } else {
-    c("specific", "moderate", "contamination")
+    c("specific", "moderate", "broad")
   }
   counts <- spec[, .(n_genes = .N), by = specificity_class]
   counts <- counts[specificity_class %in% class_levels]
@@ -2197,20 +2199,19 @@ plot_specificity_breakdown <- function(results,
   counts <- counts[order(specificity_class)]
 
   all_colours <- c(specific = "#1B7837", moderate = "#7FBC41",
-                   ubiquitous = "#F4A582", contamination = "#B2182B")
+                   ubiquitous = "#F4A582", broad = "#B2182B")
   class_colours <- all_colours[class_levels]
 
   ubiquitous_label <- if (has_ubiquitous) {
-    sprintf("Ubiquitous (4 to %d)", contamination_threshold - 1L)
+    sprintf("Ubiquitous (4 to %d)", broad_threshold - 1L)
   } else {
     "Ubiquitous"
   }
   all_labels <- c(
-    specific      = "Specific (1 cell type)",
-    moderate      = "Moderate (2-3 cell types)",
-    ubiquitous    = ubiquitous_label,
-    contamination = sprintf("Contamination (>= %d cell types)",
-                            contamination_threshold)
+    specific   = "Specific (1 cell type)",
+    moderate   = "Moderate (2-3 cell types)",
+    ubiquitous = ubiquitous_label,
+    broad      = sprintf("Broad (>= %d cell types)", broad_threshold)
   )
   class_labels <- all_labels[class_levels]
 
@@ -2227,8 +2228,8 @@ plot_specificity_breakdown <- function(results,
       x = NULL, y = "Number of significant genes",
       title = "Gene specificity breakdown",
       subtitle = sprintf(
-        "FDR < %g | 'specific' + 'moderate' = likely real biology, 'contamination' >= %d cell types",
-        fdr_threshold, contamination_threshold)
+        "FDR < %g | 'specific' + 'moderate' = likely real biology, 'broad' >= %d cell types",
+        fdr_threshold, broad_threshold)
     ) +
     theme_ripple(base_size = 13) +
     ggplot2::theme(
@@ -2245,9 +2246,10 @@ plot_specificity_breakdown <- function(results,
 #' Multi-panel QC dashboard composed from the artefacts written by
 #' \code{\link{run_ripple}}. Bundles replicate-quality panels (per-sample
 #' distance density, cell composition, sign consistency, dispersion) with
-#' specificity / contamination panels (gene counts split by direction and
-#' specificity class, specificity breakdown, top widely-shared genes with
-#' optional query-marker bleed-through highlighting).
+#' specificity panels (gene counts split by direction and specificity
+#' class, specificity breakdown, top widely-shared genes with optional
+#' query-marker bleed-through highlighting -- the latter is the
+#' smoking-gun pattern for ambient-RNA contamination).
 #'
 #' Reads only files written under \code{results_dir}:
 #' \itemize{
@@ -2263,10 +2265,10 @@ plot_specificity_breakdown <- function(results,
 #'   for ambient RNA / segmentation contamination (a query marker showing as
 #'   "induced" across many target cell types).
 #' @param fdr_threshold Numeric. Significance cutoff (default: 0.05).
-#' @param contamination_threshold Integer. Min number of cell types where a
-#'   gene is significant for the contamination class (default: \code{4}).
-#'   The default is illustrative -- tune for your panel size and
-#'   annotation granularity. See
+#' @param broad_threshold Integer. Min number of cell types where a
+#'   gene is significant to be flagged as the broad-expression class
+#'   (default: \code{4}). The default is illustrative -- tune for your
+#'   panel size and annotation granularity. See
 #'   \code{\link{classify_gene_specificity}} for guidance.
 #' @param query_label Character. Display label for the query cell type
 #'   (default: "Query").
@@ -2299,7 +2301,7 @@ plot_specificity_breakdown <- function(results,
 ripple_plot_qc <- function(results_dir,
                            query_signature_genes = NULL,
                            fdr_threshold = 0.05,
-                           contamination_threshold = 4L,
+                           broad_threshold = 4L,
                            query_label = "Query",
                            top_n_bleed = 15L,
                            output_file = NULL,
@@ -2426,23 +2428,23 @@ ripple_plot_qc <- function(results_dir,
   # -- Panel 5: significant genes per cell type, split by direction x specificity --
   panels$counts <- plot_gene_counts_by_celltype(
     results,
-    fdr_threshold = fdr_threshold,
-    contamination_threshold = contamination_threshold,
-    query_label = query_label
+    fdr_threshold   = fdr_threshold,
+    broad_threshold = broad_threshold,
+    query_label     = query_label
   )
 
   # -- Panel 6: specificity breakdown --
   panels$spec <- plot_specificity_breakdown(
     results,
-    fdr_threshold = fdr_threshold,
-    contamination_threshold = contamination_threshold
+    fdr_threshold   = fdr_threshold,
+    broad_threshold = broad_threshold
   )
 
   # -- Panel 7: bleed-through (top widely-shared genes, optional query-marker flag) --
   spec_dt <- classify_gene_specificity(
     results,
-    fdr_threshold = fdr_threshold,
-    contamination_threshold = contamination_threshold
+    fdr_threshold   = fdr_threshold,
+    broad_threshold = broad_threshold
   )
   if (nrow(spec_dt) > 0) {
     top_bleed <- spec_dt[order(-n_celltypes)][seq_len(min(top_n_bleed, .N))]
