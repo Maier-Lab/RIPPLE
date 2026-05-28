@@ -154,11 +154,11 @@ NULL
 #' @param verbose Print progress messages (default: \code{TRUE}).
 #'
 #' @return A \code{data.table} with columns: \code{gene}, \code{cell_type},
-#'   \code{median_coef}, \code{fisher_pval}, \code{fisher_fdr},
-#'   \code{sign_consistency}, \code{combined_coef}, \code{combined_se},
-#'   \code{pval}, \code{fdr}, \code{gradient_score}, \code{decay_pattern},
-#'   and per-sample coefficient information. Results are also written as CSV
-#'   files to \code{output_dir}.
+#'   \code{median_coef}, \code{fisher_stat}, \code{fisher_pval},
+#'   \code{fisher_fdr}, \code{sign_consistency}, \code{n_samples},
+#'   \code{gradient_score} (= \code{median_coef}), \code{decay_pattern},
+#'   and per-gene expression / dispersion summaries. Results are also
+#'   written as CSV files to \code{output_dir}.
 #'
 #' @details
 #' The analysis proceeds as follows:
@@ -752,80 +752,48 @@ run_ripple <- function(
     .msg("  Saved: coef_per_sample.csv", verbose = verbose)
 
     # --------------------------------------------------------------------
-    # Step 2: Meta-analysis across samples
+    # Step 2: Fisher's combined p-value + per-gene summaries
     # --------------------------------------------------------------------
-    .msg("  Step 2: Running meta-analysis...", verbose = verbose)
+    # One loop per gene: compute Fisher's combined p (with sign gate),
+    # median per-sample coefficient (used as gradient_score), and the
+    # expression / sign-direction / dispersion summaries that downstream
+    # analyses consume. The previous REML inverse-variance meta-analysis
+    # via meta::metagen was removed — fisher_fdr is the significance metric
+    # and median_coef is the effect-size summary.
+    # --------------------------------------------------------------------
+    .msg("  Step 2: Computing Fisher's combined p-values...", verbose = verbose)
 
     meta_results <- data.table::rbindlist(lapply(genes_to_analyze, function(g) {
       gene_data <- coef_results[gene == g]
 
-      meta_result <- run_meta_analysis(
-        coefs = gene_data$coef,
-        ses = gene_data$se,
-        sample_ids = gene_data[["sample_id"]]
-      )
-
-      # Expression statistics
-      gene_counts <- as.numeric(target_counts[g, target_barcodes])
-
-      # Sign consistency
-      valid_coefs <- gene_data$coef[!is.na(gene_data$coef)]
-      n_pos <- sum(valid_coefs > 0)
-      n_neg <- sum(valid_coefs < 0)
-      n_valid <- n_pos + n_neg
-      sign_con <- if (n_valid > 0) max(n_pos, n_neg) / n_valid else NA_real_
-
-      # Median dispersion
-      med_disp <- stats::median(gene_data$dispersion, na.rm = TRUE)
-
-      data.table::data.table(
-        gene = g,
-        combined_coef = meta_result$combined_coef,
-        combined_se = meta_result$combined_se,
-        pval = meta_result$combined_pval,
-        i2 = meta_result$i2,
-        n_samples = meta_result$n_samples,
-        mean_expr = mean(gene_counts, na.rm = TRUE),
-        pct_expr = mean(gene_counts > 0, na.rm = TRUE),
-        n_positive_samples = n_pos,
-        n_negative_samples = n_neg,
-        sign_consistency = sign_con,
-        median_dispersion = med_disp
-      )
-    }), fill = TRUE)
-
-    # BH-adjusted p-value
-    meta_results[, fdr := stats::p.adjust(pval, method = "BH")]
-
-    # --------------------------------------------------------------------
-    # Step 2b: Fisher's combined p-value
-    # --------------------------------------------------------------------
-    .msg("  Step 2b: Computing Fisher's combined p-values...",
-      verbose = verbose
-    )
-
-    fisher_results <- data.table::rbindlist(lapply(genes_to_analyze, function(g) {
-      gene_data <- coef_results[gene == g]
       fisher <- compute_fisher_pval(
         pvals = gene_data$pval,
         coefs = gene_data$coef,
         min_samples = 2L,
         sign_threshold = sign_consistency
       )
+
+      gene_counts <- as.numeric(target_counts[g, target_barcodes])
+      valid_coefs <- gene_data$coef[!is.na(gene_data$coef)]
+      n_pos <- sum(valid_coefs > 0)
+      n_neg <- sum(valid_coefs < 0)
+
       data.table::data.table(
         gene = g,
         median_coef = fisher$median_coef,
         fisher_stat = fisher$fisher_stat,
-        fisher_pval = fisher$fisher_pval
+        fisher_pval = fisher$fisher_pval,
+        sign_consistency = fisher$sign_consistency,
+        n_samples = fisher$n_valid,
+        mean_expr = mean(gene_counts, na.rm = TRUE),
+        pct_expr = mean(gene_counts > 0, na.rm = TRUE),
+        n_positive_samples = n_pos,
+        n_negative_samples = n_neg,
+        median_dispersion = stats::median(gene_data$dispersion, na.rm = TRUE)
       )
     }), fill = TRUE)
 
-    fisher_results[, fisher_fdr := stats::p.adjust(fisher_pval, method = "BH")]
-    meta_results <- merge(meta_results, fisher_results,
-      by = "gene",
-      all.x = TRUE
-    )
-    data.table::setDT(meta_results)
+    meta_results[, fisher_fdr := stats::p.adjust(fisher_pval, method = "BH")]
 
     # --------------------------------------------------------------------
     # Step 2c: Permutation testing (optional)
@@ -838,7 +806,7 @@ run_ripple <- function(
 
       perm_top_n <- 100
       top_by_effect <- meta_results[
-        order(-abs(combined_coef))
+        order(-abs(median_coef))
       ][1:min(perm_top_n, .N)]$gene
       priority_in_data <- intersect(priority_genes, genes_to_analyze)
       top_genes_for_perm <- unique(c(top_by_effect, priority_in_data))
@@ -850,7 +818,7 @@ run_ripple <- function(
 
       coords_target <- as.matrix(target_valid[, ..coord_cols])
       observed_coefs <- stats::setNames(
-        meta_results[gene %in% top_genes_for_perm]$combined_coef,
+        meta_results[gene %in% top_genes_for_perm]$median_coef,
         meta_results[gene %in% top_genes_for_perm]$gene
       )
       query_per_sample_valid <- query_per_sample[
@@ -891,9 +859,9 @@ run_ripple <- function(
     }
 
     # --------------------------------------------------------------------
-    # Step 3: Gradient scores
+    # Step 3: Gradient scores (= median per-sample log-rate coefficient)
     # --------------------------------------------------------------------
-    meta_results[, gradient_score := combined_coef]
+    meta_results[, gradient_score := median_coef]
 
     # --------------------------------------------------------------------
     # Step 4: Decay pattern classification (significant genes)
@@ -958,8 +926,8 @@ run_ripple <- function(
 
     # Gradient scores CSV
     gradient_results <- meta_results[, .(
-      gene, gradient_score, combined_coef,
-      fdr, fisher_fdr, decay_pattern,
+      gene, gradient_score, median_coef,
+      fisher_fdr, decay_pattern,
       sign_consistency,
       median_dispersion
     )]
@@ -2018,9 +1986,15 @@ merge_ripple_results <- function(
   )
   .msg("\nSaved: summary/all_genes_results.csv", verbose = verbose)
 
-  # Top genes by FDR
-  top_genes <- all_results[fdr < fdr_threshold][
-    order(fdr), head(.SD, 50),
+  # Top genes by FDR. Prefer fisher_fdr (current pipeline); fall back to
+  # legacy fdr column for CSVs from pre-Fisher runs.
+  top_fdr_col <- if ("fisher_fdr" %in% names(all_results)) {
+    "fisher_fdr"
+  } else {
+    "fdr"
+  }
+  top_genes <- all_results[get(top_fdr_col) < fdr_threshold][
+    order(get(top_fdr_col)), head(.SD, 50),
     by = cell_type
   ]
   data.table::fwrite(
@@ -2049,7 +2023,7 @@ merge_ripple_results <- function(
 
   # Decay pattern summary
   if ("decay_pattern" %in% names(all_results)) {
-    decay_summary <- all_results[fdr < fdr_threshold, .N,
+    decay_summary <- all_results[get(top_fdr_col) < fdr_threshold, .N,
       by = .(cell_type, decay_pattern)
     ]
     data.table::setorder(decay_summary, cell_type, -N)
@@ -2080,9 +2054,14 @@ merge_ripple_results <- function(
   .msg(strrep("=", 70), verbose = verbose)
 
   has_fisher <- "fisher_fdr" %in% names(all_results)
+  has_legacy_fdr <- "fdr" %in% names(all_results)
   summary_stats <- all_results[, .(
     n_genes = .N,
-    n_significant = sum(fdr < fdr_threshold, na.rm = TRUE),
+    n_significant = if (has_legacy_fdr) {
+      sum(fdr < fdr_threshold, na.rm = TRUE)
+    } else {
+      NA_integer_
+    },
     n_fisher_sig = if (has_fisher) {
       sum(fisher_fdr < fdr_threshold,
         na.rm = TRUE

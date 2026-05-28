@@ -1,96 +1,12 @@
 #' @title Meta-Analysis Functions
 #'
-#' @description Functions for combining per-sample results across biological
-#'   replicates. Includes random-effects meta-analysis and Fisher's combined
-#'   p-value with sign consistency gating.
+#' @description Fisher's combined p-value with a sign-consistency gate for
+#'   combining per-sample results across biological replicates. This is the
+#'   only cross-replicate combination step in RIPPLE; per-gene effect sizes
+#'   are summarised as the median of per-sample log-rate coefficients.
 #'
 #' @name meta_analysis
 NULL
-
-#' Random-effects meta-analysis across samples
-#'
-#' Combines per-sample log-rate coefficients using a random-effects
-#' meta-analysis model via \code{meta::metagen}. This accounts for both
-#' within-sample and between-sample variability. This is not the recommended solution for most cases.
-#'
-#' @param coefs Numeric vector of per-sample coefficient estimates.
-#' @param ses Numeric vector of per-sample standard errors.
-#' @param sample_ids Character vector of sample identifiers.
-#' @param method Character. Method for estimating between-study variance
-#'   (default: \code{"REML"}). Passed to \code{meta::metagen}.
-#'
-#' @return A list with components:
-#' \describe{
-#'   \item{\code{combined_coef}}{Numeric. Random-effects combined coefficient.}
-#'   \item{\code{combined_se}}{Numeric. Standard error of the combined estimate.}
-#'   \item{\code{pval}}{Numeric. P-value for the combined estimate.}
-#'   \item{\code{i2}}{Numeric. I-squared heterogeneity statistic (0-1).}
-#'   \item{\code{n_samples}}{Integer. Number of valid samples used.}
-#' }
-#' All values are \code{NA_real_} if fewer than 2 valid samples.
-#'
-#' @details Uses the REML estimator for between-study variance (tau-squared)
-#'   by default, which is for small numbers of studies. Samples
-#'   with NA coefficients, NA standard errors, or zero standard errors are
-#'   excluded.
-#'
-#' @examples
-#' \dontrun{
-#' result <- run_meta_analysis(
-#'   coefs = c(-0.005, -0.003, -0.007),
-#'   ses = c(0.001, 0.002, 0.001),
-#'   sample_ids = c("mouse1", "mouse2", "mouse3")
-#' )
-#' cat("Combined coefficient:", result$combined_coef, "\n")
-#' cat("P-value:", result$pval, "\n")
-#' }
-#'
-#' @export
-run_meta_analysis <- function(coefs, ses, sample_ids, method = "REML") {
-  # Remove NAs
-  valid_idx <- !is.na(coefs) & !is.na(ses) & ses > 0
-
-  na_result <- list(
-    combined_coef = NA_real_,
-    combined_se = NA_real_,
-    pval = NA_real_,
-    i2 = NA_real_,
-    n_samples = sum(valid_idx)
-  )
-
-  if (sum(valid_idx) < 2) {
-    return(na_result)
-  }
-
-  coefs <- coefs[valid_idx]
-  ses <- ses[valid_idx]
-  sample_ids <- sample_ids[valid_idx]
-
-  meta_result <- tryCatch(
-    {
-      meta::metagen(
-        TE = coefs,
-        seTE = ses,
-        studlab = sample_ids,
-        random = TRUE,
-        method.tau = method
-      )
-    },
-    error = function(e) NULL
-  )
-
-  if (is.null(meta_result)) {
-    return(na_result)
-  }
-
-  list(
-    combined_coef = meta_result$TE.random,
-    combined_se = meta_result$seTE.random,
-    combined_pval = meta_result$pval.random,
-    i2 = meta_result$I2,
-    n_samples = length(coefs)
-  )
-}
 
 
 #' Fisher's combined p-value with sign consistency gate - RECOMMENDED APPROACH

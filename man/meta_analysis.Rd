@@ -4,7 +4,8 @@
 \alias{meta_analysis}
 \title{Meta-Analysis Functions}
 \description{
-Functions for combining per-sample results across biological
-replicates. Includes random-effects meta-analysis and Fisher's combined
-p-value with sign consistency gating.
+Fisher's combined p-value with a sign-consistency gate for
+combining per-sample results across biological replicates. This is the
+only cross-replicate combination step in RIPPLE; per-gene effect sizes
+are summarised as the median of per-sample log-rate coefficients.
 }

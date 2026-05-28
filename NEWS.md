@@ -1,3 +1,36 @@
+# ripple 0.2.0 (development)
+
+## Breaking changes — hot-path simplification
+
+* `run_meta_analysis()` (REML inverse-variance random-effects meta-analysis
+  via `meta::metagen`) has been **removed**. Profiling showed it accounted
+  for ~60% of `run_ripple()` wall-clock while populating columns that
+  duplicated the Fisher path.
+* `gradient_score` is now defined as `median_coef` (median of per-sample
+  Poisson GLM coefficients), not as the REML inverse-variance combined
+  coefficient. Per-gene shifts vs the previous value are small for typical
+  N = 3–10 replicates.
+* The following columns are no longer written by `run_ripple()`:
+  `combined_coef`, `combined_se`, `pval`, `i2`, `fdr`. Downstream
+  functions (`run_ripple_atlas()`, `run_ripple_lr()`, `merge_ripple_results()`,
+  `run_ripple_confounder()`) retain legacy fallbacks so older CSV results
+  on disk still load.
+* `meta` is no longer an `Imports` dependency.
+* `create_forest_plot()` summary row is now drawn at the median of
+  per-sample coefficients (no horizontal CI bar). The subtitle reports only
+  the sign-consistency count.
+
+## Speedup
+
+* Medium synthetic benchmark (5 samples × 300 genes × 2 target types):
+  32.5 s → 14.5 s (~2.2× faster end-to-end).
+* Real-data runs on full imaging panels with many target cell types should
+  see proportional gains. Parallelisation across target cell types via
+  SLURM array templates in `inst/slurm/` remains the largest additional
+  lever.
+
+---
+
 # ripple 0.1.0
 
 Initial public release of the RIPPLE package.
@@ -7,7 +40,7 @@ Initial public release of the RIPPLE package.
 * Per-replicate Poisson GLM with cell-size offset for distance-conditioned
   gene expression (`fit_poisson()`, `fit_poisson_controlled()`).
 * Cross-replicate inference via Fisher's combined p-value with sign-consistency
-  gating (`run_meta_analysis()`, `compute_fisher_pval()`).
+  gating (`compute_fisher_pval()`).
 * Two-tier expression filtering (strict for regular genes, lenient for
   user-supplied priority genes) to rescue sparse but biologically important
   transcripts.

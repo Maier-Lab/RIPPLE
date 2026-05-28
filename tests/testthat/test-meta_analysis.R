@@ -27,15 +27,14 @@ test_that("compute_fisher_pval handles single sample", {
   expect_type(result, "list")
 })
 
-test_that("run_meta_analysis returns correct structure", {
+# run_meta_analysis() was removed when the REML inverse-variance step was
+# dropped from the hot path. gradient_score is now the median of per-sample
+# coefficients (see test below).
+
+test_that("median_coef equals median of per-sample coefficients", {
   coefs <- c(-0.005, -0.003, -0.004, -0.006)
-  ses <- c(0.001, 0.002, 0.001, 0.002)
-  ids <- paste0("sample_", 1:4)
+  pvals <- c(0.01, 0.02, 0.05, 0.03)
 
-  result <- run_meta_analysis(coefs, ses, ids)
-
-  expect_type(result, "list")
-  expect_true("combined_coef" %in% names(result))
-  expect_true("combined_pval" %in% names(result))
-  expect_true(result$combined_coef < 0)
+  result <- compute_fisher_pval(pvals, coefs)
+  expect_equal(result$median_coef, median(coefs))
 })

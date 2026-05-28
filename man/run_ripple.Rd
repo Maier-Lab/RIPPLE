@@ -104,11 +104,11 @@ to \code{1.0} (the default) to require unanimous agreement.}
 }
 \value{
 A \code{data.table} with columns: \code{gene}, \code{cell_type},
-\code{median_coef}, \code{fisher_pval}, \code{fisher_fdr},
-\code{sign_consistency}, \code{combined_coef}, \code{combined_se},
-\code{pval}, \code{fdr}, \code{gradient_score}, \code{decay_pattern},
-and per-sample coefficient information. Results are also written as CSV
-files to \code{output_dir}.
+\code{median_coef}, \code{fisher_stat}, \code{fisher_pval},
+\code{fisher_fdr}, \code{sign_consistency}, \code{n_samples},
+\code{gradient_score} (= \code{median_coef}), \code{decay_pattern},
+and per-gene expression / dispersion summaries. Results are also
+written as CSV files to \code{output_dir}.
 }
 \description{
 Detects genes whose expression changes as a function of distance from

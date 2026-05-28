@@ -43,14 +43,12 @@ the ggplot without writing to disk.}
 (default: "Query").}
 
 \item{show_combined}{Logical. Single-gene mode only. If \code{TRUE}
-(default), append an inverse-variance weighted combined estimate row
-(drawn as a larger diamond) and report its p-value and I-squared in
-the subtitle alongside the sign-consistency count. Set \code{FALSE}
-when the panel's purpose is to display per-sample replicate
-consistency without a meta-analytic summary dominating the eye --
-the combined row is skipped, \code{run_meta_analysis()} is not
-called, and the subtitle reports only the sign-consistency count.
-Ignored in multi-gene mode (no combined row is ever drawn there).}
+(default), append a "Median" summary row drawn as a larger diamond at
+the median of the per-sample coefficients. The subtitle reports the
+sign-consistency count across samples. Set \code{FALSE} when the panel
+should display only per-sample replicate consistency without a
+summary marker. Ignored in multi-gene mode (no summary row is ever
+drawn there).}
 }
 \value{
 A \code{ggplot} object (returned visibly when \code{output_path}

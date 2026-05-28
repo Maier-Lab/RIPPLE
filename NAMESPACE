@@ -22,7 +22,6 @@ export(fit_poisson_controlled)
 export(classify_decay_pattern)
 
 # meta_analysis.R
-export(run_meta_analysis)
 export(compute_fisher_pval)
 
 # permutation.R

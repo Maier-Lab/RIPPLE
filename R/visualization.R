@@ -1488,14 +1488,12 @@ create_gradient_volcano <- function(results, cell_type, output_path,
 #' @param query_label Character. Display label for the query cell type
 #'   (default: "Query").
 #' @param show_combined Logical. Single-gene mode only. If \code{TRUE}
-#'   (default), append an inverse-variance weighted combined estimate row
-#'   (drawn as a larger diamond) and report its p-value and I-squared in
-#'   the subtitle alongside the sign-consistency count. Set \code{FALSE}
-#'   when the panel's purpose is to display per-sample replicate
-#'   consistency without a meta-analytic summary dominating the eye --
-#'   the combined row is skipped, \code{run_meta_analysis()} is not
-#'   called, and the subtitle reports only the sign-consistency count.
-#'   Ignored in multi-gene mode (no combined row is ever drawn there).
+#'   (default), append a "Median" summary row drawn as a larger diamond at
+#'   the median of the per-sample coefficients. The subtitle reports the
+#'   sign-consistency count across samples. Set \code{FALSE} when the panel
+#'   should display only per-sample replicate consistency without a
+#'   summary marker. Ignored in multi-gene mode (no summary row is ever
+#'   drawn there).
 #'
 #' @return A \code{ggplot} object (returned visibly when \code{output_path}
 #'   is \code{NULL}; invisibly otherwise). Returns invisible \code{NULL}
@@ -1567,22 +1565,17 @@ create_forest_plot <- function(coefs, ses = NULL, sample_ids = NULL,
   )
 
   if (isTRUE(show_combined)) {
-    meta_result <- run_meta_analysis(coefs, ses, sample_ids)
-    if (!is.na(meta_result$combined_coef)) {
-      meta_row <- data.table::data.table(
-        sample = "Combined",
-        coef = meta_result$combined_coef,
-        se = meta_result$combined_se,
-        lower = meta_result$combined_coef - 1.96 * meta_result$combined_se,
-        upper = meta_result$combined_coef + 1.96 * meta_result$combined_se
-      )
-      plot_data <- rbind(plot_data, meta_row)
-      plot_data[, is_combined := sample == "Combined"]
-    } else {
-      plot_data[, is_combined := FALSE]
-    }
+    median_beta <- stats::median(coefs)
+    meta_row <- data.table::data.table(
+      sample = "Median",
+      coef = median_beta,
+      se = NA_real_,
+      lower = NA_real_,
+      upper = NA_real_
+    )
+    plot_data <- rbind(plot_data, meta_row)
+    plot_data[, is_combined := sample == "Median"]
   } else {
-    meta_result <- NULL
     plot_data[, is_combined := FALSE]
   }
 
@@ -1594,24 +1587,7 @@ create_forest_plot <- function(coefs, ses = NULL, sample_ids = NULL,
     "%d/%d samples agree on sign",
     max(n_neg, n_pos), length(coefs)
   )
-
-  if (isTRUE(show_combined) && !is.null(meta_result)) {
-    i2_display <- if (is.na(meta_result$i2)) {
-      "N/A"
-    } else {
-      sprintf("%.1f%%", meta_result$i2 * 100)
-    }
-    pval_display <- if (is.na(meta_result$combined_pval)) {
-      "N/A"
-    } else {
-      sprintf("%.2e", meta_result$combined_pval)
-    }
-    subtitle_text <- sprintf(
-      "p = %s, I2 = %s | %s", pval_display, i2_display, sign_text
-    )
-  } else {
-    subtitle_text <- sign_text
-  }
+  subtitle_text <- sign_text
 
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = coef, y = sample)) +
     ggplot2::geom_vline(
@@ -1781,8 +1757,13 @@ create_coefficient_strips <- function(coef_results, meta_results, cell_type,
     return(invisible(NULL))
   }
 
+  order_col <- if ("median_coef" %in% names(meta_results)) {
+    "median_coef"
+  } else {
+    "combined_coef"  # legacy CSV compatibility
+  }
   gene_order <- meta_results[gene %in% genes_to_plot][
-    order(combined_coef)
+    order(get(order_col))
   ]$gene
   plot_data[, gene := factor(gene, levels = gene_order)]
 
