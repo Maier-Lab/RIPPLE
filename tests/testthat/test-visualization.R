@@ -185,6 +185,79 @@ test_that("plot_gradient_curve per-sample mode draws bold mean + 95% CI ribbon",
   expect_equal(built$ymax, expected$ymax, tolerance = 1e-9)
 })
 
+test_that("plot_gradient_curve auto-detects per-sample mode via sample_id column", {
+  set.seed(7)
+  bs <- data.table::rbindlist(lapply(c("S1", "S2", "S3"), function(s) {
+    data.table::data.table(
+      sample_id       = s,
+      bin_center      = seq(5, 195, by = 10),
+      prop_expressing = pmax(0, seq(0.5, 0.05, length.out = 20) +
+                               rnorm(20, 0, 0.02)),
+      n_cells         = sample(50:300, 20)
+    )
+  }))
+  p <- plot_gradient_curve(
+    bs,
+    gene_name = "Cxcl12", cell_type = "T_cell",
+    gradient_score = -0.005, fdr = 1e-3
+  )
+  geoms <- vapply(p$layers, function(l) class(l$geom)[1], character(1))
+  # Per-sample mode is signalled by 2 line layers (faint per-sample + bold mean).
+  expect_equal(sum(geoms == "GeomLine"), 2)
+  expect_equal(sum(geoms == "GeomRibbon"), 1)
+})
+
+test_that("plot_gradient_curve drops bins below min_cells_per_bin", {
+  bs <- data.table::rbindlist(lapply(c("S1", "S2", "S3"), function(s) {
+    data.table::data.table(
+      sample_id       = s,
+      bin_center      = c(5, 15, 25),
+      prop_expressing = c(0.5, 0.3, 0.1),
+      n_cells         = c(50, 5, 50)   # middle bin is below the default 10
+    )
+  }))
+  p <- plot_gradient_curve(
+    bs, gene_name = "X", cell_type = "Y",
+    gradient_score = -0.005, fdr = 1e-3
+  )
+  ribbon_idx <- which(vapply(p$layers,
+                             function(l) class(l$geom)[1], character(1))
+                      == "GeomRibbon")
+  built <- ggplot2::ggplot_build(p)$data[[ribbon_idx]]
+  # Only bins 5 and 25 should survive the filter; bin 15 (n_cells = 5) drops.
+  expect_setequal(built$x, c(5, 25))
+})
+
+test_that("plot_gradient_curve drops bins below min_samples_per_bin", {
+  bs <- data.table::data.table(
+    sample_id       = c("S1", "S2", "S1"),
+    bin_center      = c(5, 5, 25),       # bin 25 has only 1 sample
+    prop_expressing = c(0.5, 0.4, 0.1),
+    n_cells         = c(50, 50, 50)
+  )
+  p <- plot_gradient_curve(
+    bs, gene_name = "X", cell_type = "Y",
+    gradient_score = -0.005, fdr = 1e-3
+  )
+  ribbon_idx <- which(vapply(p$layers,
+                             function(l) class(l$geom)[1], character(1))
+                      == "GeomRibbon")
+  built <- ggplot2::ggplot_build(p)$data[[ribbon_idx]]
+  expect_setequal(built$x, 5)
+})
+
+test_that("bin_decay_data with sample_ids returns per-sample table", {
+  set.seed(42)
+  counts <- rpois(1000, lambda = 2)
+  distances <- runif(1000, 0, 200)
+  ids <- rep(c("A", "B"), each = 500)
+  out <- bin_decay_data(counts, distances, n_bins = 10, sample_ids = ids)
+  expect_true("sample_id" %in% names(out))
+  expect_setequal(unique(out$sample_id), c("A", "B"))
+  # No bin should have fewer than the default min_cells_per_bin
+  expect_true(all(out$n_cells >= 10))
+})
+
 test_that("plot_gradient_curve errors when sample_col is missing", {
   bs <- data.table::data.table(
     dist_mid = 1:5, prop_expressing = c(0.4, 0.3, 0.2, 0.15, 0.1)

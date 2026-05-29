@@ -466,15 +466,27 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #' biphasic, or noisy — hence "gradient curve" rather than "decay curve".
 #' Two modes:
 #' \itemize{
-#'   \item \strong{Pooled mode} (default): one curve from a pre-pooled
-#'     bin table, with a 95\% CI ribbon derived from a per-bin SE column
-#'     (ribbon is mean +/- 1.96 * SE).
-#'   \item \strong{Per-sample mode}: when \code{sample_col} is supplied,
-#'     each biological replicate is drawn as a faint line and the mean
-#'     across samples is overlaid in bold, with a 95\% CI ribbon
-#'     (mean +/- 1.96 * SE across samples per bin). This makes replicate
-#'     consistency visible at a glance.
+#'   \item \strong{Per-sample mode} (recommended): each biological
+#'     replicate is drawn as a faint line and the cross-sample mean is
+#'     overlaid in bold, with a 95\% CI ribbon (mean +/- 1.96 * SE across
+#'     samples per bin, with samples weighted equally). Triggered when
+#'     \code{sample_col} is supplied, or auto-detected when
+#'     \code{bin_stats} contains a \code{sample_id} column (the default
+#'     output of \code{bin_decay_data(sample_ids = ...)}). This matches
+#'     the package's \emph{N = samples, not cells} philosophy and is the
+#'     mode used in the companion manuscript.
+#'   \item \strong{Pooled mode}: one curve from a pre-pooled bin table,
+#'     with a 95\% CI ribbon derived from a per-bin SE column
+#'     (mean +/- 1.96 * SE). The ribbon here is a binomial Wald CI on the
+#'     pooled-cell proportion (denominator = total cells, not number of
+#'     samples), which \strong{overstates precision} when replicates
+#'     disagree and lets samples with more cells dominate the curve.
+#'     Kept for back-compat; prefer per-sample mode for any
+#'     manuscript-bound figure.
 #' }
+#' To switch modes: call \code{bin_decay_data()} with \code{sample_ids}
+#' for per-sample, or without it for pooled. \code{plot_gradient_curve()}
+#' picks the right mode from the input table.
 #' The gene's meta-analysis gradient score and FDR are shown in the
 #' subtitle.
 #'
@@ -504,16 +516,33 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #' @param sample_col Character or NULL. Name of the per-sample identifier
 #'   column in \code{bin_stats}. When non-NULL, switches to per-sample
 #'   mode: thin lines per sample plus a bold mean line with a 95\% CI
-#'   ribbon (mean +/- 1.96 * SE across samples per bin). Default
-#'   \code{NULL} (pooled mode).
+#'   ribbon (mean +/- 1.96 * SE across samples per bin). When \code{NULL}
+#'   (default), the function auto-detects per-sample mode if
+#'   \code{bin_stats} contains a \code{sample_id} column (the default
+#'   output of \code{bin_decay_data(sample_ids = ...)}); otherwise it
+#'   falls back to pooled mode.
 #' @param x_col Character. Name of the distance / bin-centre column on
-#'   \code{bin_stats}. Default \code{"dist_mid"}.
+#'   \code{bin_stats}. Default \code{"bin_center"} (matches
+#'   \code{bin_decay_data()} output). Falls back to \code{"dist_mid"} or
+#'   \code{"bin_mid_um"} if the default isn't present.
 #' @param y_col Character. Name of the response column (proportion
 #'   expressing, mean rate, etc.) on \code{bin_stats}. Default
 #'   \code{"prop_expressing"}.
 #' @param se_col Character. Name of the per-bin SE column used for the
 #'   ribbon in pooled mode. Ignored in per-sample mode (SE is computed
-#'   across samples). Default \code{"se"}.
+#'   across samples). Default \code{"se_prop"} (matches
+#'   \code{bin_decay_data()}).
+#' @param min_cells_per_bin Integer. Per-sample mode only. Drops
+#'   sample-bin observations supported by fewer than this many cells
+#'   before aggregating across samples. Default \code{10L}, matching the
+#'   HyMy companion-manuscript script. Requires a \code{n_cells} column
+#'   on the input; silently ignored if absent. Set to \code{0L} to
+#'   disable.
+#' @param min_samples_per_bin Integer. Per-sample mode only. Drops bins
+#'   backed by fewer than this many samples after the
+#'   \code{min_cells_per_bin} filter. Default \code{2L}: at least two
+#'   samples must contribute to a bin for it to appear in the mean curve.
+#'   Set to \code{0L} to disable.
 #' @param y_lab Character or NULL. Y-axis label. Default \code{NULL} →
 #'   "P(expressing)" in pooled mode, "Mean expression rate" in per-sample
 #'   mode.
@@ -626,15 +655,17 @@ plot_gradient_curve <- function(bin_stats, gene_name, cell_type,
                                 gradient_score = NULL, fdr = NULL,
                                 results = NULL,
                                 sample_col = NULL,
-                                x_col = "dist_mid",
+                                x_col = "bin_center",
                                 y_col = "prop_expressing",
-                                se_col = "se",
+                                se_col = "se_prop",
                                 y_lab = NULL,
                                 query_label = "Query",
                                 max_distance = 200,
                                 color = NULL,
                                 sample_alpha = 0.4,
-                                sample_linewidth = 0.4) {
+                                sample_linewidth = 0.4,
+                                min_cells_per_bin = 10L,
+                                min_samples_per_bin = 2L) {
   if (is.null(bin_stats) || nrow(bin_stats) == 0) {
     return(NULL)
   }
@@ -681,6 +712,32 @@ plot_gradient_curve <- function(bin_stats, gene_name, cell_type,
 
   dt <- data.table::as.data.table(data.table::copy(bin_stats))
 
+  # Auto-detect per-sample input. If the caller didn't pass sample_col but
+  # bin_stats has a sample_id column, switch on per-sample mode automatically.
+  # Matches bin_decay_data(sample_ids = ...) output directly.
+  if (is.null(sample_col) && "sample_id" %in% names(dt)) {
+    sample_col <- "sample_id"
+  }
+
+  # Fall back from a default x_col that isn't in the table to one that is.
+  if (!(x_col %in% names(dt))) {
+    for (cand in c("bin_center", "dist_mid", "bin_mid_um")) {
+      if (cand %in% names(dt)) {
+        x_col <- cand
+        break
+      }
+    }
+  }
+  # Same for the pooled-mode SE column.
+  if (!(se_col %in% names(dt))) {
+    for (cand in c("se_prop", "se")) {
+      if (cand %in% names(dt)) {
+        se_col <- cand
+        break
+      }
+    }
+  }
+
   required <- c(x_col, y_col)
   if (!is.null(sample_col)) required <- c(required, sample_col)
   miss <- setdiff(required, names(dt))
@@ -692,21 +749,41 @@ plot_gradient_curve <- function(bin_stats, gene_name, cell_type,
   per_sample <- !is.null(sample_col)
 
   if (per_sample) {
-    # Compute mean curve and across-sample SE per bin
+    # Filter sample-bin observations supported by fewer than
+    # min_cells_per_bin cells, then aggregate. Matches the HyMy
+    # companion-manuscript distance-correlation script: low-cell bins
+    # produce unstable per-sample proportions (a bin with 3 cells gives
+    # prop_expressing of 0, 1/3, 2/3, or 1) and the cross-sample mean
+    # gets dragged around by those.
     has_n_cells <- "n_cells" %in% names(dt)
+    if (has_n_cells && min_cells_per_bin > 0L) {
+      dt <- dt[get("n_cells") >= min_cells_per_bin]
+    }
+
+    # Compute mean curve and across-sample SE per bin
     mean_dt <- if (has_n_cells) {
       dt[, list(
         mean_val   = mean(get(y_col), na.rm = TRUE),
         se_val     = stats::sd(get(y_col), na.rm = TRUE) /
                        sqrt(sum(!is.na(get(y_col)))),
-        ncells_sum = sum(get("n_cells"), na.rm = TRUE)
+        ncells_sum = sum(get("n_cells"), na.rm = TRUE),
+        n_samples  = sum(!is.na(get(y_col)))
       ), by = c(x_col)]
     } else {
       dt[, list(
         mean_val   = mean(get(y_col), na.rm = TRUE),
         se_val     = stats::sd(get(y_col), na.rm = TRUE) /
-                       sqrt(sum(!is.na(get(y_col))))
+                       sqrt(sum(!is.na(get(y_col)))),
+        n_samples  = sum(!is.na(get(y_col)))
       ), by = c(x_col)]
+    }
+
+    # Drop bins backed by too few samples — the across-sample SD is
+    # undefined or degenerate with a single observation, and a single
+    # mouse driving the tail of the curve looks more confident than the
+    # data warrants.
+    if (min_samples_per_bin > 0L) {
+      mean_dt <- mean_dt[n_samples >= min_samples_per_bin]
     }
 
     if (is.null(y_lab)) y_lab <- "Mean expression rate"

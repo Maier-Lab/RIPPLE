@@ -4,7 +4,14 @@
 \alias{bin_decay_data}
 \title{Bin expression data by distance for decay curves}
 \usage{
-bin_decay_data(counts, distances, n_bins = 20, max_distance = 200)
+bin_decay_data(
+  counts,
+  distances,
+  n_bins = 20,
+  max_distance = 200,
+  min_cells_per_bin = 10L,
+  sample_ids = NULL
+)
 }
 \arguments{
 \item{counts}{Numeric vector of raw counts for one gene (one value per cell).}
@@ -16,6 +23,20 @@ bin_decay_data(counts, distances, n_bins = 20, max_distance = 200)
 
 \item{max_distance}{Numeric. Maximum distance to include. Cells beyond this
 distance are excluded. Default: 200.}
+
+\item{min_cells_per_bin}{Integer. Minimum number of cells required for a
+bin to be retained. Bins with fewer cells are dropped from the output.
+Default: \code{10}, matching the HyMy companion-manuscript distance-
+correlation script. Set to \code{0L} to keep every non-empty bin
+(pre-fix behaviour).}
+
+\item{sample_ids}{Optional character or factor vector of sample
+identifiers (same length as \code{counts}). When \code{NULL}
+(default), cells are pooled across samples and the output table has
+one row per bin. When supplied, the binning is run per sample and
+the output has one row per (sample, bin) combination with an
+additional \code{sample_id} column. Per-sample output is what
+\code{plot_gradient_curve()} auto-detects to run in per-sample mode.}
 }
 \value{
 A \code{data.table} with columns:
@@ -41,7 +62,9 @@ Standard error of the proportion is computed as
 \code{sqrt(p * (1-p) / n)} (binomial SE). Standard error of the mean
 expression uses \code{sd / sqrt(n)}.
 
-Bins with zero cells are excluded from the output.
+Bins with fewer than \code{min_cells_per_bin} cells are excluded from
+the output. Low-cell bins produce unstable binomial proportions
+(a bin with 3 cells gives \code{prop_expressing} of 0, 1/3, 2/3, or 1).
 }
 \examples{
 \dontrun{

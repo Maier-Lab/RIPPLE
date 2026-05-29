@@ -56,11 +56,16 @@ and one of \code{median_coef} / \code{gradient_score} /
 \item{sample_col}{Character or NULL. Name of the per-sample identifier
 column in \code{bin_stats}. When non-NULL, switches to per-sample
 mode: thin lines per sample plus a bold mean line with a 95\\% CI
-ribbon (mean +/- 1.96 * SE across samples per bin). Default
-\code{NULL} (pooled mode).}
+ribbon (mean +/- 1.96 * SE across samples per bin). When \code{NULL}
+(default), the function auto-detects per-sample mode if
+\code{bin_stats} contains a \code{sample_id} column (the default
+output of \code{bin_decay_data(sample_ids = ...)}); otherwise it
+falls back to pooled mode.}
 
 \item{x_col}{Character. Name of the distance / bin-centre column on
-\code{bin_stats}. Default \code{"dist_mid"}.}
+\code{bin_stats}. Default \code{"bin_center"} (matches
+\code{bin_decay_data()} output). Falls back to \code{"dist_mid"} or
+\code{"bin_mid_um"} if the default isn't present.}
 
 \item{y_col}{Character. Name of the proportion-expressing column on
 \code{bin_stats}. Default \code{"prop_expressing"} (the column written
@@ -68,7 +73,8 @@ by \code{\link{bin_decay_data}}).}
 
 \item{se_col}{Character. Name of the per-bin SE column used for the
 ribbon in pooled mode. Ignored in per-sample mode (SE is computed
-across samples). Default \code{"se"}.}
+across samples). Default \code{"se_prop"} (matches
+\code{bin_decay_data()}).}
 
 \item{y_lab}{Character or NULL. Y-axis label. Default
 \code{"Proportion expressing"}.}

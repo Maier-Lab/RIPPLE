@@ -12,15 +12,17 @@ plot_gradient_curve(
   fdr = NULL,
   results = NULL,
   sample_col = NULL,
-  x_col = "dist_mid",
+  x_col = "bin_center",
   y_col = "prop_expressing",
-  se_col = "se",
+  se_col = "se_prop",
   y_lab = NULL,
   query_label = "Query",
   max_distance = 200,
   color = NULL,
   sample_alpha = 0.4,
-  sample_linewidth = 0.4
+  sample_linewidth = 0.4,
+  min_cells_per_bin = 10L,
+  min_samples_per_bin = 2L
 )
 }
 \arguments{
@@ -56,11 +58,16 @@ and one of \code{median_coef} / \code{gradient_score} /
 \item{sample_col}{Character or NULL. Name of the per-sample identifier
 column in \code{bin_stats}. When non-NULL, switches to per-sample
 mode: thin lines per sample plus a bold mean line with a 95\\% CI
-ribbon (mean +/- 1.96 * SE across samples per bin). Default
-\code{NULL} (pooled mode).}
+ribbon (mean +/- 1.96 * SE across samples per bin). When \code{NULL}
+(default), the function auto-detects per-sample mode if
+\code{bin_stats} contains a \code{sample_id} column (the default
+output of \code{bin_decay_data(sample_ids = ...)}); otherwise it
+falls back to pooled mode.}
 
 \item{x_col}{Character. Name of the distance / bin-centre column on
-\code{bin_stats}. Default \code{"dist_mid"}.}
+\code{bin_stats}. Default \code{"bin_center"} (matches
+\code{bin_decay_data()} output). Falls back to \code{"dist_mid"} or
+\code{"bin_mid_um"} if the default isn't present.}
 
 \item{y_col}{Character. Name of the response column (proportion
 expressing, mean rate, etc.) on \code{bin_stats}. Default
@@ -68,7 +75,8 @@ expressing, mean rate, etc.) on \code{bin_stats}. Default
 
 \item{se_col}{Character. Name of the per-bin SE column used for the
 ribbon in pooled mode. Ignored in per-sample mode (SE is computed
-across samples). Default \code{"se"}.}
+across samples). Default \code{"se_prop"} (matches
+\code{bin_decay_data()}).}
 
 \item{y_lab}{Character or NULL. Y-axis label. Default \code{NULL} →
 "P(expressing)" in pooled mode, "Mean expression rate" in per-sample
@@ -93,6 +101,19 @@ per-sample mode (default \code{0.4}).}
 
 \item{sample_linewidth}{Numeric. Linewidth for per-sample lines in
 per-sample mode (default \code{0.4}).}
+
+\item{min_cells_per_bin}{Integer. Per-sample mode only. Drops
+sample-bin observations supported by fewer than this many cells
+before aggregating across samples. Default \code{10L}, matching the
+HyMy companion-manuscript script. Requires a \code{n_cells} column
+on the input; silently ignored if absent. Set to \code{0L} to
+disable.}
+
+\item{min_samples_per_bin}{Integer. Per-sample mode only. Drops bins
+backed by fewer than this many samples after the
+\code{min_cells_per_bin} filter. Default \code{2L}: at least two
+samples must contribute to a bin for it to appear in the mean curve.
+Set to \code{0L} to disable.}
 }
 \value{
 A \code{ggplot} object, or NULL if \code{bin_stats} is NULL or
@@ -104,15 +125,27 @@ query cells. The shape can be monotonic decay, monotonic increase,
 biphasic, or noisy — hence "gradient curve" rather than "decay curve".
 Two modes:
 \itemize{
-\item \strong{Pooled mode} (default): one curve from a pre-pooled
-bin table, with a 95\\% CI ribbon derived from a per-bin SE column
-(ribbon is mean +/- 1.96 * SE).
-\item \strong{Per-sample mode}: when \code{sample_col} is supplied,
-each biological replicate is drawn as a faint line and the mean
-across samples is overlaid in bold, with a 95\\% CI ribbon
-(mean +/- 1.96 * SE across samples per bin). This makes replicate
-consistency visible at a glance.
+\item \strong{Per-sample mode} (recommended): each biological
+replicate is drawn as a faint line and the cross-sample mean is
+overlaid in bold, with a 95\\% CI ribbon (mean +/- 1.96 * SE across
+samples per bin, with samples weighted equally). Triggered when
+\code{sample_col} is supplied, or auto-detected when
+\code{bin_stats} contains a \code{sample_id} column (the default
+output of \code{bin_decay_data(sample_ids = ...)}). This matches
+the package's \emph{N = samples, not cells} philosophy and is the
+mode used in the companion manuscript.
+\item \strong{Pooled mode}: one curve from a pre-pooled bin table,
+with a 95\\% CI ribbon derived from a per-bin SE column
+(mean +/- 1.96 * SE). The ribbon here is a binomial Wald CI on the
+pooled-cell proportion (denominator = total cells, not number of
+samples), which \strong{overstates precision} when replicates
+disagree and lets samples with more cells dominate the curve.
+Kept for back-compat; prefer per-sample mode for any
+manuscript-bound figure.
 }
+To switch modes: call \code{bin_decay_data()} with \code{sample_ids}
+for per-sample, or without it for pooled. \code{plot_gradient_curve()}
+picks the right mode from the input table.
 The gene's meta-analysis gradient score and FDR are shown in the
 subtitle.
 }

@@ -1,5 +1,29 @@
 # ripple 0.2.0 (development)
 
+## Decay curves: per-sample default, low-cell / low-coverage filters
+
+* `bin_decay_data()` gains a `sample_ids` argument. When supplied, the
+  function returns a per-(sample, bin) table with a `sample_id` column
+  instead of pooling cells across samples. This makes the recommended
+  per-sample workflow a one-liner.
+* `bin_decay_data()` also gains a `min_cells_per_bin` argument
+  (default `10L`, matching the HyMy companion-manuscript script). Bins
+  with fewer cells are dropped to avoid unstable proportions.
+* `plot_gradient_curve()` auto-detects per-sample mode when the input
+  has a `sample_id` column, so `bin_decay_data(sample_ids = ...) →
+  plot_gradient_curve()` is a clean two-step. Pooled mode remains
+  available via `bin_decay_data()` without `sample_ids`.
+* `plot_gradient_curve()` per-sample mode gains `min_cells_per_bin`
+  (default `10L`) and `min_samples_per_bin` (default `2L`) filters,
+  applied before and after the cross-sample aggregation respectively.
+* `plot_gradient_curve()` default `x_col` is now `"bin_center"` (matches
+  `bin_decay_data()`); falls back to `"dist_mid"` or `"bin_mid_um"` if
+  the table uses a different name. Same fallback for `se_col`
+  (`"se_prop"` → `"se"`).
+* Docstring on `plot_gradient_curve()` flags that pooled mode overstates
+  precision when replicates disagree and recommends per-sample mode for
+  manuscript figures.
+
 ## Breaking changes — hot-path simplification
 
 * `run_meta_analysis()` (REML inverse-variance random-effects meta-analysis
