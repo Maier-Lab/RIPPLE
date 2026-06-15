@@ -97,7 +97,12 @@ fit_poisson <- function(counts, distances, total_counts, min_cells = 25) {
 
   # Overdispersion diagnostic: residual deviance / residual df
   # Values >> 1 suggest negative binomial would be more appropriate. shouldn't really happen for Xenium at least.
-  dispersion <- fit$deviance / fit$df.residual
+  # Guard against zero residual df (saturated fit) which would give Inf/NaN.
+  dispersion <- if (fit$df.residual > 0) {
+    fit$deviance / fit$df.residual
+  } else {
+    NA_real_
+  }
 
   list(
     beta = coef_summary["distances", "Estimate"], # log-rate change per um
@@ -193,8 +198,12 @@ fit_poisson_controlled <- function(counts, dist_query, dist_control, total_count
     return(NULL)
   }
 
-  # Overdispersion diagnostic
-  dispersion <- fit$deviance / fit$df.residual
+  # Overdispersion diagnostic (guard against zero residual df).
+  dispersion <- if (fit$df.residual > 0) {
+    fit$deviance / fit$df.residual
+  } else {
+    NA_real_
+  }
 
   list(
     beta = coef_summary["dist_query", "Estimate"], # log-rate change per um

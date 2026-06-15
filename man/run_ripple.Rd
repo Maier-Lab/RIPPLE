@@ -133,8 +133,8 @@ query cells.
 lenient for priority genes (>= floor in >= 2 samples).
 \item Fit per-sample Poisson GLMs:
 \code{glm(counts ~ distance + offset(log(total_counts)), family = poisson)}.
-\item Run random-effects meta-analysis across samples.
-\item Compute Fisher's combined p-value with sign consistency gate.
+\item Compute Fisher's combined p-value with sign consistency gate,
+using the median per-sample coefficient as the gradient score.
 \item Optionally run permutation tests on top genes.
 \item Classify decay patterns for significant genes.
 \item Generate volcano plots, forest plots, and coefficient strips.
@@ -159,7 +159,7 @@ lenient for priority genes (>= floor in >= 2 samples).
 data(ripple_mock_data)
 results <- run_ripple(
   input           = ripple_mock_data,
-  query_celltype  = "Macrophage",
+  query_celltype  = "Tumor",
   celltype_column = "cell_type",
   sample_column   = "sample_id",
   output_dir      = tempfile("ripple_example_")

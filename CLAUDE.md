@@ -46,7 +46,7 @@ RIPPLE/
 
 ---
 
-## Exported Functions (38 total)
+## Exported Functions (51 total)
 
 | Module | Functions | Purpose |
 |--------|-----------|---------|
@@ -58,10 +58,11 @@ RIPPLE/
 | `make_input.R` | `make_ripple_input`, `read_ripple_csv` | Build canonical Seurat/SPE from raw matrices or CSVs |
 | `data_loading.R` | `load_metadata_only`, `check_data` | Lightweight metadata access |
 | `glm.R` | `fit_poisson`, `fit_poisson_controlled`, `classify_decay_pattern` | Core statistical models |
-| `meta_analysis.R` | `run_meta_analysis`, `compute_fisher_pval` | Cross-replicate inference |
+| `meta_analysis.R` | `compute_fisher_pval` | Cross-replicate inference (Fisher's combined p-value + sign gate) |
 | `permutation.R` | `run_permutation_test`, `run_permutation_tests`, `merge_permutation_results` | Null distribution |
+| `contamination_helpers.R` | `default_ambient_family_pattern`, `find_ambient_family_genes` | Ambient-family gene blocklist (Ig, J-chain, Rp, Mt) |
 | `spatial.R` | `get_coord_columns`, `build_knn_graph`, `build_radius_graph`, `calculate_distance_to_type`, `get_neighbor_cell_types`, `calculate_neighbor_composition`, `check_spatial_autocorrelation` | Spatial utilities |
-| `visualization.R` | `plot_spatial_single`, `plot_spatial_by_sample`, `plot_gradient_volcano`, `plot_gradient_curve`, `create_gradient_volcano`, `create_forest_plot`, `create_coefficient_strips` | Plotting |
+| `visualization.R` | `plot_spatial_single`, `plot_spatial_by_sample`, `plot_gradient_volcano`, `plot_gradient_curve`, `plot_decay_curve`, `plot_prop_curve`, `plot_k_diagnostics`, `plot_gene_counts_by_celltype`, `plot_specificity_breakdown`, `plot_gene_category_dotplot`, `plot_fgsea_dotplot`, `plot_confounder_bar`, `plot_confounder_ratio`, `plot_confounder_scatter`, `create_gradient_volcano`, `create_forest_plot`, `create_coefficient_strips`, `ripple_plot_qc`, `theme_ripple` | Plotting |
 | `utils.R` | `calculate_enrichment`, `permutation_pvalue` | Helpers |
 
 ---

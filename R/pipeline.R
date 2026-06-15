@@ -177,8 +177,8 @@ NULL
 #'         lenient for priority genes (>= floor in >= 2 samples).
 #'       \item Fit per-sample Poisson GLMs:
 #'         \code{glm(counts ~ distance + offset(log(total_counts)), family = poisson)}.
-#'       \item Run random-effects meta-analysis across samples.
-#'       \item Compute Fisher's combined p-value with sign consistency gate.
+#'       \item Compute Fisher's combined p-value with sign consistency gate,
+#'         using the median per-sample coefficient as the gradient score.
 #'       \item Optionally run permutation tests on top genes.
 #'       \item Classify decay patterns for significant genes.
 #'       \item Generate volcano plots, forest plots, and coefficient strips.
@@ -201,7 +201,7 @@ NULL
 #' data(ripple_mock_data)
 #' results <- run_ripple(
 #'   input           = ripple_mock_data,
-#'   query_celltype  = "Macrophage",
+#'   query_celltype  = "Tumor",
 #'   celltype_column = "cell_type",
 #'   sample_column   = "sample_id",
 #'   output_dir      = tempfile("ripple_example_")
@@ -1644,16 +1644,20 @@ run_ripple_confounder <- function(
     attenuation_threshold <- 0.5
     comparison[, coef_ratio := abs(stage2_median_coef) / abs(stage1_coef)]
 
+    # Order matters: fcase evaluates top-to-bottom. The "reversed" branch
+    # (significant but sign-flipped after control) must precede the two
+    # FDR >= threshold branches, otherwise a significant sign-flip would
+    # never be reached and would fall through to "unclassified".
     comparison[, classification := data.table::fcase(
       is.na(stage2_fisher_fdr), "no_stage2_result",
       stage2_fisher_fdr < fdr_threshold &
         sign(stage2_median_coef) == sign(stage1_coef), query_specific_label,
+      stage2_fisher_fdr < fdr_threshold &
+        sign(stage2_median_coef) != sign(stage1_coef), "reversed",
       stage2_fisher_fdr >= fdr_threshold &
         coef_ratio < attenuation_threshold, "niche_driven",
       stage2_fisher_fdr >= fdr_threshold &
         coef_ratio >= attenuation_threshold, "underpowered",
-      stage2_fisher_fdr < fdr_threshold &
-        sign(stage2_median_coef) != sign(stage1_coef), "reversed",
       default = "unclassified"
     )]
 
@@ -1954,18 +1958,27 @@ merge_ripple_results <- function(
         data.table::data.table(
           gene = g,
           median_coef = result$median_coef,
-          fisher_pval = result$fisher_pval
+          fisher_pval = result$fisher_pval,
+          sign_consistency = result$sign_consistency
         )
       }))
       fisher_dt[, fisher_fdr := stats::p.adjust(fisher_pval, method = "BH")]
 
-      # Update all_results for this cell type
+      # Update all_results for this cell type. gradient_score and
+      # sign_consistency are refreshed alongside median_coef so the recomputed
+      # rows stay self-consistent (gradient_score is defined as median_coef).
       ct_idx <- which(all_results$cell_type == ct_name)
       if (length(ct_idx) > 0) {
         matched <- match(all_results$gene[ct_idx], fisher_dt$gene)
         all_results[ct_idx, median_coef := fisher_dt$median_coef[matched]]
         all_results[ct_idx, fisher_pval := fisher_dt$fisher_pval[matched]]
         all_results[ct_idx, fisher_fdr := fisher_dt$fisher_fdr[matched]]
+        if ("gradient_score" %in% names(all_results)) {
+          all_results[ct_idx, gradient_score := fisher_dt$median_coef[matched]]
+        }
+        if ("sign_consistency" %in% names(all_results)) {
+          all_results[ct_idx, sign_consistency := fisher_dt$sign_consistency[matched]]
+        }
       }
 
       .msg("  ", ct_name, ": recomputed Fisher for ", nrow(fisher_dt),
@@ -2055,6 +2068,7 @@ merge_ripple_results <- function(
 
   has_fisher <- "fisher_fdr" %in% names(all_results)
   has_legacy_fdr <- "fdr" %in% names(all_results)
+  has_perm <- "perm_pval" %in% names(all_results)
   summary_stats <- all_results[, .(
     n_genes = .N,
     n_significant = if (has_legacy_fdr) {
@@ -2069,8 +2083,8 @@ merge_ripple_results <- function(
     } else {
       NA_integer_
     },
-    n_perm_tested = sum(!is.na(perm_pval)),
-    n_perm_sig = sum(perm_pval < 0.05, na.rm = TRUE)
+    n_perm_tested = if (has_perm) sum(!is.na(perm_pval)) else NA_integer_,
+    n_perm_sig = if (has_perm) sum(perm_pval < 0.05, na.rm = TRUE) else NA_integer_
   ), by = cell_type]
   if (verbose) print(summary_stats)
 

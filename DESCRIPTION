@@ -18,6 +18,8 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
     methods,
+    grDevices,
+    tools,
     Seurat (>= 4.0),
     data.table (>= 1.12),
     ggplot2 (>= 3.3),
@@ -33,13 +35,9 @@ Suggests:
     SpatialExperiment,
     SummarizedExperiment,
     S4Vectors,
-    dplyr (>= 1.0),
-    tidyr (>= 1.1),
     fgsea (>= 1.18),
     msigdbr (>= 7.4),
     nichenetr (>= 1.1),
-    cowplot (>= 1.1),
-    rstatix (>= 0.7),
     testthat (>= 3.0),
     knitr,
     rmarkdown
