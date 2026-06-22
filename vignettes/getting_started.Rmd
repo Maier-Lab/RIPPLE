@@ -32,12 +32,9 @@ For a real-data walkthrough (CosMx NSCLC, ~765 K cells, 5 patients), see
 > physical distance to a chosen query cell type, reproducibly across
 > biological replicates?*
 
-RIPPLE is **not** a spatially-variable-gene test. It is **not** a
-co-localisation test. It is **not** a ligand-receptor pairing. It tests
-one thing: does a gene's expression in a target cell type change with
+RIPPLE is **not** a classic spatially-variable-gene test. It is **not** a
+co-localisation test. It is **not** a ligand-receptor pairing. It has the defined goal of asking: does a gene's expression in a target cell type change with
 distance to a query cell type, in the same direction in every replicate.
-For comparisons against MISTy, nnSVG, CellChat, and NicheNet, see
-`vignette("methods_positioning", package = "ripple")`.
 
 ## Install and load
 
