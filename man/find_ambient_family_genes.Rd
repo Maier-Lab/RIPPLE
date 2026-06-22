@@ -15,7 +15,7 @@ majority case convention of the input (treats >70\\% all-uppercase
 symbols as human, otherwise mouse / both).}
 }
 \value{
-Character vector — the subset of \code{genes} that match.
+Character vector -- the subset of \code{genes} that match.
 }
 \description{
 Applies \code{\link{default_ambient_family_pattern}} to a vector of

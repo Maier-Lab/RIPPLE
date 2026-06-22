@@ -24,18 +24,34 @@ library(patchwork)
 This vignette presents the synthetic benchmarks that validate RIPPLE's
 statistical properties and runtime profile:
 
-1. **FDR calibration under the null** — empirical type-I error control,
-   strict gate (sign consistency = 1.0).
-2. **Relaxed-gate calibration cost** — same setup with sign consistency
-   ≥ 0.75 (the recommended setting for N ≥ 5).
-3. **Power curves** — sensitivity as a function of effect size, sample
-   count, and gate strictness.
-4. **Runtime and memory** — wall time and peak RAM across three
-   dataset sizes.
+1. **FDR calibration under the null.** Empirical type-I error control
+   with the strict gate (sign consistency = 1.0). Shows the method is
+   well calibrated: false positives stay at or below the nominal rate.
+2. **Relaxed-gate calibration cost.** Same setup with sign consistency
+   ≥ 0.75 (the recommended setting for N ≥ 5). Shows how much
+   calibration is given up when the gate is relaxed.
+3. **Power curves.** Sensitivity as a function of effect size, sample
+   count, and gate strictness. Shows the smallest gradient the method
+   can detect at each sample size.
+4. **Runtime and memory.** Wall time and peak RAM across three dataset
+   sizes. Shows how the method scales.
 
-All four panels appear in **paper Figure 2**, rendered exactly by
+All four panels appear in **paper Figure 2**, rendered by
 `paper/render_figures.R`. This vignette uses the same cached RDS
 results from `inst/extdata/`.
+
+This vignette covers synthetic benchmarks only, so contamination
+flagging does not arise here. RIPPLE never decides what counts as
+contamination on its own: it proposes candidates (the cross-cell-type
+`classify_gene_specificity` "broad" flag, ambient-family helpers, and
+any `query_signature_genes` you supply), and you curate the final list
+using domain knowledge. See the getting-started and enrichment
+vignettes for how that works on real data.
+
+Confounder control, permutation testing, fGSEA enrichment, and
+ligand-receptor integration are all optional downstream steps, not
+required to run the core gradient test. The other vignettes cover each
+of them.
 
 ## Synthetic data design
 
@@ -43,7 +59,7 @@ Each dataset is a small `SpatialExperiment` with three cell types:
 
 - **Tumor** (30 cells): dense central cluster, radius 60 µm.
 - **T cells** (120 cells): uniformly distributed; the target.
-- **Fibroblasts** (50 cells): annular ring at 100–200 µm from tumor.
+- **Fibroblasts** (50 cells): annular ring at 100 to 200 µm from tumor.
 
 For **null** datasets, all genes follow a flat Poisson rate with no
 distance dependence. For **gradient** datasets, a subset of T-cell
@@ -88,11 +104,14 @@ knitr::kable(
 )
 ```
 
-The empirical FDR is essentially zero across all sample sizes — the
-strict gate alone (before any p-value combination) requires unanimous
-sign agreement across replicates, which costs `~ 2 * 0.5^N * alpha`
-even before FDR correction. Paper Figure 2A overlays this theoretical
-floor on the empirical points.
+The empirical FDR is near zero across all sample sizes (mean FDR
+8e-5 at N = 3, 4e-5 at N = 5, 0 at N = 10). The strict gate adds a
+multiplicative safety factor on top of Fisher's already-calibrated
+p-value combination. Under the null, the probability that all N
+per-sample coefficients agree on sign is `2 * 0.5^N`, so the gate
+scales the false-positive rate by this factor before FDR correction
+is even applied. Paper Figure 2A overlays this theoretical floor on
+the empirical points.
 
 ## 2. Relaxed-gate calibration cost
 
@@ -121,11 +140,12 @@ knitr::kable(
 )
 ```
 
-The pooled raw-p rate rises to the relaxed-gate theoretical floor (see
-paper Figure 2B), but the **FDR rate stays close to strict** — BH
-correction absorbs most of the gate change. In practice this means
-relaxing the gate is cheap on calibration but expensive on raw p-value
-interpretation; downstream analysis should always use FDR.
+The pooled raw-p rate rises under the relaxed gate (for example at
+N = 10 it goes from 8e-5 strict to 5e-3 relaxed; see paper Figure 2B),
+but the **FDR rate stays close to strict** (mean FDR is still 0 at
+N = 10). BH correction absorbs most of the gate change. Relaxing the
+gate is cheap on FDR but loosens raw p-value interpretation, so
+downstream analysis should always use `fisher_fdr`, not raw p-values.
 
 ## 3. Power curves (strict vs relaxed gate)
 
@@ -217,7 +237,7 @@ knitr::kable(
     `time (s)`     = sprintf("%.1f", median_t),
     `peak RAM (MB)` = sprintf("%.0f", median_mb)
   )],
-  caption = "Median runtime and peak RAM per dataset size (10 reps each)."
+  caption = "Median runtime and peak RAM per dataset size (3 reps each)."
 )
 
 rt_long <- melt(
@@ -274,7 +294,7 @@ source("data-raw/benchmarks/bench_power.R")
 # Relaxed-gate power
 source("data-raw/benchmarks/bench_power_relaxed.R")
 
-# Runtime / memory (~10 min, 3 sizes x 10 reps)
+# Runtime / memory (~10 min, 3 sizes x 3 reps)
 source("data-raw/benchmarks/bench_runtime.R")
 ```
 

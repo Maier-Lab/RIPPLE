@@ -28,17 +28,23 @@ library(patchwork)
 ## Overview
 
 This vignette walks through RIPPLE on the **CosMx SMI NSCLC dataset**
-from [He et al. (2022)](https://doi.org/10.1038/s41587-022-01483-z) —
-765,771 cells, 980 genes, 17 cell types, 5 NSCLC patients (each treated
-as a biological replicate). Tumor cells are the query, so we ask which
-genes in the surrounding cell types change expression as a function of
-distance to the nearest tumor cell, reproducibly across all 5 patients.
+from [He et al. (2022)](https://doi.org/10.1038/s41587-022-01483-z).
+765,771 cells, 980 genes, 17 cell types, 5 patients. Each patient is
+one biological replicate. Tumor cells are the query. The question:
+which genes in the other cell types change expression with distance to
+the nearest tumor cell, reproducibly across the 5 patients.
 
-This vignette is structured to **directly reproduce panels A–E of
-paper Figure 4**. You can follow it to learn how to work with RIPPLE and the type of outputs you can get.
-Each panel uses cached results bundled with the
-package; running the analysis from scratch on the raw 2.6 GB h5ad takes
-~6 hours on a 16-core machine and is shown but not executed.
+This vignette reproduces panels A to E of **paper Figure 4**. Follow
+it to see how to use RIPPLE and what the outputs look like. Each panel
+uses cached results bundled with the package. Running the analysis
+from scratch on the raw 2.6 GB h5ad takes about 6 hours on a 16-core
+machine. We show that step but do not run it.
+
+The required steps are `run_ripple()` and the specificity check.
+Everything else is optional. Permutation testing, confounder control,
+fGSEA, and ligand-receptor nomination are all downstream stages you
+opt into when the question calls for them. Each optional step below
+includes a one-line why/when.
 
 > **Note:** for a 1-minute end-to-end on the synthetic mock dataset
 > (no download needed), see
@@ -71,11 +77,11 @@ spe <- SpatialExperiment(
 
 ## Choosing `k_neighbors` with `plot_k_diagnostics()`
 
-For abundant, well-distributed query populations (~150 K tumor cells
-across 5 patients) the mean per-cell distance to the nearest tumor cell
-stabilises immediately, and `k = 1` is adequate. For sparse query
-populations (a few hundred cells per sample), larger `k` (3–5) reduces
-noise. `plot_k_diagnostics()` gives a quick visual answer:
+For dense query populations like this one (~150 K tumor cells across 5
+patients), `k = 1` is fine. The mean per-cell distance to the nearest
+tumor cell stabilises immediately. For sparse query populations (a few
+hundred cells per sample), larger `k` (3 to 5) reduces noise.
+`plot_k_diagnostics()` gives a quick visual answer:
 
 ```{r k-diagnostics, eval = FALSE}
 plot_k_diagnostics(
@@ -119,9 +125,11 @@ Key parameter choices:
 - **`sample_column = "patient"`**: each patient is one biological
   replicate (N = 5). Per-patient coefficients are combined via Fisher's
   combined p-value with sign-consistency gating.
-- **`n_permutations = 0`**: permutation testing skipped here; can be
-  added later via `run_permutation_tests()` (or the GPU script in
-  `inst/python/`).
+- **`n_permutations = 0`**: permutation testing skipped here. It is an
+  optional validation step (why/when: run it to confirm a gradient is
+  specific to the query labels and not an artefact of cell density);
+  add it later via `run_permutation_tests()` or the GPU script in
+  `inst/python/`.
 
 ## Loading cached results
 
@@ -141,23 +149,41 @@ cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0
 
 > **Strongly recommended:** run the specificity check **before** any
 > downstream interpretation, top-hit listing, or pathway enrichment.
-> The **broad-expression class** — genes that come up significant in
-> many cell types simultaneously, typically ribosomal genes, MHC
-> housekeeping, and ambient RNA from highly expressed query markers —
-> will otherwise dominate every "top hits" table and every fGSEA
-> leading edge, masking the cell-type-specific biology that RIPPLE is
-> designed to surface. The "broad" label is a heuristic flag for
-> potential ambient-RNA / segmentation contamination, not a
-> measurement of it; treat it as a candidate list for inspection.
+> The **broad-expression class** is the set of genes significant in
+> many cell types at once. Common offenders: ribosomal genes, MHC
+> housekeeping, ambient RNA from highly expressed query markers. If
+> you do not filter them, they dominate every "top hits" table and
+> every fGSEA leading edge. The cell-type-specific biology gets
+> masked.
+>
+> **Contamination is user-defined. RIPPLE only proposes candidates.**
+> The pipeline gives you three heuristic flags:
+>
+> 1. The cross-cell-type `broad` class
+>    (`classify_gene_specificity()`).
+> 2. The ambient-family blocklist (`find_ambient_family_genes()` for
+>    Ig, J-chain, Rp, Mt genes).
+> 3. A user-supplied query-marker list (`query_signature_genes` on
+>    `run_ripple()`).
+>
+> None of these is a measurement of contamination. A broadly-
+> significant gene can be genuine shared biology. Cytokines, MHC II,
+> and stress programs are legitimately multi-cell-type. A query
+> marker that spills into one neighbouring cell type can be classed
+> as `specific` (not `broad`) but still be contamination. See the
+> EPCAM-in-fibroblasts case below. You decide what counts as
+> contamination using domain knowledge. The flags are starting
+> points for inspection, not the truth.
 
-`classify_gene_specificity()` returns one row per significant gene with
-the number of cell types it appears in and a four-level class
-(`specific`, `moderate`, `ubiquitous`, `broad`). We compute it
-**once**, here, and reuse it everywhere downstream.
+`classify_gene_specificity()` returns one row per significant gene
+with two key fields. `n_celltypes` is the number of cell types it
+appears in. `specificity_class` is a four-level label: `specific`,
+`moderate`, `ubiquitous`, `broad`. We compute it **once**, here, and
+reuse it everywhere downstream.
 
 **A note on the broad-class dials.** There is no universally correct
-cutoff. `classify_gene_specificity()` exposes **two** dials — both
-should be reported in your methods:
+cutoff. `classify_gene_specificity()` exposes **two** dials, both of
+which should be reported in your methods:
 
 1. **`broad_threshold`** (how many cell types). Default `4` is
    sensible for the ~10-20 cell-type panel here (and for the original
@@ -174,7 +200,7 @@ should be reported in your methods:
    must be). Default `NULL` means any `*`-significant (FDR < 0.05)
    hit counts toward the broad-class tally. Tighten to `"**"`
    (FDR < 0.01) or `"***"` (FDR < 0.001) to make the filter **looser
-   overall** — a gene only counts as a hit in cell types where the
+   overall**: a gene only counts as a hit in cell types where the
    signal is unambiguous, so fewer genes get flagged. Useful when the
    default classifies as "broad" things you believe are real biology.
 
@@ -190,7 +216,7 @@ spec <- classify_gene_specificity(
 
 table(spec$specificity_class)
 
-# Genes flagged as broad — to be deprioritised in top-hit lists
+# Genes flagged as broad, to be deprioritised in top-hit lists
 broad_genes <- spec[specificity_class == "broad", unique(gene)]
 cat("Broad-class genes:", length(broad_genes), "\n")
 head(spec[specificity_class == "broad"][order(-n_celltypes)], 10)
@@ -208,38 +234,42 @@ cat(nrow(results),       "rows in `results` (unfiltered)\n")
 cat(nrow(results_clean), "rows in `results_clean` (broad class removed)\n")
 ```
 
-> **⚠ Limitations of broad-class filtering — read before reporting
-> filtered results:**
+> **⚠ Limitations of broad-class filtering (read before reporting
+> filtered results):**
 >
-> - **Loses real biology when broad-expression + induction co-occur.**
->   A gene can be both genuinely induced near the query *and* inflated
->   by ambient RNA from query cells (MIF in this dataset is a textbook
->   example). Filtering removes the gene from every cell type's
->   ranking, including those where the induction is real. Always
->   inspect the broad-class list and decide case-by-case.
+> - **Loses real biology when broad-expression and induction
+>   co-occur.** A gene can be both genuinely induced near the query
+>   *and* inflated by ambient RNA from query cells. MIF in this
+>   dataset is a textbook example. Filtering removes the gene from
+>   every cell type's ranking. The cell types where the induction is
+>   real lose it too. Always inspect the broad-class list and decide
+>   case-by-case.
 > - **The threshold is panel-dependent.** Default `broad_threshold = 4`
->   assumes ~10-20 cell types in the panel. With 3 cell types the
->   cutoff is unreachable; with 30 fine subtypes it is too lenient.
+>   assumes 10 to 20 cell types in the panel. With 3 cell types the
+>   cutoff is unreachable. With 30 fine subtypes it is too lenient.
 >   Re-tune for your annotation granularity.
 > - **Removes genes globally, not per cell type.** A gene flagged
->   dataset-wide is dropped from every column. A gene that's
->   broad-expression across most cell types may still be a real signal
->   in the one cell type that biologically expresses it.
+>   dataset-wide is dropped from every column. A gene that is
+>   broad-expression across most cell types may still be a real
+>   signal in the one cell type that biologically expresses it.
 > - **Multi-cell-type biology is not ambient RNA.** Cytokines, MHC
 >   class II genes, and stress-response programs are legitimately
->   expressed across many cell types and will land in the broad class
->   — the heuristic cannot tell them apart from ambient RNA on its
->   own.
+>   expressed across many cell types. They land in the broad class.
+>   The heuristic cannot tell them apart from ambient RNA on its own.
 > - **Rank-based tests are panel-size sensitive.** Dropping genes
->   shifts the ranks of all remaining genes; NES values from filtered
->   and unfiltered fGSEA runs are not directly comparable. Always
->   report whether the filter was applied and ideally show both.
+>   shifts the ranks of all remaining genes. NES values from
+>   filtered and unfiltered fGSEA runs are not directly comparable.
+>   Always report whether the filter was applied. Ideally show both.
 >
-> **Recommended workflow:** classify upfront (this section), keep both
-> `results` (full) and `results_clean` (filtered) in scope, plot all
-> genes as background but label / report top hits from `results_clean`,
-> and run fGSEA both with and without `exclude_broad = TRUE` (Panel D
-> below).
+> **Recommended workflow:**
+>
+> 1. Classify upfront (this section).
+> 2. Keep both `results` (full) and `results_clean` (filtered) in
+>    scope.
+> 3. Plot all genes as background. Label and report top hits from
+>    `results_clean`.
+> 4. Run fGSEA both with and without `exclude_broad = TRUE` (Panel D
+>    below).
 
 # Reproducing paper Figure 4
 
@@ -247,7 +277,7 @@ The full multi-panel figure is rendered by `paper/render_figures.R`
 (saves to `paper/figures/fig_4_cosmx.{pdf,png}`). Here we walk through
 each panel with the same cached inputs.
 
-## Panel A — Gradients per target cell type
+## Panel A: gradients per target cell type
 
 ```{r fig4-A, fig.width = 9, fig.height = 5}
 plot_gene_counts_by_celltype(
@@ -257,15 +287,15 @@ plot_gene_counts_by_celltype(
 )
 ```
 
-Each bar is split into two pieces by direction (induced near tumor vs
-repressed near tumor) AND by specificity class — the faded portion is
-the "ubiquitous / broad" fraction (genes significant in ≥ 4 cell
-types). This separation is the key QC view: a tall bar is only
-biologically interesting if its solid portion dominates. Fibroblasts
-and macrophages are the most transcriptionally remodelled cell types
-near tumor; both show a healthy specific-to-broad ratio.
+Each bar is split two ways. By direction: induced near tumor vs
+repressed near tumor. By specificity class: solid for cell-type
+specific, faded for the "ubiquitous / broad" fraction (genes
+significant in >= 4 cell types). This is the key QC view. A tall bar
+only matters biologically if its solid portion dominates. Fibroblasts
+and macrophages are the most remodelled cell types near tumor. Both
+show a sizeable specific-to-broad ratio.
 
-## Panel B — Fibroblast gradient volcano
+## Panel B: fibroblast gradient volcano
 
 The default `plot_gradient_volcano()` works well as a quick look:
 
@@ -277,12 +307,12 @@ plot_gradient_volcano(
 )
 ```
 
-For the published figure we emphasise direction with red/blue colouring
-and label a curated gene set. Note the labelling strategy: **all** genes
-are still plotted as background dots (so the broad-class genes remain
-visible for interpretation), but the labelled set is restricted to
-genes that are NOT in the broad list, with a couple of broad-class
-genes (MIF, IGKC) kept explicitly so we can discuss them.
+For the published figure we colour by direction (red = induced, blue
+= repressed) and label a curated gene set. The labelling strategy is
+worth noting. **All** genes still appear as background dots, so the
+broad-class genes remain visible for interpretation. But the labels
+go on genes that are NOT in the broad list. We add a few flagged
+genes by hand (MIF, IGKC) so we can discuss them.
 
 ```{r fig4-B-paper, fig.width = 8, fig.height = 6}
 fib <- results[cell_type == "fibroblast"]    # all genes for the scatter
@@ -292,17 +322,20 @@ fib[, direction := fifelse(
   fifelse(fisher_fdr < 0.05 & median_coef > 0, "Repressed near tumor",
           "Not significant"))]
 
-# Cell-type-specific top hits — pulled from `results_clean` so that
+# Cell-type-specific top hits, pulled from `results_clean` so that
 # ambient RNA does not crowd out the cell-type-specific biology.
 top_clean_fib <- results_clean[
   cell_type == "fibroblast" & fisher_fdr < 0.05
 ][order(fisher_fdr)][1:12]$gene
 
-# Plus a couple of broad-class genes we want to discuss explicitly
-# (see "Key fibroblast hits" below).
-discuss_broad <- c("MIF", "IGKC", "JCHAIN", "RPL22")
+# Plus a few flagged genes we want to discuss explicitly (see "Key
+# fibroblast hits" below). MIF, IGKC and RPL22 are broad-class
+# (significant in >= 4 cell types); JCHAIN is NOT broad (it is
+# significant only in fibroblasts here) but is an ambient-family gene
+# caught by find_ambient_family_genes() instead. Two different flags.
+discuss_flagged <- c("MIF", "IGKC", "JCHAIN", "RPL22")
 
-label_fib <- unique(c(top_clean_fib, discuss_broad))
+label_fib <- unique(c(top_clean_fib, discuss_flagged))
 fib[, to_label := gene %in% label_fib & fisher_fdr < 0.05]
 
 ggplot(fib, aes(x = median_coef, y = neg_log10_fdr)) +
@@ -336,10 +369,10 @@ ggplot(fib, aes(x = median_coef, y = neg_log10_fdr)) +
   fibroblasts; its repression near tumor reflects phenotypic switching
   to a CAF state.
 
-**Broad-class hits (kept on the plot, excluded from the clean
+**Flagged hits (kept on the plot, excluded from the clean
 top-hit list):**
 
-- **MIF** (induced): macrophage migration inhibitory factor — a
+- **MIF** (induced): macrophage migration inhibitory factor, a
   well-known tumor-derived cytokine. *However*, MIF also appears as
   significant in 9 cell types and is flagged by the broad-class
   heuristic. This is the canonical "broad expression + induction"
@@ -348,11 +381,17 @@ top-hit list):**
   MIF-expressing tumor cells. We still show it on the plot, but we
   did not let it compete for label slots with cell-type-specific
   hits.
-- **IGKC / JCHAIN / RPL22**: immunoglobulin and ribosomal genes
-  detected in fibroblasts at high significance — almost certainly
-  ambient RNA from nearby plasma cells / leakage.
+- **IGKC** (broad, significant in 4 cell types) and **RPL22** (broad,
+  8 cell types): an immunoglobulin and a ribosomal gene flagged by the
+  cross-cell-type heuristic, almost certainly ambient RNA / leakage.
+- **JCHAIN** (induced): a plasma-cell J-chain gene that is significant
+  only in fibroblasts here, so it is `specific`, NOT `broad`. It is
+  still suspicious ambient RNA, and `find_ambient_family_genes()`
+  catches it via the Ig/J-chain family pattern. This is exactly why the
+  flags are complementary: the cross-cell-type `broad` flag misses
+  focal spillover, but the ambient-family list catches it.
 
-## Panel C — Per-patient consistency for MIF
+## Panel C: per-patient consistency for MIF
 
 A key feature of RIPPLE is per-replicate fitting. The forest plot below
 shows per-patient gradient scores ± 95 % CI for MIF in fibroblasts:
@@ -382,13 +421,17 @@ ggplot(mif, aes(x = coef, y = sample_id, colour = sample_id)) +
   theme_ripple(base_size = 12)
 ```
 
-All five patients show a consistent negative coefficient — MIF RNA
+All five patients show a consistent negative coefficient. MIF RNA
 counts increase near tumor in every replicate. Reproducibility alone
-does not rule out systematic ambient RNA (both real induction and
-ambient RNA can be reproducible across replicates), which is why the
-specificity check below is a separate QC step.
+does not rule out systematic ambient RNA. Both real induction and
+ambient RNA can be reproducible across replicates. That is why the
+specificity check is a separate QC step.
 
-## Panel D — Pathway enrichment (fGSEA dotplot)
+## Panel D: pathway enrichment (fGSEA dotplot)
+
+fGSEA is an **optional** step (why/when: run it to summarise dozens of
+significant genes per cell type into interpretable pathway-level
+programs; skip it if you only care about individual gene hits).
 
 ```{r fig4-D-run, eval = FALSE}
 # Run fGSEA via the atlas wrapper (writes fgsea_all_celltypes.csv)
@@ -407,10 +450,10 @@ fgsea_path <- system.file("extdata/cosmx_cached/fgsea_all_celltypes.csv",
 fgsea_dt <- fread(fgsea_path)
 ```
 
-`plot_fgsea_dotplot()` summarises the table at a glance — dot size
+`plot_fgsea_dotplot()` summarises the table at a glance: dot size
 encodes -log10(padj), dot colour encodes NES on the same red/blue
 diverging scale as the gradient volcano (red NES = induced near tumor,
-blue NES = repressed), and non-significant cells are dimmed:
+blue NES = repressed), and non-significant cells are dimmed.
 
 ```{r fig4-D, fig.width = 9, fig.height = 7}
 plot_fgsea_dotplot(fgsea_dt, padj_threshold = 0.1, top_n = 12)
@@ -424,22 +467,36 @@ stromal/immune cell types.
 
 ### Robust pathway enrichment: dropping broad-class genes
 
-The same broad-class genes we filtered out of the volcano label sets
-also dominate fGSEA leading edges (ribosomal genes, MHC housekeeping,
-ambient-RNA-prone markers light up `INTERFERON_GAMMA_RESPONSE`,
-`TNFA_SIGNALING_VIA_NFKB`, etc. in cell types where they don't really
-belong). `run_ripple_fgsea()` accepts `exclude_broad = TRUE` to drop
-them before ranking — **using the same heuristic** as the upfront
+The broad-class genes also dominate fGSEA leading edges. Ribosomal
+genes, MHC housekeeping, and ambient-RNA-prone markers light up
+`INTERFERON_GAMMA_RESPONSE`, `TNFA_SIGNALING_VIA_NFKB`, and other
+pathways in cell types where they do not really belong.
+`run_ripple_fgsea()` accepts `exclude_broad = TRUE` to drop them
+before ranking. It uses the same heuristic as the upfront
 classification above.
 
+A second clean-up is to remove a **user-defined query signature**
+before ranking. The cross-cell-type `broad` flag catches genes that
+light up in many cell types. It does not catch *focal* spillover. A
+tumor marker that bleeds into one neighbouring cell type scores as
+`specific`, not `broad`. Examples in this dataset: EPCAM and the
+keratins, which show up in fibroblasts. Define your query-signature
+list once from domain knowledge. Reuse it for every downstream step
+(fGSEA, L-R, anything else).
+
 ```{r fgsea-filtered, eval = FALSE}
+# Query (tumor/epithelial) signature: focal spillover the broad flag misses.
+# Define from domain knowledge and reuse across all downstream steps.
+tumor_markers <- c("EPCAM", "KRT8", "KRT18", "KRT19", "KRT7", "KRT17")
+
 # Using the same threshold we picked in the pre-flight section.
 fgsea_filtered <- run_ripple_fgsea(
   results,
-  gene_sets       = "hallmark",
-  organism        = "human",
-  exclude_broad   = TRUE,
-  broad_threshold = 4
+  gene_sets             = "hallmark",
+  organism              = "human",
+  exclude_broad         = TRUE,
+  broad_threshold       = 4,
+  query_signature_genes = tumor_markers   # drop tumor spillover before ranking
 )
 
 # Side-by-side: with and without filter
@@ -449,22 +506,78 @@ plot_fgsea_dotplot(fgsea_filtered, padj_threshold = 0.1, top_n = 12) +
   ggplot2::labs(title = "fGSEA -- broad-class genes excluded")
 ```
 
-When the panels are very similar, the unfiltered enrichment is robust
-to the most obvious ambient RNA. When they differ substantially, the
-filter is removing real signal, broad-class biology, or both —
-investigate the dropped leading-edge genes before reporting either
-version as the answer. The full caveat list lives in the
-[Pre-flight: specificity check] section above (and in
-`?run_ripple_fgsea`); the most important one for fGSEA specifically
-is that NES values are panel-size-sensitive and **not directly
-comparable between filtered and unfiltered runs**.
+If the two panels look similar, the unfiltered enrichment is stable
+against the most obvious ambient RNA. If they differ a lot, the
+filter is removing real signal, broad-class biology, or both.
+Investigate the dropped leading-edge genes before reporting either
+version. The full caveat list is in the
+[Pre-flight: specificity check] section above and in
+`?run_ripple_fgsea`. The most important one for fGSEA: NES values are
+panel-size-sensitive. They are **not directly comparable** between
+filtered and unfiltered runs. (`run_ripple_fgsea()` also accepts
+`exclude_specificity_class = "broad"` as an equivalent way to drop the
+broad class.)
 
-## Panel E — Top tumor → fibroblast ligand–receptor pairs
+## Panel E: top tumor → fibroblast ligand-receptor pairs
+
+Ligand-receptor nomination is an **optional** step (why/when: run it to
+turn a list of gradient genes into testable signalling hypotheses by
+matching them to known L-R pairs; skip it if you do not need a
+mechanistic, pair-level read-out).
 
 Stage 6 (`run_ripple_lr()`) intersects gradient genes with curated
-ligand–receptor databases and (optionally) NicheNet, producing a
-combined prioritization score per L-R pair. The bundled file
-`combined_prioritization.csv` is the output for fibroblasts:
+ligand-receptor databases and (optionally) NicheNet, producing a
+combined prioritization score per L-R pair.
+
+**Directional logic (why receptors must be induced).** Signalling is
+nominated query → receiver. The tumor sends a ligand. The neighbouring
+fibroblast carries the receptor. For that to be coherent, the
+receptor RNA should go UP as cells get closer to the tumor (induced,
+negative gradient score). A receptor that is *repressed* near the
+tumor is not a plausible "tumor signals to fibroblast" axis. So
+`run_ripple_lr()` nominates induced receptors only by default:
+
+```{r fig4-E-run, eval = FALSE}
+lr_out <- run_ripple_lr(
+  results_dir           = "ripple_output/tumor_ripple",
+  input                 = spe,
+  query_celltype        = "tumor",
+  celltype_column       = "cell_type",
+  sample_column         = "patient",
+  organism              = "human",
+  receptor_direction    = "induced",  # default: only receptors UP near tumor
+  exclude_contamination = TRUE,       # default: drop cross-cell-type broad receptors
+  broad_threshold       = 4L,         # same broad cutoff as the pre-flight
+  query_signature_genes = tumor_markers  # drop tumor-marker receptors (e.g. EPCAM)
+)
+```
+
+`exclude_contamination = TRUE` (the default) also drops receptors
+flagged as cross-cell-type `broad`. The nomination is not driven by
+ambient RNA. Set `receptor_direction = "repressed"` or `"both"` only
+if you have a specific reason to look at the other directions.
+
+> **Known limitation: focal query-marker spillover is not caught by
+> the cross-cell-type flag.** EPCAM is a tumor/epithelial marker. In
+> this dataset it scores as `induced` and `specific` (significant
+> only in fibroblasts). So `receptor_direction = "induced"` does not
+> remove it, and the cross-cell-type `broad` filter does not remove
+> it either. CD44 → EPCAM lands at the top of the list. It is almost
+> certainly EPCAM RNA bleeding from tumor cells into fibroblast
+> segments at the interface, not a real fibroblast receptor. The
+> cross-cell-type flag cannot catch it because the spillover is
+> focal (one cell type only). That is what `query_signature_genes`
+> is for. Passing the tumor markers (including EPCAM) drops them as
+> receptors. CD44 → EPCAM disappears and collagen → DDR1 becomes the
+> top pair. Automated flags are starting points. The query
+> signature is yours to define.
+
+The bundled `combined_prioritization.csv` is the output of the
+cleaned `run_ripple_lr()`. Induced receptors only, with cross-cell-
+type broad receptors and the tumor/epithelial query signature already
+excluded. Every pair has a negative (induced) receptor gradient
+score. The top pair is COL1A1 → DDR1 instead of the CD44 → EPCAM
+spillover artefact:
 
 ```{r fig4-E-load}
 lr_path <- system.file(
@@ -472,7 +585,8 @@ lr_path <- system.file(
   package = "ripple"
 )
 lr_fib <- fread(lr_path)
-cat(nrow(lr_fib), "L-R pairs prioritized for tumor -> fibroblast\n")
+
+cat(nrow(lr_fib), "tumor -> fibroblast L-R pairs (all induced receptors)\n")
 head(lr_fib[order(-combined_score),
             .(ligand, receptor, combined_score, receptor_gradient_coef,
               receptor_fdr, ligand_pct_query)], 5)
@@ -482,16 +596,9 @@ head(lr_fib[order(-combined_score),
 lr_top <- lr_fib[order(-combined_score)][1:15]
 lr_top[, pair := factor(paste0(ligand, " -> ", receptor),
                         levels = rev(paste0(ligand, " -> ", receptor)))]
-lr_top[, direction := fifelse(receptor_gradient_coef < 0,
-                              "Induced near tumor",
-                              "Repressed near tumor")]
 
 ggplot(lr_top, aes(x = combined_score, y = pair)) +
-  geom_point(aes(size = ligand_pct_query, colour = direction)) +
-  scale_colour_manual(values = c(
-    "Induced near tumor"   = "#B2182B",
-    "Repressed near tumor" = "#2166AC"
-  ), name = "Receptor gradient") +
+  geom_point(aes(size = ligand_pct_query), colour = "#B2182B") +
   scale_size_continuous(range = c(2, 7),
                         name = "Tumor cells\nexpressing ligand (%)") +
   labs(
@@ -505,10 +612,15 @@ ggplot(lr_top, aes(x = combined_score, y = pair)) +
         legend.key.size = unit(0.4, "cm"))
 ```
 
-The top pair (CD44 → EPCAM) and several MIF-axis pairs (MIF → CXCR4,
-MIF → CD74) match the gradient hits in Panel B and the EMT pathway
-enrichment in Panel D — three independent angles converging on the same
-biology.
+After CD44 → EPCAM (the spillover artefact flagged above), the top
+induced pairs are ECM-to-receptor axes: collagens and fibronectin
+signalling to **DDR1** and **ITGB8** (COL1A1 → DDR1, FN1 → ITGB8,
+COL1A2 → DDR1). These match the ECM-remodelling hits in Panel B and
+the matrix/EMT pathway enrichment in Panel D. Gradient, pathway, and
+L-R views all converge on the same stromal-remodelling biology. CD44
+→ EPCAM at the top is the cautionary counter-example: a high score
+that is an artefact, not biology. That is why the query-signature
+check matters.
 
 ## Reproducing the full multi-panel figure
 
@@ -523,10 +635,11 @@ source("paper/render_figures.R")
 
 ## Macrophage gradient volcano
 
-Macrophages show a polarised response near tumor (94 significant genes
-in total), with both induced (antigen-presentation, cytoskeletal) and
-repressed (homeostatic) programs. The same volcano view as Panel B,
-applied to macrophages:
+Macrophages show a polarised response near tumor (94 significant
+genes). Induced programs: motility, interferon, plus some tumor-RNA
+spillover. Repressed programs: antigen-presentation and homeostatic
+/ complement. The same volcano view as Panel B, applied to
+macrophages:
 
 ```{r mac-volcano, fig.width = 8, fig.height = 6}
 mac <- results[cell_type == "macrophage"]   # all genes for the scatter
@@ -539,16 +652,17 @@ mac[, direction := fifelse(
 # Same labelling pattern as the fibroblast panel:
 # top hits from `results_clean` (cell-type-specific signal) plus a
 # curated set of biologically interesting macrophage markers (some of
-# which — e.g. MHC II — are multi-cell-type by nature and therefore
-# appear in `broad_genes`; we keep them because the macrophage
-# induction is the biological point of interest).
+# which, e.g. MHC II, are multi-cell-type by nature and therefore
+# appear in `broad_genes`; we keep them because the macrophage gradient
+# is the biological point of interest). Only genes with fisher_fdr <
+# 0.05 in macrophages are actually labelled (the `to_label` gate below).
 top_clean_mac <- results_clean[
   cell_type == "macrophage" & fisher_fdr < 0.05
 ][order(fisher_fdr)][1:10]$gene
 
-curated_mac <- c("HLA-DRA", "HLA-DPA1", "HLA-DRB1", "CD74",
-                 "C1QA", "C1QB", "C1QC", "APOE",
-                 "CXCL8", "IL1B", "CCL3", "MIF")
+curated_mac <- c("HLA-DRA", "HLA-DPA1", "HLA-DRB1", "CD74", "HLA-E",
+                 "C1QA", "SELENOP", "CD68", "MS4A4A",
+                 "S100A6", "MIF", "CXCL10", "TUBB", "SPP1")
 
 label_mac <- unique(c(top_clean_mac, curated_mac))
 mac[, to_label := gene %in% label_mac & fisher_fdr < 0.05]
@@ -575,31 +689,42 @@ ggplot(mac, aes(x = median_coef, y = neg_log10_fdr)) +
   theme(legend.position = "bottom")
 ```
 
+Read directions off the cached coefficients, not off expectations.
+The macrophage axis here runs the opposite way to the textbook TAM
+cartoon. That is itself informative.
+
 **Macrophage induced near tumor (negative gradient score):**
 
-- **HLA class II** (HLA-DRA, HLA-DPA1, HLA-DRB1) and **CD74** —
-  antigen-presentation machinery. Tumor-proximal macrophages upregulate
-  the MHC II axis, consistent with intratumoral antigen sampling.
-- **Cytoskeletal remodelling** (TUBB, VIM, S100A4/A6) — supports
-  motility and morphological adaptation in the tumor niche.
-- **CXCL8 / IL1B / CCL3** — pro-inflammatory chemokines/cytokines
-  characteristic of tumor-associated macrophage (TAM) activation.
+- **S100A6, TUBB** (cytoskeletal / calcium-binding): motility and
+  morphological adaptation in the tumor niche.
+- **CXCL10**: an interferon-induced chemokine, consistent with an
+  inflamed tumor-proximal niche.
+- **MIF** (also broad-class): tumor paracrine signal plus likely
+  ambient RNA, same caveat as in fibroblasts.
+- **KRT19, SPP1** (epithelial / tumor markers): induced and `specific`
+  to macrophages, but very likely tumor-RNA spillover into macrophage
+  segments at the interface, NOT macrophage biology. This is the same
+  query-marker spillover pattern as EPCAM in fibroblasts; a
+  query-signature check would flag it.
 
 **Macrophage repressed near tumor (positive gradient score):**
 
-- **C1QA / C1QB / C1QC** and **APOE** — complement and lipid-handling
-  programs of homeostatic / tissue-resident macrophages, downregulated
-  as cells acquire a TAM phenotype.
+- **HLA class II** (HLA-DRA, HLA-DPA1, HLA-DRB1, HLA-E) and **CD74**:
+  antigen-presentation machinery is *down* near tumor, consistent with
+  reduced MHC II on tumor-proximal macrophages rather than the
+  intratumoral upregulation one might assume.
+- **SELENOP, C1QA, CD68, MS4A4A**: complement and homeostatic /
+  tissue-resident macrophage programs, also lower near tumor.
 
-This induced/repressed split — antigen-presentation/inflammatory **up**,
-homeostatic/complement **down** — recovers the canonical macrophage
-polarisation axis directly from spatial transcriptomics, anchored to
-distance from the tumor.
+Both the antigen-presentation axis and the homeostatic / complement
+axis are repressed near tumor. Motility, interferon, and tumor
+spillover signals come up. The polarisation read-out is data-driven
+here. It is not a re-statement of a prior expectation.
 
 # Specificity breakdown plot and QC dashboard
 
-The specificity check itself was already run upfront (see
-[Pre-flight: specificity check]); the `spec` object and `broad_genes`
+The specificity check was already run upfront (see
+[Pre-flight: specificity check]). The `spec` object and `broad_genes`
 vector are still in scope. `plot_specificity_breakdown()` summarises
 the four classes as a one-glance bar:
 
@@ -608,18 +733,17 @@ plot_specificity_breakdown(results, broad_threshold = 4)
 ```
 
 Genes like **HLA-E**, **KRT19**, **MIF**, and **RPL22** are flagged
-because they are significant across 8–9 cell types — a hallmark of
-ambient RNA. The MIF case (significant in 9 cell types, kept on the
-fibroblast and macrophage volcanos for discussion) is the canonical
-example of why filtering must be deliberate: MIF is plausibly both
-genuinely induced by tumor paracrine signalling **and** inflated by
-ambient RNA from high-expressing tumor cells.
+because they are significant across 8 to 9 cell types. That is a
+hallmark of ambient RNA. MIF (significant in 9 cell types) is the
+canonical example of why filtering must be deliberate. MIF is
+plausibly both genuinely induced by tumor paracrine signalling **and**
+inflated by ambient RNA from high-expressing tumor cells.
 
 ## QC dashboard
 
 The CosMx run was launched without a per-cell distance dump (older
-version), so `ripple_plot_qc()` here will skip panels 1+2 and warn —
-that's expected. On any fresh `run_ripple()` call all seven panels are
+version). `ripple_plot_qc()` here will skip panels 1+2 and warn. That
+is expected. On any fresh `run_ripple()` call all seven panels are
 populated automatically.
 
 ```{r qc, eval = FALSE}
@@ -630,9 +754,9 @@ qc <- ripple_plot_qc(
 )
 ```
 
-The bleed-through panel (panel 7) takes a query-marker vector; any
+The bleed-through panel (panel 7) takes a query-marker vector. Any
 marker that shows up significant in many target cell types is
-highlighted in red — the smoking gun for ambient RNA.
+highlighted in red. That is the smoking gun for ambient RNA.
 
 # Interpretation summary
 
@@ -640,30 +764,36 @@ This CosMx NSCLC analysis demonstrates RIPPLE's ability to detect
 biologically interpretable spatial gradients in a multi-patient dataset:
 
 1. **Fibroblasts** show the strongest tumor-proximity remodelling
-   (129 genes), including CAF activation markers (IGFBP5, THBS1) and
-   ECM genes. Top hits flagged in the broad-expression class (MIF,
-   KRT19) should be validated independently.
-2. **Macrophages** show a polarised response (94 genes), with
-   tumor-proximity induction of antigen presentation (HLA-DRA,
-   HLA-DPA1) and cytoskeletal remodelling (TUBB, S100A6).
-3. **T cell subsets** (CD4 memory: 55 genes, CD8 memory: 27 genes,
-   Tregs: 23 genes) each show distinct gradient signatures, suggesting
-   spatial organisation of the adaptive immune response around tumor
-   nests.
-4. **Hallmark pathway enrichment** (EMT, hypoxia, TNFα–NFκB) recovers
-   well-established tumor-niche biology and ties together
-   stromal/immune programs.
-5. **L-R prioritization** identifies CD44 → EPCAM and the MIF axis
-   (MIF → CXCR4, MIF → CD74) as the top tumor → fibroblast signalling
-   candidates — independently corroborated by the gradient and pathway
-   panels.
-6. **Contamination flagging** correctly identifies ambient RNA artefacts
-   (immunoglobulin genes in non-immune cells, ubiquitous ribosomal
-   genes) — critical for avoiding false biological conclusions.
+   (129 genes). IGFBP5 is induced near tumor (a CAF-activation
+   marker). CXCL12, THBS1, and MMP2 are repressed. Top hits flagged
+   in the broad-expression class (MIF, KRT19) should be validated
+   independently.
+2. **Macrophages** show a polarised response (94 genes). Near tumor:
+   motility / calcium-binding (S100A6, TUBB) and interferon (CXCL10)
+   genes are induced. Antigen-presentation (HLA-DRA, HLA-DPA1, CD74)
+   and homeostatic / complement (SELENOP, C1QA) programs are
+   repressed. KRT19 and SPP1 also score as induced. They are likely
+   tumor-RNA spillover, not macrophage biology.
+3. **T cell subsets** each show distinct gradient signatures (CD4
+   memory: 55 genes, CD8 memory: 27, Tregs: 23). The adaptive immune
+   response is spatially organised around tumor nests.
+4. **Hallmark pathway enrichment** (EMT, proliferation, immune
+   effector programs) recovers known tumor-niche biology. It ties
+   stromal and immune programs together.
+5. **L-R prioritization** (induced receptors only) nominates
+   ECM-to-receptor axes (COL1A1 → DDR1, FN1 → ITGB8) as the top
+   tumor → fibroblast candidates. The gradient and pathway panels
+   corroborate them. The highest-scoring pair, CD44 → EPCAM, is an
+   EPCAM spillover artefact. A high score is a hypothesis to check,
+   not a conclusion.
+6. **Contamination flagging** proposes candidates through three
+   complementary heuristics: cross-cell-type broad, ambient-family
+   blocklist, query-marker spillover. They are starting points for
+   the user to curate with domain knowledge. Not a definitive call.
 
-All 516 significant genes are reproduced across 5 independent patients
-with unanimous sign consistency (the strict gate), providing strong
-evidence for genuine tumor-microenvironment spatial interactions.
+All 516 significant genes are reproduced across 5 patients with
+unanimous sign consistency (the strict gate). Strong evidence for
+genuine tumor-microenvironment spatial interactions.
 
 ## Session info
 

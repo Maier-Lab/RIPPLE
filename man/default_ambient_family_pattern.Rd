@@ -12,13 +12,13 @@ Default \code{"both"} (case-insensitive match for the same family
 roots).}
 }
 \value{
-A character scalar — a Perl-compatible regular expression
+A character scalar -- a Perl-compatible regular expression
 anchored at the start of the symbol.
 }
 \description{
 Return the regex used to flag broadly-expressed ambient-RNA gene families:
-immunoglobulin chains (IG\link{HKL}, J-chain), ribosomal proteins
-(RP\link{LS}, MRP\link{LS}), and mitochondrial transcripts (MT-/mt-). These
+immunoglobulin chains (IGH / IGK / IGL, J-chain), ribosomal proteins
+(RPL, RPS, MRPL, MRPS), and mitochondrial transcripts (MT-/mt-). These
 families are universal ambient-RNA culprits in spatial transcriptomics
 and are not cell-type-specific signal, so they should be flagged as
 contamination even when the cross-cell-type heuristic

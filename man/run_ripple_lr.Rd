@@ -17,6 +17,10 @@ run_ripple_lr(
   fdr_threshold = 0.05,
   coef_col = "median_coef",
   fdr_col = "fisher_fdr",
+  receptor_direction = c("induced", "repressed", "both"),
+  exclude_contamination = TRUE,
+  broad_threshold = 4L,
+  query_signature_genes = NULL,
   output_dir = NULL,
   verbose = TRUE
 )
@@ -57,6 +61,35 @@ Default: "median_coef".}
 
 \item{fdr_col}{Character. Column name for FDR values.
 Default: "fisher_fdr".}
+
+\item{receptor_direction}{Character. Which receptor gradient direction to
+nominate L-R pairs for: \code{"induced"} (default; receptors induced near
+the query, i.e. negative gradient score), \code{"repressed"}, or
+\code{"both"}. Ligand-receptor signalling from the query to the receiver
+is only coherent when the receptor is present where the query ligand is
+most available, i.e. induced near the query; receptors repressed near the
+query are expressed least where the signal is strongest and are excluded
+by default.}
+
+\item{exclude_contamination}{Logical. If \code{TRUE} (default), receptors
+flagged by the cross-cell-type contamination heuristic
+(\code{\link{classify_gene_specificity}}, \code{specificity_class ==
+  "broad"}) are excluded from L-R nomination. These are genes significant in
+many target cell types in the same direction, a signature of ambient RNA /
+query spillover (e.g. a tumor marker bleeding into stromal cells) rather
+than a receiver-specific receptor.}
+
+\item{broad_threshold}{Integer. Number of target cell types at which a gene
+is called "broad" by the contamination heuristic. Default 4. Passed to
+\code{\link{classify_gene_specificity}}.}
+
+\item{query_signature_genes}{Optional character vector of query-cell marker
+genes. Receptors in this list are excluded from L-R nomination: a receptor
+that is itself a query (sender) marker is almost always spillover from the
+query cells (e.g. a tumor marker appearing in stromal cells at the tumor
+interface), not a genuine receiver receptor. This focal spillover is often
+"specific" rather than "broad", so \code{exclude_contamination} does not
+catch it; supply these markers from domain knowledge. Default \code{NULL}.}
 
 \item{output_dir}{Character or NULL. Output directory. If NULL, defaults to
 \code{<parent of results_dir>/gradient_lr_integration}.}

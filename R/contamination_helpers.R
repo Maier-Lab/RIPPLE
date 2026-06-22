@@ -1,8 +1,8 @@
 #' Family-level ambient-RNA gene patterns
 #'
 #' Return the regex used to flag broadly-expressed ambient-RNA gene families:
-#' immunoglobulin chains (IG[HKL], J-chain), ribosomal proteins
-#' (RP[LS], MRP[LS]), and mitochondrial transcripts (MT-/mt-). These
+#' immunoglobulin chains (IGH / IGK / IGL, J-chain), ribosomal proteins
+#' (RPL, RPS, MRPL, MRPS), and mitochondrial transcripts (MT-/mt-). These
 #' families are universal ambient-RNA culprits in spatial transcriptomics
 #' and are not cell-type-specific signal, so they should be flagged as
 #' contamination even when the cross-cell-type heuristic
@@ -17,7 +17,7 @@
 #' @param species One of \code{"human"}, \code{"mouse"}, or \code{"both"}.
 #'   Default \code{"both"} (case-insensitive match for the same family
 #'   roots).
-#' @return A character scalar — a Perl-compatible regular expression
+#' @return A character scalar -- a Perl-compatible regular expression
 #'   anchored at the start of the symbol.
 #' @seealso \code{\link{find_ambient_family_genes}} to apply the pattern
 #'   directly to a vector of gene symbols.
@@ -49,7 +49,7 @@ default_ambient_family_pattern <- function(species = c("both", "human", "mouse")
 #'   \code{"auto"}. \code{"auto"} (default) infers species from the
 #'   majority case convention of the input (treats >70\% all-uppercase
 #'   symbols as human, otherwise mouse / both).
-#' @return Character vector — the subset of \code{genes} that match.
+#' @return Character vector -- the subset of \code{genes} that match.
 #' @export
 #' @examples
 #' find_ambient_family_genes(c("IGHA1", "EPCAM", "RPL10", "TP53"))

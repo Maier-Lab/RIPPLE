@@ -104,7 +104,7 @@ Specialised wrapper around \code{\link{plot_gradient_curve}} for the
 canonical RIPPLE / HyMy plot: the \strong{proportion of cells expressing a
 gene} (counts > 0) as a function of distance from query cells. This is
 the y-axis used in the original HyMy distance-correlation analysis and
-is the most direct visual readout of a spatial gradient — it does not
+is the most direct visual readout of a spatial gradient -- it does not
 depend on cell-size normalisation, and the binomial scale (0 to 1)
 makes the effect size easy to read.
 }
@@ -113,8 +113,8 @@ Use \code{\link{plot_gradient_curve}} when you want to plot something
 other than proportion expressing (e.g. mean expression rate per UMI,
 library-size-normalised mean, or a custom statistic).
 
-All other behaviour — pooled vs per-sample mode, the bold mean overlay
-with a 95\\% CI ribbon, the subtitle with gradient score and FDR — is
+All other behaviour -- pooled vs per-sample mode, the bold mean overlay
+with a 95\\% CI ribbon, the subtitle with gradient score and FDR -- is
 identical to \code{\link{plot_gradient_curve}}.
 
 \strong{CI interpretation differs between modes.} See the

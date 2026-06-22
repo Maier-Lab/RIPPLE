@@ -10,3 +10,10 @@
 ^docs$
 ^\.gitignore$
 ^paper$
+^RIPPLE_QA$
+^LOGO_full.*
+^.* .*\.svg$
+^ripple logo\.svg$
+^figure$
+^cell_type_assignment$
+^qc_dashboard_demo\.pdf$

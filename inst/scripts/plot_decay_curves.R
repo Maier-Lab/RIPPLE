@@ -10,6 +10,12 @@
 # These plots show how the probability of expression changes as a function
 # of distance from the nearest query cell.
 #
+# FROZEN LEGACY: env-var-driven standalone original that predates the package.
+# It hand-rolls distance (RANN::nn2) and binning instead of
+# calculate_distance_to_type() / bin_decay_data(), and uses the old
+# CONTAMINATION_THRESHOLD "contamination" relabel. Use the package functions
+# (e.g. plot_gradient_curve, plot_decay_curve) for new work. Kept for reference.
+#
 # Usage:
 #   Rscript plot_decay_curves.R
 #   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col Rscript plot_decay_curves.R

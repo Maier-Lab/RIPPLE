@@ -14,7 +14,7 @@ A \code{ggplot} object.
 }
 \description{
 Deprecated alias for \code{\link{plot_gradient_curve}}. Renamed because
-"decay" is misleading — many gradient curves are not monotonically
+"decay" is misleading -- many gradient curves are not monotonically
 decaying (positive coefficients show the inverse pattern, and biphasic
 curves are common). Calls through to \code{plot_gradient_curve()} with
 the same arguments.

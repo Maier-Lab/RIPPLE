@@ -210,6 +210,31 @@ NULL
 #'   Default: "median_coef".
 #' @param fdr_col Character. Column name for FDR values.
 #'   Default: "fisher_fdr".
+#' @param receptor_direction Character. Which receptor gradient direction to
+#'   nominate L-R pairs for: \code{"induced"} (default; receptors induced near
+#'   the query, i.e. negative gradient score), \code{"repressed"}, or
+#'   \code{"both"}. Ligand-receptor signalling from the query to the receiver
+#'   is only coherent when the receptor is present where the query ligand is
+#'   most available, i.e. induced near the query; receptors repressed near the
+#'   query are expressed least where the signal is strongest and are excluded
+#'   by default.
+#' @param exclude_contamination Logical. If \code{TRUE} (default), receptors
+#'   flagged by the cross-cell-type contamination heuristic
+#'   (\code{\link{classify_gene_specificity}}, \code{specificity_class ==
+#'   "broad"}) are excluded from L-R nomination. These are genes significant in
+#'   many target cell types in the same direction, a signature of ambient RNA /
+#'   query spillover (e.g. a tumor marker bleeding into stromal cells) rather
+#'   than a receiver-specific receptor.
+#' @param broad_threshold Integer. Number of target cell types at which a gene
+#'   is called "broad" by the contamination heuristic. Default 4. Passed to
+#'   \code{\link{classify_gene_specificity}}.
+#' @param query_signature_genes Optional character vector of query-cell marker
+#'   genes. Receptors in this list are excluded from L-R nomination: a receptor
+#'   that is itself a query (sender) marker is almost always spillover from the
+#'   query cells (e.g. a tumor marker appearing in stromal cells at the tumor
+#'   interface), not a genuine receiver receptor. This focal spillover is often
+#'   "specific" rather than "broad", so \code{exclude_contamination} does not
+#'   catch it; supply these markers from domain knowledge. Default \code{NULL}.
 #' @param output_dir Character or NULL. Output directory. If NULL, defaults to
 #'   \code{<parent of results_dir>/gradient_lr_integration}.
 #' @param verbose Logical. Print progress messages. Default: TRUE.
@@ -274,8 +299,13 @@ run_ripple_lr <- function(results_dir,
                           fdr_threshold = 0.05,
                           coef_col = "median_coef",
                           fdr_col = "fisher_fdr",
+                          receptor_direction = c("induced", "repressed", "both"),
+                          exclude_contamination = TRUE,
+                          broad_threshold = 4L,
+                          query_signature_genes = NULL,
                           output_dir = NULL,
                           verbose = TRUE) {
+  receptor_direction <- match.arg(receptor_direction)
   .msg <- function(...) if (isTRUE(verbose)) message(...)
   .ensure_dir <- function(path) {
     if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
@@ -321,6 +351,35 @@ run_ripple_lr <- function(results_dir,
       fdr_col <- "fdr"
     } else {
       stop("FDR column '", fdr_col, "' not found.", call. = FALSE)
+    }
+  }
+
+  # --- Cross-cell-type contamination flag (reused for receptor filtering) ---
+  # Genes significant in many target cell types in the same direction are
+  # likely ambient RNA / query spillover (e.g. a tumor marker bleeding into
+  # stromal cells), not receiver-specific receptors. Compute the flag once on
+  # the full gene x cell-type table and exclude such genes as receptors.
+  contamination_genes <- character(0)
+  if (isTRUE(exclude_contamination)) {
+    spec <- tryCatch(
+      classify_gene_specificity(
+        all_gradient,
+        fdr_col         = fdr_col,
+        fdr_threshold   = fdr_threshold,
+        broad_threshold = broad_threshold
+      ),
+      error = function(e) {
+        .msg("  Contamination flag could not be computed (", conditionMessage(e),
+             "); proceeding without it.")
+        NULL
+      }
+    )
+    if (!is.null(spec) && "specificity_class" %in% names(spec)) {
+      contamination_genes <- spec[specificity_class == "broad"]$gene
+      .msg(sprintf(
+        "  Contamination flag: %d gene(s) broad in >= %d cell types, excluded as receptors",
+        length(contamination_genes), broad_threshold
+      ))
     }
   }
 
@@ -475,6 +534,49 @@ run_ripple_lr <- function(results_dir,
     .msg("  Part 1: Direct L-R mapping...")
 
     sig_receptors <- sig_genes[gene_safe %in% available_receptors]
+    # Restrict receptors by gradient direction. Query -> receiver signalling is
+    # only coherent when the receptor is induced near the query (negative
+    # gradient score): the receptor is present where the query ligand is most
+    # available. Receptors repressed near the query (positive score) are
+    # expressed least where the signal is strongest, so they are excluded by
+    # default (receptor_direction = "induced").
+    if (receptor_direction == "induced") {
+      sig_receptors <- sig_receptors[get(coef_col) < 0]
+    } else if (receptor_direction == "repressed") {
+      sig_receptors <- sig_receptors[get(coef_col) > 0]
+    }
+    .msg(sprintf(
+      "  Receptors after %s-direction filter: %d",
+      receptor_direction, nrow(sig_receptors)
+    ))
+    if (length(contamination_genes) > 0 && nrow(sig_receptors) > 0) {
+      n_before <- nrow(sig_receptors)
+      sig_receptors <- sig_receptors[!gene %in% contamination_genes]
+      if (n_before - nrow(sig_receptors) > 0) {
+        .msg(sprintf(
+          "  Excluded %d contamination-flagged receptor(s); %d remain",
+          n_before - nrow(sig_receptors), nrow(sig_receptors)
+        ))
+      }
+    }
+    # User-defined query-signature exclusion. A receptor that is itself a query
+    # (sender) marker is almost always spillover from the query cells, not a
+    # real receiver receptor (e.g. EPCAM, a tumor marker, appearing in
+    # fibroblasts at the tumor interface). This focal spillover is often
+    # "specific" rather than "broad", so the contamination heuristic above does
+    # not catch it; the user supplies these markers from domain knowledge.
+    if (!is.null(query_signature_genes) && length(query_signature_genes) > 0 &&
+        nrow(sig_receptors) > 0) {
+      qsig <- unique(c(query_signature_genes, make.names(query_signature_genes)))
+      n_before <- nrow(sig_receptors)
+      sig_receptors <- sig_receptors[!(gene %in% qsig | gene_safe %in% qsig)]
+      if (n_before - nrow(sig_receptors) > 0) {
+        .msg(sprintf(
+          "  Excluded %d query-signature receptor(s); %d remain",
+          n_before - nrow(sig_receptors), nrow(sig_receptors)
+        ))
+      }
+    }
     direct_a_results <- data.table::data.table()
 
     if (nrow(sig_receptors) > 0) {

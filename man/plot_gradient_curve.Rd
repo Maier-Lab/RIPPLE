@@ -78,7 +78,7 @@ ribbon in pooled mode. Ignored in per-sample mode (SE is computed
 across samples). Default \code{"se_prop"} (matches
 \code{bin_decay_data()}).}
 
-\item{y_lab}{Character or NULL. Y-axis label. Default \code{NULL} →
+\item{y_lab}{Character or NULL. Y-axis label. Default \code{NULL} ->
 "P(expressing)" in pooled mode, "Mean expression rate" in per-sample
 mode.}
 
@@ -122,7 +122,7 @@ empty.
 \description{
 Plots a per-cell expression statistic as a function of distance from
 query cells. The shape can be monotonic decay, monotonic increase,
-biphasic, or noisy — hence "gradient curve" rather than "decay curve".
+biphasic, or noisy -- hence "gradient curve" rather than "decay curve".
 Two modes:
 \itemize{
 \item \strong{Per-sample mode} (recommended): each biological

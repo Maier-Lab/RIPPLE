@@ -12,6 +12,12 @@
 # SPECIFIC genes (significant in <=2 cell types) as the biologically
 # interesting hits.
 #
+# FROZEN LEGACY: env-var-driven standalone original that predates the package.
+# Its hardcoded CONTAMINATION_THRESHOLD and "contamination" relabelling are NOT
+# package behaviour: RIPPLE deliberately softened this to the neutral "broad"
+# flag-for-inspection (classify_gene_specificity). Do not port the
+# "contamination" relabel forward. Kept for reference only.
+#
 # Prerequisites:
 #   Rscript merge_permutation_pvals.R
 #   Rscript merge_distance_correlation_results.R

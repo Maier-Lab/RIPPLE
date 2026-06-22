@@ -6,6 +6,14 @@
 #' Merges per-celltype results from gradient_lr_integration.R into summary
 #' tables and publication figures.
 #'
+#' FROZEN LEGACY: this is the env-var-driven standalone original that predates
+#' the R package. Its hardcoded CONTAMINATION_CANDIDATES / lineage-marker
+#' blocklists, cell-type whitelist, and clean/suspect/artifact relabelling were
+#' hand-tuned to one mouse dataset and are NOT RIPPLE behaviour. Do not use this
+#' as the template for run_ripple_lr() / classify_lr_artifacts(); the package
+#' uses the neutral cross-cell-type "broad" heuristic instead. Kept for
+#' reference only.
+#'
 #' Run AFTER all array jobs from gradient_lr_integration.R are complete.
 #'
 #' Usage:

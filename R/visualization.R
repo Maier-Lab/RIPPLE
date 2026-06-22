@@ -371,7 +371,7 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
   }
 
   if (!is.null(label_genes)) {
-    # Curated label set — use exactly the genes the user asked for, ignoring
+    # Curated label set -- use exactly the genes the user asked for, ignoring
     # the top-N FDR ranking and any specificity-class exclusion (they have
     # explicitly chosen these genes).
     requested <- unique(as.character(label_genes))
@@ -463,7 +463,7 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #'
 #' Plots a per-cell expression statistic as a function of distance from
 #' query cells. The shape can be monotonic decay, monotonic increase,
-#' biphasic, or noisy — hence "gradient curve" rather than "decay curve".
+#' biphasic, or noisy -- hence "gradient curve" rather than "decay curve".
 #' Two modes:
 #' \itemize{
 #'   \item \strong{Per-sample mode} (recommended): each biological
@@ -543,7 +543,7 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
 #'   \code{min_cells_per_bin} filter. Default \code{2L}: at least two
 #'   samples must contribute to a bin for it to appear in the mean curve.
 #'   Set to \code{0L} to disable.
-#' @param y_lab Character or NULL. Y-axis label. Default \code{NULL} →
+#' @param y_lab Character or NULL. Y-axis label. Default \code{NULL} ->
 #'   "P(expressing)" in pooled mode, "Mean expression rate" in per-sample
 #'   mode.
 #' @param query_label Character. Display label for the query cell type
@@ -778,7 +778,7 @@ plot_gradient_curve <- function(bin_stats, gene_name, cell_type,
       ), by = c(x_col)]
     }
 
-    # Drop bins backed by too few samples — the across-sample SD is
+    # Drop bins backed by too few samples -- the across-sample SD is
     # undefined or degenerate with a single observation, and a single
     # mouse driving the tail of the curve looks more confident than the
     # data warrants.
@@ -874,7 +874,7 @@ plot_gradient_curve <- function(bin_stats, gene_name, cell_type,
 #' Decay curve plot (deprecated)
 #'
 #' Deprecated alias for \code{\link{plot_gradient_curve}}. Renamed because
-#' "decay" is misleading — many gradient curves are not monotonically
+#' "decay" is misleading -- many gradient curves are not monotonically
 #' decaying (positive coefficients show the inverse pattern, and biphasic
 #' curves are common). Calls through to \code{plot_gradient_curve()} with
 #' the same arguments.
@@ -897,7 +897,7 @@ plot_decay_curve <- function(...) {
 #' canonical RIPPLE / HyMy plot: the **proportion of cells expressing a
 #' gene** (counts > 0) as a function of distance from query cells. This is
 #' the y-axis used in the original HyMy distance-correlation analysis and
-#' is the most direct visual readout of a spatial gradient — it does not
+#' is the most direct visual readout of a spatial gradient -- it does not
 #' depend on cell-size normalisation, and the binomial scale (0 to 1)
 #' makes the effect size easy to read.
 #'
@@ -905,8 +905,8 @@ plot_decay_curve <- function(...) {
 #' other than proportion expressing (e.g. mean expression rate per UMI,
 #' library-size-normalised mean, or a custom statistic).
 #'
-#' All other behaviour — pooled vs per-sample mode, the bold mean overlay
-#' with a 95\% CI ribbon, the subtitle with gradient score and FDR — is
+#' All other behaviour -- pooled vs per-sample mode, the bold mean overlay
+#' with a 95\% CI ribbon, the subtitle with gradient score and FDR -- is
 #' identical to \code{\link{plot_gradient_curve}}.
 #'
 #' \strong{CI interpretation differs between modes.} See the
@@ -1702,7 +1702,7 @@ create_forest_plot <- function(coefs, ses = NULL, sample_ids = NULL,
   p
 }
 
-# Internal — multi-gene forest panel.
+# Internal -- multi-gene forest panel.
 # Each gene becomes a y-axis row, per-sample coefs dodged and coloured by
 # sample. No combined diamond (the panel is about replicate consistency).
 .forest_multi_gene <- function(coefs, gene, cell_type, output_path,
@@ -2803,7 +2803,7 @@ plot_confounder_scatter <- function(stage4_results,
   class_summary <- dt[, .N, by = classification][order(classification)]
   count_str <- paste(
     apply(class_summary, 1, function(r) sprintf("%s (%s)", r[[1]], r[[2]])),
-    collapse = "  ·  "
+    collapse = "  |  "
   )
   subtitle <- if (!is.null(query_label)) {
     paste0(query_label, ":  ", count_str)
@@ -2952,7 +2952,7 @@ plot_confounder_ratio <- function(stage4_results,
   class_summary <- dt[, .N, by = classification][order(classification)]
   count_str <- paste(
     apply(class_summary, 1, function(r) sprintf("%s (%s)", r[[1]], r[[2]])),
-    collapse = "  ·  "
+    collapse = "  |  "
   )
   subtitle <- if (!is.null(query_label)) {
     paste0(query_label, ":  ", count_str)
@@ -2983,10 +2983,10 @@ plot_confounder_ratio <- function(stage4_results,
     expression("Stage 1 gradient score " * beta)
   }
   y_lab <- if (!is.null(control_label)) {
-    bquote(beta[Stage~2] / beta[Stage~1] ~
-             "(controlled for " * .(control_label) * ")")
+    bquote(beta["confounder-controlled"] / beta[Stage~1] ~
+             "(" * .(control_label) * ")")
   } else {
-    expression(beta[Stage~2] / beta[Stage~1])
+    expression(beta["confounder-controlled"] / beta[Stage~1])
   }
 
   p <- ggplot2::ggplot(

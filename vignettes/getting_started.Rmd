@@ -17,25 +17,26 @@ knitr::opts_chunk$set(
 )
 ```
 
-This vignette runs RIPPLE end-to-end on the bundled synthetic dataset
-`ripple_mock_data` in under a minute. By the end you will have run the
-core analysis, inspected the QC dashboard, and recovered the planted
-gradient signal — the same workflow used on real data, just on a small
-toy example so it's fast to follow.
+This vignette runs RIPPLE end-to-end on `ripple_mock_data`, the bundled
+synthetic dataset. It takes under a minute. By the end you will have
+run the core analysis, inspected the QC dashboard, and recovered the
+planted gradient signal. The same workflow runs on real data. We use a
+small toy example here so the vignette is fast to follow.
 
-For the deeper applied tutorial (real CosMx NSCLC, ~765 K cells, 5
-patients), see `vignette("cosmx_nsclc_walkthrough", package = "ripple")`.
+For a real-data walkthrough (CosMx NSCLC, ~765 K cells, 5 patients), see
+`vignette("cosmx_nsclc_walkthrough", package = "ripple")`.
 
 ## What RIPPLE answers
 
-> *For each gene in a target cell type, does expression change as a
-> function of physical distance to a chosen query cell type —
-> reproducibly across biological replicates?*
+> *For each gene in a target cell type, does expression change with
+> physical distance to a chosen query cell type, reproducibly across
+> biological replicates?*
 
-This is **not** a spatially-variable-gene test, **not** a co-localisation
-test, and **not** a ligand–receptor pairing. It is a directed, cell-type
-anchored, per-gene gradient test with built-in replicate-aware inference.
-For comparisons against MISTy / nnSVG / CellChat / NicheNet, see
+RIPPLE is **not** a spatially-variable-gene test. It is **not** a
+co-localisation test. It is **not** a ligand-receptor pairing. It tests
+one thing: does a gene's expression in a target cell type change with
+distance to a query cell type, in the same direction in every replicate.
+For comparisons against MISTy, nnSVG, CellChat, and NicheNet, see
 `vignette("methods_positioning", package = "ripple")`.
 
 ## Install and load
@@ -54,10 +55,10 @@ library(ggplot2)
 ## The bundled mock dataset
 
 `ripple_mock_data` is a small `SpatialExperiment` with 50 genes × 600
-cells across three samples. It contains three cell types (Tumor,
-T_cell, Fibroblast) and a planted distance-dependent gradient: 5 genes
-named `INDUCED_*` and 5 named `REPRESSED_*` in T cells respond to
-distance from Tumor; the remaining 40 background genes (`BG_*`) do not.
+cells across three samples. Three cell types: Tumor, T_cell, Fibroblast.
+The gradient is planted in T cells only. 5 genes named `INDUCED_*` go
+up near Tumor. 5 named `REPRESSED_*` go down. The other 40 (`BG_*`) are
+flat.
 
 ```{r mock-data}
 data(ripple_mock_data)
@@ -68,6 +69,22 @@ table(
   celltype = ripple_mock_data$cell_type
 )
 ```
+
+### Using your own data
+
+`run_ripple()` accepts a `Seurat`, `SingleCellExperiment`, or
+`SpatialExperiment` object directly, or a path to an `.rds` file
+containing one. If you are starting from raw matrices or CSV files,
+build a canonical object first:
+
+- `make_ripple_input(counts, metadata, coords, ...)` builds a
+  `SpatialExperiment` (or `Seurat`) from in-memory matrices.
+- `read_ripple_csv(dir_path, ...)` reads `counts.csv`, `metadata.csv`,
+  and `coords.csv` from a directory and returns the same.
+
+Spatial coordinates must be global (stitched across fields of view).
+Per-FOV coordinates that reset to zero in each field will produce
+meaningless distances. See `?make_ripple_input` for details.
 
 ## Run RIPPLE
 
@@ -97,9 +114,9 @@ results_dir <- file.path(out_dir, "ripple")
 list.files(results_dir, recursive = TRUE)
 ```
 
-`run_ripple()` returns a `data.table` of results AND writes a structured
-output directory containing per-cell-type CSVs, QC tables, and the
-per-cell distance file used by `ripple_plot_qc()`.
+`run_ripple()` returns a `data.table` of results. It also writes an
+output directory with per-cell-type CSVs, QC tables, and the per-cell
+distance file that `ripple_plot_qc()` reads.
 
 ## Look at the recovered signal
 
@@ -142,11 +159,11 @@ The 10 planted genes split cleanly: `INDUCED_*` on the left (negative
 gradient score), `REPRESSED_*` on the right, background genes pile up
 near the centre well below the FDR line.
 
-## Specificity classification
+## Specificity classification (candidate contamination)
 
-`classify_gene_specificity()` separates real cell-type-restricted signal
-from genes that hit many cell types simultaneously — the latter (the
-"broad" class) are candidate ambient RNA / segmentation artefacts.
+`classify_gene_specificity()` separates cell-type-restricted signal from
+genes that hit many cell types at once. Genes significant in at least
+`broad_threshold` cell types are labelled `specificity_class == "broad"`.
 
 ```{r specificity}
 spec <- classify_gene_specificity(
@@ -155,36 +172,95 @@ spec <- classify_gene_specificity(
 spec
 ```
 
-In this clean synthetic dataset every planted gene shows up as
-`specific` (significant in only one cell type — T_cell). On real data
-you will typically see a mix of `specific`, `moderate`, and `broad`
-classes; the third is what you want to flag.
+In this synthetic dataset every planted gene comes back as `specific`,
+significant in T_cell only. Real data is messier. You will see a mix of
+`specific` (1 cell type), `moderate` (2-3), `ubiquitous` (several but
+below the broad cutoff), and `broad` (at or above the cutoff).
 
-If you want pathway enrichment (`run_ripple_fgsea()`) to ignore
-broad-class genes, pass `exclude_broad = TRUE` — **but** read the
-"Limitations of the broad-class filter" section in `?run_ripple_fgsea`
-first, and ideally run with and without the filter before reporting.
-The [CosMx walkthrough](cosmx_nsclc_walkthrough.html) shows a
-side-by-side comparison.
+### Contamination is something you define, not something RIPPLE decides
+
+You decide what counts as contamination. RIPPLE only proposes
+**candidates**. It does not label any gene as "real" or "artefact" for
+you. There are three candidate sources. None of them is ground truth:
+
+- **Cross-cell-type heuristic.** `classify_gene_specificity()` flags
+  broadly-significant genes (`specificity_class == "broad"`). A gene can
+  be broad because it is genuine shared biology (e.g. a stress or
+  interferon program active in several cell types), not because it is
+  ambient RNA.
+- **Ambient-family helpers.** `find_ambient_family_genes()` and
+  `default_ambient_family_pattern()` return genes from families that
+  commonly leak across segments (immunoglobulin, J-chain, ribosomal,
+  mitochondrial). Membership in a family is a hint, not proof.
+- **Query-marker spillover.** `query_signature_genes` is a list **you**
+  supply of markers of the query cell type. Focal spillover of these
+  markers into neighbours can be a strong contamination signal, yet such
+  a gene may not be flagged as `broad` at all.
+
+Treat each list as a starting point. Curate the actual contamination set
+yourself using domain knowledge, and report what you removed and why.
+
+Define your curated query-signature list once. Pass it to every
+downstream step. The same genes get cleaned out at every stage. Use it
+before pathway enrichment, ligand-receptor nomination, or any follow-up:
+
+```r
+# Your curated query-marker list (define from domain knowledge).
+query_markers <- c("INDUCED_1", "INDUCED_2", "INDUCED_3")
+
+# Pathway enrichment with the query signature removed before ranking.
+run_ripple_fgsea(results, gene_sets = "hallmark",
+                 query_signature_genes = query_markers)
+
+# Ligand-receptor nomination drops receptors that are query markers
+# (query-cell spillover, not real receiver receptors).
+run_ripple_lr(results_dir, input = spe, query_celltype = "Tumor",
+              celltype_column = "cell_type",
+              query_signature_genes = query_markers)
+```
+
+Both `run_ripple_fgsea()` and `run_ripple_lr()` take
+`query_signature_genes` for the same reason. Focal spillover often
+shows up as `specific`, not `broad`. The cross-cell-type flag will not
+catch it.
+
+To make pathway enrichment ignore `broad`-class genes, pass
+`exclude_broad = TRUE` to `run_ripple_fgsea()`. Read the "Limitations
+of the broad-class filter" section in `?run_ripple_fgsea` first. Run
+with and without the filter before reporting. The
+[CosMx walkthrough](cosmx_nsclc_walkthrough.html) shows a side-by-side
+comparison.
 
 > **Note on the broad-class dials.** `classify_gene_specificity()`
-> has two: `broad_threshold` (how many cell types — default `4`,
-> illustrative for a ~10-20 cell-type panel; tune for your data) and
-> `broad_sig_threshold` (how strictly significant each "hit" must be
-> — default `NULL`, which means any `*` hit counts; pass `"**"` or
+> has two. `broad_threshold` sets how many cell types a gene must hit
+> (default `4`, illustrative for a ~10-20 cell-type panel; tune for your
+> data). `broad_sig_threshold` sets how strictly significant each "hit"
+> must be (default `NULL`, which means any `*` hit counts; pass `"**"` or
 > `"***"` to require stricter significance and flag fewer genes).
 > **Pick values appropriate to your dataset and report them in the
 > methods.** See `?classify_gene_specificity` for the full discussion.
 
 ## QC dashboard
 
-`ripple_plot_qc()` builds a multi-panel patchwork from the artefacts
-written by `run_ripple()`. It bundles replicate-quality panels (per-sample
-distance density, cell composition, sign consistency, dispersion) with
-specificity panels (gene counts split by direction and specificity,
-specificity breakdown, top widely-shared genes with optional
-query-marker bleed-through highlighting — the latter being the
-smoking-gun pattern for ambient-RNA contamination).
+`ripple_plot_qc()` builds a multi-panel figure from the files
+`run_ripple()` writes. Two groups of panels.
+
+Replicate quality:
+
+- per-sample distance density
+- cell composition
+- sign consistency
+- dispersion
+
+Specificity:
+
+- gene counts split by direction and specificity class
+- specificity breakdown
+- top widely-shared genes, optionally highlighted if they overlap your
+  query-marker list
+
+Query-marker bleed-through is a classic candidate pattern for
+ambient-RNA contamination.
 
 ```{r qc-dashboard, fig.width = 14, fig.height = 18}
 qc <- ripple_plot_qc(
@@ -211,18 +287,50 @@ What to look for on real data:
   above 2 may need a quasi-Poisson model.
 - **Bleed-through** (bottom): if a gene you passed in
   `query_signature_genes` shows up red AND is significant in many cell
-  types, it is almost certainly ambient RNA from the query.
+  types, it is a strong candidate for ambient RNA from the query.
+
+## Per-gene diagnostics
+
+Two more plots help you inspect a single hit:
+
+- `plot_gradient_curve()` draws the fitted expression-vs-distance curve
+  for one gene in one cell type. It needs binned data from
+  `bin_decay_data()`, which needs the raw counts and per-cell distances.
+  Easiest to run while the input object is still in memory.
+- `create_forest_plot()` shows per-sample coefficients and the combined
+  estimate for one gene. Use it to see whether the gradient comes from
+  every replicate or only one.
+
+See the CosMx walkthrough for worked examples of both.
+
+## Optional downstream stages
+
+The core workflow above stands on its own: `run_ripple()`, the volcano,
+the specificity check, the QC dashboard. The stages below are
+**optional**. Run the ones that match your question:
+
+- **Confounder control**, `run_ripple_confounder()`. Use when a second
+  cell type shares the query's niche. Refits with distance to that
+  control cell type added. Tells you whether a gradient is specific to
+  the query or just reflects the shared neighbourhood.
+- **Permutation testing**, `run_permutation_tests()` (or set
+  `n_permutations` in `run_ripple()`). Builds an empirical null for
+  query specificity. A GPU script is available for large datasets.
+- **Pathway enrichment**, `run_ripple_fgsea()`. Summarises gradient
+  genes as enriched pathways instead of a gene list.
+- **Ligand-receptor integration**, `run_ripple_lr()`. Maps gradient
+  genes to known ligand-receptor pairs that could mediate the effect.
 
 ## Next steps
 
-- **Real data, deep dive:** `vignette("cosmx_nsclc_walkthrough", package = "ripple")`
-  walks through a 765 K-cell, 5-patient CosMx NSCLC analysis — including
-  the broad-class specificity check, fGSEA pathway enrichment, ligand–receptor
-  integration, and full reproduction of paper Figure 4.
-- **Statistical validation:** `vignette("benchmarks", package = "ripple")`
-  shows the FDR calibration and power benchmarks that back the method.
-- **Methods comparison:** `vignette("methods_positioning", package = "ripple")`
-  compares RIPPLE against MISTy, nnSVG, CellChat, NicheNet.
+- **Real data, deep dive:** `vignette("cosmx_nsclc_walkthrough", package = "ripple")`.
+  765 K-cell, 5-patient CosMx NSCLC analysis. Covers the broad-class
+  specificity check, fGSEA, ligand-receptor integration, and the full
+  reproduction of paper Figure 4.
+- **Statistical validation:** `vignette("benchmarks", package = "ripple")`.
+  FDR calibration and power benchmarks.
+- **Methods comparison:** `vignette("methods_positioning", package = "ripple")`.
+  RIPPLE vs MISTy, nnSVG, CellChat, NicheNet.
 
 ## Session info
 

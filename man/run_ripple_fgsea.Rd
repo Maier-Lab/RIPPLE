@@ -19,7 +19,8 @@ run_ripple_fgsea(
   exclude_broad = FALSE,
   broad_threshold = 4L,
   broad_sig_threshold = NULL,
-  exclude_specificity_class = NULL
+  exclude_specificity_class = NULL,
+  query_signature_genes = NULL
 )
 }
 \arguments{
@@ -85,6 +86,14 @@ ranked list. Lower-level alternative to \code{exclude_broad}
 when you want to drop other classes (e.g. \code{c("broad",
   "ubiquitous")}). Requires the input to carry a \code{specificity_class}
 column. Default \code{NULL}.}
+
+\item{query_signature_genes}{Optional character vector of query-cell marker
+genes to drop from the ranked list before enrichment. These are
+query (sender) markers that appear in target cells through ambient RNA /
+segmentation spillover (e.g. a tumor marker in stromal cells). Such focal
+spillover is often "specific" (one cell type) rather than "broad", so the
+cross-cell-type heuristic does not catch it; the user supplies it from
+domain knowledge. Default \code{NULL}.}
 }
 \value{
 A \code{data.table} with columns: cell_type, pathway, pathway_clean,

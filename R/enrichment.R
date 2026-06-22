@@ -145,6 +145,13 @@ NULL
 #'   when you want to drop other classes (e.g. \code{c("broad",
 #'   "ubiquitous")}). Requires the input to carry a \code{specificity_class}
 #'   column. Default \code{NULL}.
+#' @param query_signature_genes Optional character vector of query-cell marker
+#'   genes to drop from the ranked list before enrichment. These are
+#'   query (sender) markers that appear in target cells through ambient RNA /
+#'   segmentation spillover (e.g. a tumor marker in stromal cells). Such focal
+#'   spillover is often "specific" (one cell type) rather than "broad", so the
+#'   cross-cell-type heuristic does not catch it; the user supplies it from
+#'   domain knowledge. Default \code{NULL}.
 #'
 #' @return A \code{data.table} with columns: cell_type, pathway, pathway_clean,
 #'   pval, padj, ES, NES, size, leadingEdge. The leadingEdge column contains
@@ -226,7 +233,8 @@ run_ripple_fgsea <- function(results,
                              exclude_broad = FALSE,
                              broad_threshold = 4L,
                              broad_sig_threshold = NULL,
-                             exclude_specificity_class = NULL) {
+                             exclude_specificity_class = NULL,
+                             query_signature_genes = NULL) {
   # --- Validate inputs ---
   if (!requireNamespace("fgsea", quietly = TRUE)) {
     stop("Package 'fgsea' is required for pathway enrichment.\n",
@@ -329,6 +337,24 @@ run_ripple_fgsea <- function(results,
       " row(s) with specificity_class in {",
       paste(exclude_specificity_class, collapse = ", "),
       "}; ", nrow(dt), " rows remain"
+    )
+  }
+
+  # --- Optional query-signature exclusion (user-defined) ---
+  # Drop a user-supplied list of query-cell marker genes before ranking. These
+  # are query (sender) markers that appear in target cells through ambient RNA /
+  # segmentation spillover (e.g. a tumor marker bleeding into stromal cells).
+  # Such focal spillover is often "specific" (one cell type) rather than
+  # "broad", so it is not caught by the cross-cell-type heuristic and must be
+  # supplied by the user from domain knowledge.
+  if (!is.null(query_signature_genes) && length(query_signature_genes) > 0) {
+    qsig <- unique(c(query_signature_genes, make.names(query_signature_genes)))
+    n_before <- nrow(dt)
+    dt <- dt[!(gene %in% qsig | make.names(gene) %in% qsig)]
+    message(
+      "  query_signature_genes: dropped ", n_before - nrow(dt),
+      " row(s) matching ", length(query_signature_genes),
+      " query-marker gene(s); ", nrow(dt), " rows remain"
     )
   }
 

@@ -18,39 +18,39 @@ knitr::opts_chunk$set(
 ## The question RIPPLE answers
 
 Many spatial transcriptomics tools detect spatially variable genes, infer
-cell--cell communication, or identify tissue niches. RIPPLE asks a distinct
+cell-cell communication, or identify tissue niches. RIPPLE asks a different
 question:
 
 > **For each gene in a target cell type, does expression change as a function
-> of physical distance to a chosen query cell type --- reproducibly across
+> of physical distance to a chosen query cell type, reproducibly across
 > biological replicates?**
 
-This is neither a general spatially-variable-gene (SVG) test nor a
-ligand--receptor pairing. It is a **directed, cell-type-anchored, per-gene
-gradient test** with built-in replicate-aware inference.
+This is not an SVG test. It is not a ligand-receptor pairing. It is a
+directional, per-gene test of expression vs distance to one specific
+cell type, with replicate-aware inference built in.
 
 ## Methods landscape
 
 ```{r landscape-table}
 landscape <- data.frame(
   Tool = c(
-    "Hotspot", "nnSVG / SpatialDE2 / SPARK",
+    "nnSVG / SpatialDE / SPARK", "STdiff (spatialGE)",
     "MISTy", "COMMOT / CellChat",
     "NicheNet", "BANKSY / CellCharter",
     "RIPPLE"
   ),
   Question = c(
-    "Spatially autocorrelated gene modules",
     "Spatially variable gene detection",
+    "Differential expression between discrete groups",
     "Per-gene neighbourhood importance (multi-view ML)",
     "Cell-cell communication via L-R optimal transport",
     "Ligand activity prediction from target gene expression",
-    "Spatial niche / domain identification",
+    "Spatial niche / domain clustering",
     "Distance-conditioned gene gradients per replicate"
   ),
   Output = c(
-    "Z-score, gene modules",
-    "p-value (omnibus)",
+    "p-value (omnibus, non-directional)",
+    "Per-group contrast (logFC, p-value)",
     "Variable importance (RF)",
     "Communication score",
     "Ligand activity score",
@@ -59,11 +59,11 @@ landscape <- data.frame(
   ),
   Replicate_aware = c("No", "No", "No", "No", "No", "No", "Yes"),
   Directional = c(
-    "No", "No", "Indirect", "L to R", "L to R", "N/A",
-    "Yes (sign of beta)"
+    "No", "Group contrast", "Indirect", "L to R", "L to R", "N/A",
+    "Yes (sign of gradient score)"
   ),
   Celltype_anchored = c(
-    "No", "No", "Configurable", "Cell-cell pairs",
+    "No", "Group labels", "Configurable", "Cell-cell pairs",
     "Sender-receiver", "N/A", "Yes (query anchor)"
   ),
   stringsAsFactors = FALSE
@@ -78,32 +78,32 @@ knitr::kable(landscape, col.names = c(
 ## What makes RIPPLE distinct
 
 **1. Replicate-aware inference.**
-Most spatial tools operate on a single sample. RIPPLE fits a per-sample
-Poisson GLM and combines across biological replicates using Fisher's combined
-p-value with a sign-consistency gate. This avoids pseudoreplication (treating
-cells as independent observations) and ensures that reported gradients are
-reproducible across patients or mice --- not artefacts of a single tissue
-section.
+Most spatial tools treat each cell as a unit of replication. RIPPLE
+treats each biological sample (patient or mouse) as the unit. It fits a
+per-sample Poisson GLM and combines across replicates with Fisher's
+combined p-value plus a sign-consistency gate. This avoids
+pseudoreplication. Only gradients that hold across replicates pass.
 
 **2. Directional, interpretable output.**
-Each gene receives a signed coefficient — the **gradient score** (`beta`, in
-log-rate change per micrometre). A negative gradient score means gene
-expression *increases* near the query cell type (induced); a positive gradient
-score means it *decreases* (repressed). This is directly interpretable as a
-spatial gradient, unlike importance scores (MISTy) or omnibus p-values (nnSVG).
+Each gene gets a signed **gradient score**, the median of its
+per-sample log-rate coefficients (log-rate change per micrometre). A
+negative score means the gene is *induced* near the query cell type. A
+positive score means it is *repressed*. The score reads directly as a
+spatial gradient. Importance scores (MISTy) and omnibus p-values
+(nnSVG, SPARK) do not.
 
-**3. Cell-type-anchored.**
-The distance metric is always to a specific query cell type (e.g., "distance
-to the nearest tumour cell"). SVG methods detect all spatially structured
-expression, including genes that are spatially variable for reasons unrelated
-to the query (tissue architecture, technical gradients). RIPPLE is specific to
-the biological question.
+**3. Cell-type anchored.**
+Distance is always to a specific query cell type. For example,
+"distance to the nearest tumour cell". SVG methods catch every
+spatially structured pattern, including ones unrelated to the query
+(tissue architecture, technical gradients). RIPPLE answers the
+biological question only.
 
 **4. Cell-size offset.**
-The Poisson GLM includes `offset(log(total_counts))` per cell, converting raw
-counts to rates. This controls for ambient RNA and segmentation artefacts that
-co-vary with cell size --- a critical confound in imaging-based platforms where
-cells near the query may appear larger or more transcript-rich.
+The Poisson GLM uses `offset(log(total_counts))` per cell. This
+converts raw counts to rates. It removes a known confound in imaging
+platforms: cells near the query can look bigger or more
+transcript-rich, and the offset corrects for that.
 
 ## Closest comparator: MISTy
 
@@ -120,40 +120,90 @@ including proximity to a specific cell type. Key differences:
 | **Replicate handling** | Pool or run per-sample independently | Fisher's combined p + sign-consistency gate |
 | **FDR control** | Not formally calibrated | Validated under null simulation |
 
-MISTy and RIPPLE are **complementary**: MISTy excels at discovering which
-neighbourhood features *matter* (exploratory), while RIPPLE provides
-**calibrated, directional, replicate-aware inference** for a specific
-query-target hypothesis (confirmatory).
+MISTy and RIPPLE are complementary. MISTy is exploratory: it discovers
+which neighbourhood features *matter*. RIPPLE is confirmatory: it tests
+a specific query-target hypothesis with directional, replicate-aware
+inference.
+
+## Continuous distance vs. group contrast: STdiff
+
+[STdiff](https://doi.org/10.1186/s13059-024-03379-4) (Ospina et al.,
+2024, part of spatialGE) tests differential expression between discrete
+groups of cells. A group is a tissue domain or a cell cluster /
+phenotype. STdiff fits spatial linear mixed models with an exponential
+covariance to handle within-sample spatial autocorrelation. It then
+contrasts expression between groups. It does not model expression as a
+continuous function of distance.
+
+The form of the spatial variable is the key difference. STdiff asks
+"does gene X differ between group A and group B?". A categorical
+contrast. RIPPLE asks "does gene X change continuously with distance
+to the query cell type?". A continuous gradient. You could approximate
+the RIPPLE question by binning cells near vs far. That loses the
+gradient shape and the decay slope that RIPPLE estimates directly.
 
 ## When to use RIPPLE vs. alternatives
 
-- **"Which genes are spatially variable?"** → nnSVG, SpatialDE2, SPARK, Hotspot
+- **"Which genes are spatially variable?"** → nnSVG, SpatialDE, SPARK
+- **"Which genes differ between two tissue domains or clusters?"** → STdiff
 - **"Which L-R pairs drive communication?"** → CellChat, COMMOT, NicheNet
 - **"What neighbourhood features predict gene X?"** → MISTy
 - **"Which genes in cell type B change with distance to cell type A, reproducibly across patients?"** → **RIPPLE**
 
-RIPPLE's optional Stage 6 (L-R integration) bridges back to ligand--receptor
-tools by matching gradient genes to known L-R pairs, providing mechanistic
-context for the statistical gradients.
+## Optional downstream stages
+
+The core RIPPLE result is the per-gene gradient score with its Fisher-combined
+FDR. Several stages are optional and are run only when the analysis calls for
+them:
+
+- **Confounder control** (`run_ripple_confounder`) adds distance to a control
+  cell type, to separate query-specific gradients from shared-niche effects.
+- **Permutation testing** (`run_permutation_tests`) builds a label-shuffled
+  null to confirm query specificity.
+- **fGSEA** (`run_ripple_fgsea`) summarises gradient genes into pathways.
+- **L-R integration** (`run_ripple_lr`) matches gradient genes to known
+  ligand-receptor pairs, adding mechanistic context to the statistical
+  gradients.
+
+Opt into each stage based on the question and the controls you have.
+None of them is required to obtain gradient scores. The getting-started
+and walkthrough vignettes show when and how to add them.
+
+## A note on contamination
+
+RIPPLE does not decide what counts as contamination. It proposes
+candidates. Three sources:
+
+- `classify_gene_specificity()` flags genes significant near many
+  unrelated cell types (`specificity_class == "broad"`).
+- `find_ambient_family_genes()` flags common ambient families
+  (immunoglobulin, J-chain, ribosomal, mitochondrial).
+- A `query_signature_genes` list (yours) flags query-marker
+  bleed-through.
+
+You curate the final list with domain knowledge. See the
+getting-started and `cosmx_nsclc_walkthrough` vignettes for the
+workflow.
 
 ## See also
 
-- `vignette("getting_started", package = "ripple")` — 5-minute end-to-end
+- `vignette("getting_started", package = "ripple")`: 5-minute end-to-end
   on the bundled synthetic dataset.
-- `vignette("cosmx_nsclc_walkthrough", package = "ripple")` — applied
+- `vignette("cosmx_nsclc_walkthrough", package = "ripple")`: applied
   case study reproducing paper Figure 4 (CosMx NSCLC, 5 patients).
-- `vignette("benchmarks", package = "ripple")` — FDR calibration, power
+- `vignette("benchmarks", package = "ripple")`: FDR calibration, power
   curves, and runtime measurements (paper Figure 2).
 
 ## References
 
-- DeTomaso & Yosef (2021). Hotspot identifies informative gene modules across
-  modalities of single-cell genomics. *Cell Systems*.
 - Weber et al. (2023). nnSVG for the scalable identification of spatially
   variable genes using nearest-neighbor Gaussian processes. *Nature Methods*.
+- Ospina et al. (2024). spatialGE provides modeling and visualization tools
+  for spatial transcriptomics data, including STdiff for spatially informed
+  differential expression. *Genome Biology*.
 - Tanevski et al. (2022). Explainable multiview framework for dissecting
   spatial relationships from highly multiplexed data. *Genome Biology*.
-- Cang et al. (2023). Screening cell--cell communication in spatial
+- Cang et al. (2023). Screening cell-cell communication in spatial
   transcriptomics via collective optimal transport. *Nature Methods*.
 - Browaeys et al. (2020). NicheNet: modeling intercellular communication by
   linking ligands to target genes. *Nature Methods*.

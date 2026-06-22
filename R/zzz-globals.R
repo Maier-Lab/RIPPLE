@@ -4,9 +4,9 @@ utils::globalVariables(c(
   "..activity_cols", "..cols_needed", "..coord_cols", "..out_cols",
   "N", "NES",
   "activity", "artifact_flag", "barcode",
-  "category", "cell_id", "cell_type", "classification",
+  "category", "cell_id", "cell_type", "ci_hi", "ci_lo", "classification",
   "coef", "coef_ratio", "combined_coef", "combined_score", "condition",
-  "decay_pattern", "direct_score", "direction",
+  "count", "decay_pattern", "direct_score", "direction",
   "dist_to_control", "dist_to_query",
   "enrichment_score",
   "fdr", "fdr_fisher", "fisher_fdr", "fisher_pval",
@@ -14,7 +14,7 @@ utils::globalVariables(c(
   "is_broad", "is_combined", "is_query_marker", "is_sig", "is_target",
   "leadingEdge", "ligand", "ligand_pct_query", "lower",
   "mean_abs_nes", "mean_nes", "mean_val", "median_coef", "median_dispersion", "median_per_sample_score", "morans_i",
-  "n_celltypes", "n_celltypes_strict", "n_control", "n_overlap", "n_query_cells", "ncells_sum",
+  "n_celltypes", "n_celltypes_strict", "n_control", "n_genes", "n_overlap", "n_query_cells", "n_samples", "ncells_sum",
   "neg_log10_fdr", "neg_log10_fdr_capped", "neg_log10_padj",
   "nichenet_activity",
   "obj", "odds_ratio",
@@ -27,5 +27,5 @@ utils::globalVariables(c(
   "specificity_class",
   "stage1_coef", "stage1_fdr",
   "stage2_fisher_fdr", "stage2_fisher_pval", "stage2_median_coef",
-  "upper", "x", "y"
+  "total", "type", "upper", "x", "y"
 ))
