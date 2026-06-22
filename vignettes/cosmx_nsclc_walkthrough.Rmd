@@ -162,17 +162,17 @@ cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0
 > 1. The cross-cell-type `broad` class
 >    (`classify_gene_specificity()`).
 > 2. The ambient-family blocklist (`find_ambient_family_genes()` for
->    Ig, J-chain, Rp, Mt genes).
+>    Ig, J-chain, Rp, Mt genes, for example). If some genes are known ambient genes (they show up in a lot of unspecific cell types or bleed through) you can provide them here.
 > 3. A user-supplied query-marker list (`query_signature_genes` on
->    `run_ripple()`).
+>    `run_ripple()`). If your query has very high exprression of certain genes and you want to make sure to remove them from spilling.
 >
 > None of these is a measurement of contamination. A broadly-
 > significant gene can be genuine shared biology. Cytokines, MHC II,
-> and stress programs are legitimately multi-cell-type. A query
+> and stress programs are often multi-cell-type. A query
 > marker that spills into one neighbouring cell type can be classed
 > as `specific` (not `broad`) but still be contamination. See the
-> EPCAM-in-fibroblasts case below. You decide what counts as
-> contamination using domain knowledge. The flags are starting
+> EPCAM-in-fibroblasts case below. You ultimately decide what counts as
+> reasonable using domain knowledge. The flags are starting
 > points for inspection, not the truth.
 
 `classify_gene_specificity()` returns one row per significant gene
@@ -226,7 +226,7 @@ head(spec[specificity_class == "broad"][order(-n_celltypes)], 10)
 # Filtered copy used downstream when picking labels / top-hit lists.
 # Plots that show *all* genes as background (volcanos, fGSEA) still use
 # `results`; only the curated label / top-hit selections come from
-# `results_clean`. This way a flagged gene like MIF is still visible as
+# `results_clean`. This way a flagged gene is still visible as
 # a dot on the volcano, but it does NOT crowd out the cell-type-specific
 # hits in the labelled set.
 results_clean <- results[!gene %in% broad_genes]
@@ -701,7 +701,7 @@ cartoon. That is itself informative.
   inflamed tumor-proximal niche.
 - **MIF** (also broad-class): tumor paracrine signal plus likely
   ambient RNA, same caveat as in fibroblasts.
-- **KRT19, SPP1** (epithelial / tumor markers): induced and `specific`
+- **KRT19** (epithelial / tumor markers): induced and `specific`
   to macrophages, but very likely tumor-RNA spillover into macrophage
   segments at the interface, NOT macrophage biology. This is the same
   query-marker spillover pattern as EPCAM in fibroblasts; a
@@ -711,8 +711,7 @@ cartoon. That is itself informative.
 
 - **HLA class II** (HLA-DRA, HLA-DPA1, HLA-DRB1, HLA-E) and **CD74**:
   antigen-presentation machinery is *down* near tumor, consistent with
-  reduced MHC II on tumor-proximal macrophages rather than the
-  intratumoral upregulation one might assume.
+  reduced MHC II on tumor-proximal macrophages.
 - **SELENOP, C1QA, CD68, MS4A4A**: complement and homeostatic /
   tissue-resident macrophage programs, also lower near tumor.
 
@@ -769,11 +768,10 @@ biologically interpretable spatial gradients in a multi-patient dataset:
    in the broad-expression class (MIF, KRT19) should be validated
    independently.
 2. **Macrophages** show a polarised response (94 genes). Near tumor:
-   motility / calcium-binding (S100A6, TUBB) and interferon (CXCL10)
+   motility / calcium-binding (S100A6, TUBB), interferon (CXCL10), TAM marker (SPP1)
    genes are induced. Antigen-presentation (HLA-DRA, HLA-DPA1, CD74)
    and homeostatic / complement (SELENOP, C1QA) programs are
-   repressed. KRT19 and SPP1 also score as induced. They are likely
-   tumor-RNA spillover, not macrophage biology.
+   repressed. 
 3. **T cell subsets** each show distinct gradient signatures (CD4
    memory: 55 genes, CD8 memory: 27, Tregs: 23). The adaptive immune
    response is spatially organised around tumor nests.
