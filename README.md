@@ -21,19 +21,9 @@ RIPPLE is an R package that detects distance-dependent gene expression gradients
 
 Given a spatial transcriptomics dataset with cell type annotations and biological replicates, RIPPLE fits a per-sample Poisson GLM for each gene in each target cell type, using Euclidean distance to the nearest query cell as the predictor and `log(total_counts)` as an offset. Per-sample coefficients are combined across replicates via Fisher's combined p-value with a sign-consistency gate. The result is a ranked list of genes with signed, interpretable gradient coefficients, calibrated FDR, and per-sample reproducibility.
 
-**Supported platforms:** Xenium, MERFISH, CosMx. Ideal for any imaging-based platform with single-cell resolved coordinates and quasi-binary profile of raw integer counts.
+**Supported platforms:** Xenium, CosMx, etc . Ideal for any imaging-based platform with single-cell resolved coordinates and quasi-binary profile of raw integer counts.
 
 For a standalone SLURM-driven script version, see [HyMy-distance-correlation-analysis](https://github.com/CMangana/HyMy-distance-correlation-analysis).
-
----
-
-## Validation
-
-RIPPLE has been benchmarked on synthetic data. Scripts live in `data-raw/benchmarks/` and rendered results are in `vignettes/benchmarks.Rmd`.
-
-- **FDR calibration.** 150 null simulations (50 genes each, no planted gradient) across N = 3, 5, 10 replicates yielded 1 false positive out of 7,500 tests (empirical false discovery proportion < 0.05%). The framework is conservative by design; the sign-consistency gate is the primary driver.
-- **Power.** 100% recovery of planted gradient genes for |beta| >= 0.005 at all tested sample sizes (N = 3, 5, 10). At the weakest effect (|beta| = 0.002), power scales from 55% (N = 3) to 85% (N = 10).
-- **Sign-consistency tradeoff.** Relaxing `sign_consistency` from 1.0 to 0.75 does not meaningfully increase the false discovery proportion (still < 0.1%) and is a reasonable choice for studies with N >= 6 where one discordant sample is plausible.
 
 ---
 
