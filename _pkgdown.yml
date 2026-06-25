@@ -10,7 +10,7 @@ navbar:
   components:
     github:
       icon: fa-github
-      href: https://github.com/CMangana/RIPPLE
+      href: https://github.com/Maier-Lab/RIPPLE
 
 articles:
 - title: "Getting started"

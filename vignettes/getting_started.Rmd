@@ -40,7 +40,7 @@ distance to a query cell type, in the same direction in every replicate.
 
 ```{r install, eval = FALSE}
 # From a private mirror or local source
-remotes::install_github("CMangana/RIPPLE")
+remotes::install_github("Maier-Lab/RIPPLE")
 ```
 
 ```{r libraries, message = FALSE}

@@ -31,7 +31,7 @@ For a standalone SLURM-driven script version, see [HyMy-distance-correlation-ana
 
 ```r
 # install.packages("devtools")
-devtools::install_github("CMangana/RIPPLE")
+devtools::install_github("Maier-Lab/RIPPLE")
 ```
 
 Installing from GitHub pulls in all required dependencies automatically. Optional functionality requires additional packages:

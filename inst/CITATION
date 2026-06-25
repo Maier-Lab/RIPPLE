@@ -6,11 +6,11 @@ bibentry(
   author   = c(person("Carolina", "Mangana")),
   year     = format(Sys.Date(), "%Y"),
   note     = "R package version 0.1.0",
-  url      = "https://github.com/CMangana/RIPPLE",
+  url      = "https://github.com/Maier-Lab/RIPPLE",
   textVersion = paste0(
     "Mangana C (", format(Sys.Date(), "%Y"), "). ",
     "RIPPLE: Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation. ",
-    "R package version 0.1.0. https://github.com/CMangana/RIPPLE"
+    "R package version 0.1.0. https://github.com/Maier-Lab/RIPPLE"
   )
 )
 
