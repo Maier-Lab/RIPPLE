@@ -10,6 +10,11 @@
   <b>Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation</b>
 </p>
 
+<p align="center">
+  <a href="https://github.com/Maier-Lab/RIPPLE/actions/workflows/R-CMD-check.yaml">
+    <img alt="R-CMD-check status" src="https://github.com/Maier-Lab/RIPPLE/actions/workflows/R-CMD-check.yaml/badge.svg">
+  </a>
+</p>
 
 RIPPLE is an R package that detects distance-dependent gene expression gradients from a chosen query cell type in spatial transcriptomics data.
 
