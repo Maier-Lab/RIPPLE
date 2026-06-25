@@ -215,6 +215,8 @@ A bibentry is shipped in `inst/CITATION` and can be retrieved with `citation("ri
 
 ---
 
+RIPPLE was developed with Claude Opus 4.6/8 on Claude Code by Anthropic.
+
 ## License
 
 MIT. See `LICENSE`.
