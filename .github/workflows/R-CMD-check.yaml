@@ -3,11 +3,12 @@
 # while the package is private and unreleased. Add macOS / Windows /
 # multiple R versions later if the deployment story changes.
 #
-# nichenetr is in Suggests but is heavy to install in CI (catboost,
-# glmnet, many system deps) and not required for the core test suite
-# (LR tests use skip_if_not_installed). We do NOT install it here, and
-# _R_CHECK_FORCE_SUGGESTS_=false tells R CMD check to tolerate the
-# missing suggested package.
+# nichenetr is in Suggests but only ships on GitHub (saeyslab/nichenetr),
+# not CRAN or Bioconductor. pak refuses to resolve it without an explicit
+# source, so we provide one in extra-packages below. _R_CHECK_FORCE_SUGGESTS_
+# stays false so a transient nichenetr install failure does not break the
+# check (the LR tests use skip_if_not_installed("nichenetr") and pass on
+# both install and skip).
 
 name: R-CMD-check
 
@@ -50,6 +51,7 @@ jobs:
             bioc::S4Vectors
             bioc::fgsea
             bioc::msigdbr
+            github::saeyslab/nichenetr
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2
