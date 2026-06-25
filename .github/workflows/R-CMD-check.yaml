@@ -19,6 +19,17 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Limit the auto-injected GITHUB_TOKEN to read-only access to repo
+# contents. Nothing in this workflow needs to push, comment, or modify
+# repo state, so the token is downgraded from the default (write) to
+# the minimum needed. This caps the blast radius of any supply-chain
+# compromise of the dependencies we install in CI (notably the
+# GitHub-sourced nichenetr): even malicious install-time code running
+# in the runner can only read public-token-accessible content; it
+# cannot push to main, open issues, or alter releases.
+permissions:
+  contents: read
+
 jobs:
   R-CMD-check:
     runs-on: ubuntu-latest
