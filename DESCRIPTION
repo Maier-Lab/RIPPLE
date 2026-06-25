@@ -38,6 +38,7 @@ Suggests:
     fgsea (>= 1.18),
     msigdbr (>= 7.4),
     nichenetr (>= 1.1),
+    R.utils,
     testthat (>= 3.0),
     knitr,
     rmarkdown
