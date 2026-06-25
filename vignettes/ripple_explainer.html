@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How RIPPLE Works — Methods Explainer</title>
+  <meta name="description" content="Interactive walkthrough of RIPPLE: detecting spatial gene expression gradients around cell types using Poisson GLMs in spatial transcriptomics data." />
+
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 (CDN) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel standalone for in-browser JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:wght@400;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    body {
+      margin: 0;
+      background: #fff;
+      -webkit-font-smoothing: antialiased;
+    }
+    /* Ensure Tailwind classes that Babel generates work */
+    *, *::before, *::after { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState } = React;
+
+    /* ── CeMM Corporate Palette ── */
+    const C = {
+      blue: "#00aecc",
+      dark: "#0f5568",
+      blue2: "#1b88a7",
+      light: "#bee3ef",
+      purple: "#c73188",
+      red: "#e95e30",
+      black: "#000000",
+      text: "#1a2a32",
+      muted: "#5e7782",
+      bg: "#f6fafb",
+      bgCard: "#edf6f8",
+      border: "#d0e4ea",
+    };
+
+    /* ── Layout helpers ── */
+    function Section({ id, children }) {
+      return (
+        <section id={id} className="mb-16 scroll-mt-8">
+          {children}
+        </section>
+      );
+    }
+
+    function SectionTitle({ num, title, subtitle }) {
+      return (
+        <div className="mb-6">
+          <div className="flex items-baseline gap-3 mb-1">
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: C.blue, fontWeight: 600, letterSpacing: "0.05em" }}>
+              {num}
+            </span>
+            <h2 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 26, fontWeight: 700, color: C.dark, lineHeight: 1.2 }}>
+              {title}
+            </h2>
+          </div>
+          {subtitle && (
+            <p style={{ fontSize: 15, color: C.muted, marginLeft: 36, lineHeight: 1.5 }}>{subtitle}</p>
+          )}
+        </div>
+      );
+    }
+
+    function Formula({ children }) {
+      return (
+        <div className="my-4 py-3 px-5 rounded-lg mx-auto"
+          style={{ background: C.bgCard, border: `1px solid ${C.border}`, fontFamily: "'JetBrains Mono', monospace", fontSize: 14, color: C.dark, textAlign: "center", maxWidth: 480, lineHeight: 1.8 }}>
+          {children}
+        </div>
+      );
+    }
+
+    function Callout({ children, accent }) {
+      const col = accent === "red" ? C.red : C.blue;
+      return (
+        <div className="my-5 py-3.5 px-5 rounded-lg mx-auto"
+          style={{ background: "#fff", borderLeft: `3px solid ${col}`, maxWidth: 540, fontSize: 13, color: C.text, lineHeight: 1.65, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+          {children}
+        </div>
+      );
+    }
+
+    /* ── 01 Tissue + distance diagram ── */
+    function TissueDiagram() {
+      const queryCells = [
+        { x: 180, y: 120 }, { x: 200, y: 160 }, { x: 165, y: 150 },
+      ];
+      const targetCells = [
+        { x: 100, y: 80, dist: "far" }, { x: 80, y: 170, dist: "far" },
+        { x: 140, y: 130, dist: "near" }, { x: 150, y: 105, dist: "near" },
+        { x: 220, y: 100, dist: "near" }, { x: 240, y: 180, dist: "mid" },
+        { x: 300, y: 60, dist: "far" }, { x: 280, y: 140, dist: "mid" },
+        { x: 320, y: 170, dist: "far" }, { x: 60, y: 100, dist: "far" },
+        { x: 120, y: 190, dist: "mid" }, { x: 260, y: 60, dist: "far" },
+        { x: 210, y: 195, dist: "mid" },
+      ];
+      const [hovered, setHovered] = useState(null);
+
+      return (
+        <svg viewBox="0 0 400 240" className="w-full max-w-lg mx-auto">
+          <defs>
+            <radialGradient id="tissue-bg" cx="50%" cy="50%" r="60%">
+              <stop offset="0%" stopColor="#eef5f7" />
+              <stop offset="100%" stopColor="#e2eef1" />
+            </radialGradient>
+          </defs>
+          <rect x="20" y="10" width="360" height="220" rx="12" fill="url(#tissue-bg)" stroke={C.border} strokeWidth="1" />
+          <text x="36" y="32" fontSize="10" fill={C.muted} fontFamily="monospace">tissue section</text>
+          <circle cx="182" cy="143" r="40" fill="none" stroke={C.blue} strokeWidth="0.5" strokeDasharray="3 3" opacity="0.35" />
+          <circle cx="182" cy="143" r="80" fill="none" stroke={C.blue} strokeWidth="0.5" strokeDasharray="3 3" opacity="0.2" />
+
+          {hovered !== null && (
+            <>
+              <line x1={182} y1={143} x2={targetCells[hovered].x} y2={targetCells[hovered].y} stroke={C.red} strokeWidth="1.5" strokeDasharray="4 3" />
+              <text x={(182 + targetCells[hovered].x) / 2 + 6} y={(143 + targetCells[hovered].y) / 2 - 6}
+                fontSize="10" fill={C.red} fontWeight="600" fontFamily="monospace">
+                d = {Math.round(Math.sqrt(Math.pow(targetCells[hovered].x - 182, 2) + Math.pow(targetCells[hovered].y - 143, 2)))}µm
+              </text>
+            </>
+          )}
+
+          {targetCells.map((c, i) => (
+            <circle key={i} cx={c.x} cy={c.y}
+              r={hovered === i ? 9 : 7}
+              fill={c.dist === "near" ? C.blue2 : c.dist === "mid" ? "#6cb8cc" : C.light}
+              stroke={hovered === i ? C.red : "#fff"} strokeWidth={hovered === i ? 2 : 1.5}
+              style={{ cursor: "pointer", transition: "all 0.15s" }}
+              onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)} />
+          ))}
+
+          {queryCells.map((c, i) => (
+            <g key={`q-${i}`}>
+              <circle cx={c.x} cy={c.y} r={8} fill={C.red} stroke="#fff" strokeWidth="1.5" />
+              {i === 0 && <text x={c.x + 12} y={c.y - 4} fontSize="9" fill={C.red} fontWeight="600">query</text>}
+            </g>
+          ))}
+
+          <circle cx="40" cy="218" r="5" fill={C.red} />
+          <text x="50" y="222" fontSize="9" fill="#666" fontFamily="sans-serif">Query cell (e.g. DC)</text>
+          <circle cx="170" cy="218" r="5" fill={C.blue2} />
+          <text x="180" y="222" fontSize="9" fill="#666" fontFamily="sans-serif">Target cell (e.g. CD8 T cell)</text>
+        </svg>
+      );
+    }
+
+    /* ── 02 Poisson walkthrough ── */
+    function PoissonWalkthrough() {
+      const [step, setStep] = useState(0);
+      const cellData = [
+        { dist: 15, counts: 8 }, { dist: 25, counts: 6 }, { dist: 40, counts: 5 },
+        { dist: 55, counts: 4 }, { dist: 70, counts: 3 }, { dist: 90, counts: 2 },
+        { dist: 110, counts: 1 }, { dist: 130, counts: 1 }, { dist: 22, counts: 7 },
+        { dist: 35, counts: 6 }, { dist: 50, counts: 3 }, { dist: 65, counts: 4 },
+        { dist: 85, counts: 2 }, { dist: 100, counts: 2 }, { dist: 120, counts: 1 },
+        { dist: 140, counts: 0 },
+      ];
+      const maxDist = 150, maxCount = 9;
+      const chartW = 340, chartH = 180;
+      const padL = 50, padB = 35, padT = 15, padR = 15;
+      const plotW = chartW - padL - padR, plotH = chartH - padB - padT;
+      const cx = (d) => padL + (d / maxDist) * plotW;
+      const cy = (c) => padT + plotH - (c / maxCount) * plotH;
+      const lineY = (d) => 7.5 * Math.exp(-0.018 * d);
+
+      const steps = [
+        { label: "Raw data", desc: "Each dot is one target cell. X-axis = distance to nearest query cell. Y-axis = transcript counts for gene X." },
+        { label: "Poisson assumption", desc: "Transcript counts are non-negative integers \u2014 classic count data. The Poisson distribution models the probability of observing 0, 1, 2, \u2026 transcripts per cell." },
+        { label: "Fit the GLM", desc: "We fit log(E[counts]) = \u03B2\u2080 + \u03B2\u2081 \u00B7 distance. The line shows expected counts decreasing with distance \u2014 gene X is expressed more near the query cells." },
+      ];
+
+      return (
+        <div>
+          <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full max-w-md mx-auto mb-3">
+            <line x1={padL} y1={padT + plotH} x2={padL + plotW} y2={padT + plotH} stroke={C.border} strokeWidth="1" />
+            <line x1={padL} y1={padT} x2={padL} y2={padT + plotH} stroke={C.border} strokeWidth="1" />
+            {[0, 50, 100, 150].map((v) => (
+              <g key={v}>
+                <line x1={cx(v)} y1={padT + plotH} x2={cx(v)} y2={padT + plotH + 4} stroke={C.border} />
+                <text x={cx(v)} y={padT + plotH + 16} textAnchor="middle" fontSize="9" fill={C.muted} fontFamily="monospace">{v}</text>
+              </g>
+            ))}
+            <text x={padL + plotW / 2} y={chartH - 2} textAnchor="middle" fontSize="9" fill={C.muted}>distance to query (µm)</text>
+            {[0, 3, 6, 9].map((v) => (
+              <g key={v}>
+                <line x1={padL - 4} y1={cy(v)} x2={padL} y2={cy(v)} stroke={C.border} />
+                <text x={padL - 8} y={cy(v) + 3} textAnchor="end" fontSize="9" fill={C.muted} fontFamily="monospace">{v}</text>
+              </g>
+            ))}
+            <text x={12} y={padT + plotH / 2} textAnchor="middle" fontSize="9" fill={C.muted} transform={`rotate(-90 12 ${padT + plotH / 2})`}>counts (gene X)</text>
+
+            {step >= 2 && (
+              <path
+                d={Array.from({ length: 60 }, (_, i) => { const d = (i / 59) * maxDist; return `${i === 0 ? "M" : "L"}${cx(d)},${cy(lineY(d))}`; }).join(" ")}
+                fill="none" stroke={C.red} strokeWidth="2" opacity="0.85" />
+            )}
+
+            {step === 1 && [0,1,2,3,4,5,6,7,8].map((k) => {
+              const count = cellData.filter((c) => c.counts === k).length;
+              const barH = (count / cellData.length) * 60;
+              return <rect key={k} x={padL + plotW + 4} y={cy(k) - 4} width={barH} height={7} fill={C.blue} opacity="0.5" rx="1" />;
+            })}
+
+            {cellData.map((c, i) => (
+              <circle key={i} cx={cx(c.dist)} cy={cy(c.counts)} r={4}
+                fill={step >= 2 ? C.blue2 : C.blue} opacity="0.7" stroke="#fff" strokeWidth="0.8" />
+            ))}
+
+            {step >= 2 && (
+              <g>
+                <text x={cx(95)} y={cy(lineY(95)) - 10} fontSize="10" fill={C.red} fontWeight="700" fontFamily="monospace">{"\u03B2\u2081 < 0"}</text>
+                <text x={cx(95)} y={cy(lineY(95)) + 2} fontSize="8" fill={C.red} fontFamily="monospace">{"\u2191 near query"}</text>
+              </g>
+            )}
+          </svg>
+
+          <div className="flex items-center gap-2 justify-center mb-3">
+            {steps.map((s, i) => (
+              <button key={i} onClick={() => setStep(i)}
+                className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                style={{ background: step === i ? C.dark : "#F1F5F9", color: step === i ? "#fff" : C.muted, fontFamily: "monospace" }}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-center max-w-md mx-auto" style={{ fontSize: 14, color: C.text, lineHeight: 1.6 }}>{steps[step].desc}</p>
+        </div>
+      );
+    }
+
+    /* ── 03 Offset explanation ── */
+    function OffsetDiagram() {
+      const [showOffset, setShowOffset] = useState(false);
+      const cells = [
+        { label: "Cell A", total: 800, gene: 6, y: 40 },
+        { label: "Cell B", total: 200, gene: 3, y: 110 },
+      ];
+      return (
+        <div>
+          <svg viewBox="0 0 400 170" className="w-full max-w-lg mx-auto mb-3">
+            {cells.map((c, i) => {
+              const totalW = (c.total / 800) * 300;
+              const geneW = (c.gene / 8) * 100;
+              const rate = c.gene / c.total;
+              const rateW = (rate / 0.015) * 100;
+              return (
+                <g key={i} transform={`translate(0, ${c.y})`}>
+                  <text x="10" y="14" fontSize="11" fontWeight="600" fill={C.dark}>{c.label}</text>
+                  <rect x="80" y="0" width={totalW} height="18" rx="3" fill={C.light} />
+                  <text x={85 + totalW} y="13" fontSize="9" fill={C.muted} fontFamily="monospace">{c.total} total</text>
+                  {!showOffset ? (
+                    <>
+                      <rect x="80" y="24" width={geneW} height="18" rx="3" fill={C.red} opacity="0.8" />
+                      <text x={85 + geneW} y="37" fontSize="9" fill={C.red} fontWeight="600" fontFamily="monospace">{c.gene} counts</text>
+                    </>
+                  ) : (
+                    <>
+                      <rect x="80" y="24" width={rateW} height="18" rx="3" fill={C.blue} opacity="0.8" />
+                      <text x={85 + rateW} y="37" fontSize="9" fill={C.dark} fontWeight="600" fontFamily="monospace">{(rate * 1000).toFixed(1)} per 1k</text>
+                    </>
+                  )}
+                </g>
+              );
+            })}
+            <g transform="translate(80, 155)">
+              {!showOffset
+                ? <text fontSize="10" fill={C.red} fontFamily="monospace">Cell A looks 2× higher — but it also has 4× more total transcripts</text>
+                : <text fontSize="10" fill={C.dark} fontFamily="monospace">After offset: Cell B actually has a higher rate of gene X</text>
+              }
+            </g>
+          </svg>
+          <div className="flex justify-center">
+            <button onClick={() => setShowOffset(!showOffset)}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+              style={{ background: showOffset ? C.blue : "#F1F5F9", color: showOffset ? "#fff" : C.muted, border: showOffset ? "none" : `1px solid ${C.border}` }}>
+              {showOffset ? "\u2190 Show raw counts" : "Apply offset \u2192"}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    /* ── 04 Per-sample diagram ── */
+    function PerSampleDiagram() {
+      const samples = [
+        { label: "Mouse 1", beta: -0.021, pval: 0.003, color: C.blue },
+        { label: "Mouse 2", beta: -0.018, pval: 0.01, color: C.blue2 },
+        { label: "Mouse 3", beta: -0.025, pval: 0.001, color: C.purple },
+        { label: "Mouse 4", beta: -0.015, pval: 0.04, color: C.red },
+      ];
+      const [showAgg, setShowAgg] = useState(false);
+      const meanBeta = samples.reduce((s, m) => s + m.beta, 0) / samples.length;
+
+      return (
+        <div>
+          <svg viewBox="0 0 420 200" className="w-full max-w-lg mx-auto mb-3">
+            <defs>
+              <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto">
+                <polygon points="0 0, 6 2, 0 4" fill={C.border} />
+              </marker>
+            </defs>
+
+            {samples.map((s, i) => {
+              const ox = 15 + i * 100;
+              return (
+                <g key={i} transform={`translate(${ox}, 10)`}>
+                  <rect x="0" y="0" width="80" height="50" rx="6" fill="#f0f7f9" stroke={s.color} strokeWidth="1.5" />
+                  {Array.from({ length: 12 }, (_, j) => (
+                    <circle key={j}
+                      cx={10 + (j % 4) * 18 + (Math.sin(j * 7 + i * 3) * 5)}
+                      cy={10 + Math.floor(j / 4) * 14 + (Math.cos(j * 5 + i * 2) * 4)}
+                      r={2.5} fill={j < 3 ? C.red : "#a8c4cc"} opacity="0.6" />
+                  ))}
+                  <text x="40" y="66" textAnchor="middle" fontSize="9" fill={C.muted} fontWeight="600">{s.label}</text>
+                </g>
+              );
+            })}
+
+            {samples.map((_, i) => (
+              <line key={`arr-${i}`} x1={55 + i * 100} y1={82} x2={55 + i * 100} y2={100} stroke={C.border} strokeWidth="1" markerEnd="url(#arrowhead)" />
+            ))}
+
+            {samples.map((s, i) => (
+              <g key={`b-${i}`} transform={`translate(${15 + i * 100}, 105)`}>
+                <rect x="0" y="0" width="80" height="36" rx="5" fill="#fff" stroke={s.color} strokeWidth="1" />
+                <text x="40" y="14" textAnchor="middle" fontSize="10" fontFamily="monospace" fill={C.dark} fontWeight="700">{"\u03B2\u2081 = " + s.beta.toFixed(3)}</text>
+                <text x="40" y="28" textAnchor="middle" fontSize="9" fontFamily="monospace" fill={C.muted}>{"p = " + s.pval}</text>
+              </g>
+            ))}
+
+            {showAgg && (
+              <>
+                {samples.map((_, i) => (
+                  <line key={`conv-${i}`} x1={55 + i * 100} y1={145} x2={210} y2={168} stroke={C.blue} strokeWidth="1" opacity="0.4" />
+                ))}
+                <rect x="140" y="163" width="140" height="34" rx="6" fill={C.light} stroke={C.blue} strokeWidth="1.5" />
+                <text x="210" y="178" textAnchor="middle" fontSize="11" fontFamily="monospace" fill={C.dark} fontWeight="700">{"gradient = " + meanBeta.toFixed(3)}</text>
+                <text x="210" y="192" textAnchor="middle" fontSize="9" fontFamily="monospace" fill={C.blue2}>p_combined = 2.1e-04</text>
+              </>
+            )}
+          </svg>
+          <div className="flex justify-center">
+            <button onClick={() => setShowAgg(!showAgg)}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+              style={{ background: showAgg ? C.blue : "#F1F5F9", color: showAgg ? "#fff" : C.muted, border: showAgg ? "none" : `1px solid ${C.border}` }}>
+              {showAgg ? "Hide aggregation" : "Aggregate across samples \u2192"}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    /* ── 05 Gradient output table ── */
+    function GradientOutput() {
+      const genes = [
+        { name: "Cd39", score: -0.024, p: "1.2e-05" },
+        { name: "Tim3", score: -0.019, p: "3.4e-04" },
+        { name: "Gzmb", score: -0.016, p: "8.1e-04" },
+        { name: "Tcf7", score: 0.012, p: "4.7e-03" },
+        { name: "Itgae", score: 0.021, p: "6.3e-04" },
+        { name: "Tox", score: -0.001, p: "7.2e-01" },
+      ];
+      const maxAbs = 0.03, barW = 120;
+
+      return (
+        <div className="overflow-x-auto">
+          <table className="mx-auto" style={{ borderSpacing: "0 4px", borderCollapse: "separate" }}>
+            <thead>
+              <tr>
+                <th style={{ fontSize: 10, color: C.muted, fontFamily: "monospace", textAlign: "left", padding: "0 12px 4px 0", fontWeight: 500 }}>Gene</th>
+                <th style={{ fontSize: 10, color: C.muted, fontFamily: "monospace", textAlign: "center", padding: "0 12px 4px", fontWeight: 500, width: barW * 2 + 40 }}>
+                  {"\u2190 higher near query \u00B7 \u00B7 \u00B7 lower near query \u2192"}
+                </th>
+                <th style={{ fontSize: 10, color: C.muted, fontFamily: "monospace", textAlign: "right", padding: "0 0 4px 12px", fontWeight: 500 }}>p-value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {genes.map((g) => {
+                const w = (Math.abs(g.score) / maxAbs) * barW;
+                const isNeg = g.score < 0;
+                const sig = parseFloat(g.p) < 0.05;
+                return (
+                  <tr key={g.name}>
+                    <td style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 600, color: C.dark, paddingRight: 12 }}><em>{g.name}</em></td>
+                    <td style={{ padding: "3px 0" }}>
+                      <svg width={barW * 2 + 40} height="22" viewBox={`0 0 ${barW * 2 + 40} 22`}>
+                        <line x1={barW + 20} y1="0" x2={barW + 20} y2="22" stroke={C.border} strokeWidth="1" />
+                        <rect x={isNeg ? barW + 20 - w : barW + 20} y="4" width={w} height="14" rx="3"
+                          fill={sig ? (isNeg ? C.red : C.blue) : C.border} opacity={sig ? 0.8 : 0.5} />
+                        <text x={isNeg ? barW + 20 - w - 4 : barW + 20 + w + 4} y="15"
+                          textAnchor={isNeg ? "end" : "start"} fontSize="9" fontFamily="monospace"
+                          fill={sig ? C.dark : C.border}>
+                          {(g.score > 0 ? "+" : "") + g.score.toFixed(3)}
+                        </text>
+                      </svg>
+                    </td>
+                    <td style={{ fontSize: 11, fontFamily: "monospace", color: sig ? C.dark : C.border, textAlign: "right", paddingLeft: 12 }}>{g.p}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    /* ══════════════════════ MAIN APP ══════════════════════ */
+    function App() {
+      const navItems = [
+        { id: "overview", label: "Overview" },
+        { id: "poisson", label: "Poisson GLM" },
+        { id: "offset", label: "Offset" },
+        { id: "replication", label: "Replication" },
+        { id: "output", label: "Output" },
+        { id: "pipeline", label: "Pipeline" },
+      ];
+      const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+
+      return (
+        <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", color: C.text, maxWidth: 680, margin: "0 auto", padding: "24px 20px 60px" }}>
+
+          {/* Header */}
+          <header className="mb-10 text-center">
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: C.blue, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
+              Methods Explainer
+            </div>
+            <h1 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 36, fontWeight: 800, color: C.dark, lineHeight: 1.15, marginBottom: 8 }}>
+              How RIPPLE Works
+            </h1>
+            <p style={{ fontSize: 15, color: C.muted, maxWidth: 500, margin: "0 auto", lineHeight: 1.5 }}>
+              Detecting spatial gene expression gradients around cell types in spatial transcriptomics data, one Poisson regression at a time.
+            </p>
+          </header>
+
+          {/* Navigation */}
+          <nav className="flex flex-wrap gap-1.5 justify-center mb-12 sticky top-0 z-10 py-3" style={{ background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>
+            {navItems.map((n) => (
+              <button key={n.id} onClick={() => scrollTo(n.id)}
+                className="px-3 py-1.5 rounded-full text-xs transition-colors"
+                style={{ background: C.bgCard, color: C.muted, border: `1px solid ${C.border}`, fontFamily: "monospace", cursor: "pointer" }}
+                onMouseOver={(e) => { e.target.style.background = C.blue; e.target.style.color = "#fff"; e.target.style.borderColor = C.blue; }}
+                onMouseOut={(e) => { e.target.style.background = C.bgCard; e.target.style.color = C.muted; e.target.style.borderColor = C.border; }}>
+                {n.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* 01: OVERVIEW */}
+          <Section id="overview">
+            <SectionTitle num="01" title="The question" subtitle="Does gene expression change with distance to a cell type?" />
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              In spatial transcriptomics, every cell sits at a specific position in tissue. RIPPLE asks: for a given <strong>target cell type</strong> (say, CD8 T cells), does the expression of a gene increase or decrease as you get physically closer to a chosen <strong>query cell type</strong> (say, dendritic cells)?
+            </p>
+            <TissueDiagram />
+            <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginTop: 12, textAlign: "center" }}>
+              Hover over target cells to see their distance to the query cluster.
+            </p>
+            <Callout>
+              Each target cell has a measurable physical distance (in µm) to the nearest query cell. RIPPLE uses this distance as the sole predictor of gene expression.
+            </Callout>
+          </Section>
+
+          {/* 02: POISSON GLM */}
+          <Section id="poisson">
+            <SectionTitle num="02" title="Why a Poisson GLM?" subtitle="Transcript counts are integers — the model should know that." />
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              Spatial transcriptomics platforms like Xenium report the number of transcript molecules detected per cell. These are <strong>count data</strong> — non-negative integers (0, 1, 2, 3, …). The Poisson distribution is the standard statistical model for counts: it naturally handles zeros, is defined only for non-negative integers, and has a single rate parameter λ that controls both the mean and variance.
+            </p>
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              RIPPLE fits a <strong>Poisson generalized linear model (GLM)</strong> for each gene. The model has a single covariate: distance to the nearest query cell.
+            </p>
+            <Formula>{"log(E[counts]) = \u03B2\u2080 + \u03B2\u2081 \u00B7 distance"}</Formula>
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 4 }}>
+              The log link ensures predicted counts are always positive. The coefficient <strong>β₁</strong> tells you how log-expression changes per unit distance:
+            </p>
+            <div className="flex gap-4 justify-center my-4 flex-wrap">
+              <span className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{ background: "#fde8e2", color: C.red, fontFamily: "monospace" }}>
+                {"\u03B2\u2081 < 0 \u2192 gene \u2191 near query"}
+              </span>
+              <span className="px-3 py-1.5 rounded-lg text-sm font-medium" style={{ background: C.light, color: C.dark, fontFamily: "monospace" }}>
+                {"\u03B2\u2081 > 0 \u2192 gene \u2193 near query"}
+              </span>
+            </div>
+            <PoissonWalkthrough />
+            <Callout>
+              <strong>Why not a t-test or correlation?</strong> Linear regression on counts can predict negative values and ignores that variance often scales with the mean. The Poisson GLM respects the count nature of the data and estimates effects on the natural (log) scale.
+            </Callout>
+          </Section>
+
+          {/* 03: OFFSET */}
+          <Section id="offset">
+            <SectionTitle num="03" title="The total-count offset" subtitle="Normalizing counts to rates inside the model." />
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              Not every cell captures the same number of transcripts. Cells that are larger, better-segmented, or simply captured more efficiently will have <strong>higher total counts across all genes</strong>. Without correction, such cells would appear to express more of <em>every</em> gene — a technical artifact, not biology.
+            </p>
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              RIPPLE handles this by including each cell's total transcript count as an <strong>offset</strong> in the Poisson GLM. Mathematically, this converts the model from predicting raw counts to predicting <em>rates</em> (counts per total transcripts):
+            </p>
+            <Formula>{"log(E[counts]) = log(total) + \u03B2\u2080 + \u03B2\u2081 \u00B7 distance"}</Formula>
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              The log(total) term is fixed — it is not estimated. It shifts the baseline so that the model effectively asks: "What fraction of this cell's transcripts are gene X, and does that fraction change with distance?" Try toggling the view below:
+            </p>
+            <OffsetDiagram />
+            <Callout>
+              The offset is the Poisson-GLM equivalent of library-size normalization in scRNA-seq. It is statistically cleaner than pre-normalizing because it keeps the data as integer counts, preserving the Poisson likelihood.
+            </Callout>
+          </Section>
+
+          {/* 04: PER-SAMPLE */}
+          <Section id="replication">
+            <SectionTitle num="04" title="Per-sample fitting" subtitle="The unit of replication is the mouse, not the cell." />
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              A single tissue section may contain thousands of cells, but these cells are <strong>not independent observations</strong>. Cells near each other share the same local microenvironment, creating spatial autocorrelation. If you pool all cells from all samples into one regression, the model treats every cell as an independent data point and will be severely <strong>overconfident</strong> — reporting tiny p-values for gradients that exist in only one sample.
+            </p>
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              RIPPLE solves this by fitting a <strong>separate Poisson GLM per biological replicate</strong> (e.g., per mouse). Each sample yields its own β₁ estimate. These per-sample estimates are then aggregated into a single significance test. A gradient is only called significant if it is <strong>reproducible across independent samples</strong>.
+            </p>
+            <PerSampleDiagram />
+            <Callout accent="red">
+              <strong>This is the most important statistical design choice in RIPPLE.</strong> It prevents inflated significance from pseudoreplication — a common pitfall in spatial and single-cell analyses where n = cells but the true n = samples.
+            </Callout>
+          </Section>
+
+          {/* 05: OUTPUT */}
+          <Section id="output">
+            <SectionTitle num="05" title="The gradient score" subtitle="A signed effect size with physical units." />
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              For each gene, RIPPLE produces a <strong>gradient score</strong>: the aggregated β₁ across samples. This is a single number with clear interpretation:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-6 max-w-lg mx-auto">
+              {[
+                { label: "Sign", desc: "Direction — is the gene higher or lower near the query?" },
+                { label: "Magnitude", desc: "Fold-change per unit distance (log scale)" },
+                { label: "P-value", desc: "Reproducibility across biological replicates" },
+              ].map((item) => (
+                <div key={item.label} className="p-3 rounded-lg text-center" style={{ background: C.bgCard, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.dark, fontFamily: "monospace", marginBottom: 4 }}>{item.label}</div>
+                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{item.desc}</div>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 12 }}>
+              Below is what a typical RIPPLE output table looks like. Bars extend left for genes enriched near the query and right for genes depleted near it. Greyed-out entries (like <em>Tox</em>) are not significant:
+            </p>
+            <GradientOutput />
+            <Callout>
+              Because the gradient score has physical units (log fold-change per µm), you can compute the expected expression fold-change over <em>any</em> distance. For example, a score of −0.02 means expression roughly doubles every ~35 µm closer to the query (since e<sup>0.02 × 35</sup> ≈ 2).
+            </Callout>
+          </Section>
+
+          {/* 06: PIPELINE */}
+          <Section id="pipeline">
+            <SectionTitle num="06" title="Fits into existing pipelines" subtitle="Gradient lists as inputs to downstream analysis." />
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7, marginBottom: 16 }}>
+              Because RIPPLE summarizes every gene as an effect size + p-value pair, its output is <strong>a ranked gene list</strong> — the same data structure used by pathway enrichment tools (GSEA, enrichR), ligand-receptor inference methods (LIANA, CellChat), and gene-set analyses. You can drop RIPPLE's gradient list directly into these workflows:
+            </p>
+            <svg viewBox="0 0 420 90" className="w-full max-w-lg mx-auto mb-4">
+              <defs>
+                <marker id="arrowhead2" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto">
+                  <polygon points="0 0, 6 2, 0 4" fill={C.border} />
+                </marker>
+              </defs>
+              {[
+                { x: 10, label: "Xenium\ndata", bg: C.light, text: C.dark },
+                { x: 110, label: "RIPPLE", bg: C.blue, text: "#fff" },
+                { x: 210, label: "Gradient\nlist", bg: "#fde8e2", text: C.red },
+                { x: 310, label: "GSEA /\nLIANA / …", bg: C.bgCard, text: C.dark },
+              ].map((b, i) => (
+                <g key={i}>
+                  <rect x={b.x} y="15" width="88" height="50" rx="8" fill={b.bg} />
+                  {b.label.split("\n").map((line, j) => (
+                    <text key={j} x={b.x + 44} y={35 + j * 14} textAnchor="middle" fontSize="11" fontWeight="600" fill={b.text} fontFamily="monospace">{line}</text>
+                  ))}
+                  {i < 3 && <line x1={b.x + 90} y1="40" x2={b.x + 108} y2="40" stroke={C.border} strokeWidth="1.5" markerEnd="url(#arrowhead2)" />}
+                </g>
+              ))}
+              <text x="254" y="82" textAnchor="middle" fontSize="9" fill={C.muted} fontFamily="monospace">gene | score | p-value</text>
+            </svg>
+            <p style={{ fontSize: 14, color: C.text, lineHeight: 1.7 }}>
+              The model itself — one Poisson regression per gene — is computationally lightweight, making RIPPLE fast enough to run genome-wide across multiple query cell types without specialized hardware.
+            </p>
+          </Section>
+
+          {/* Footer */}
+          <footer className="mt-16 pt-6 text-center" style={{ borderTop: `1px solid ${C.border}` }}>
+            <p style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>
+              RIPPLE · Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation
+            </p>
+          </footer>
+        </div>
+      );
+    }
+
+    /* ── Mount ── */
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
