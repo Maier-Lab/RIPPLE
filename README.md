@@ -258,4 +258,17 @@ RIPPLE was developed with Claude Opus 4.6/8 on Claude Code by Anthropic.
 
 ## License
 
-MIT. See `LICENSE`.
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0).
+See `LICENSE` for the full text.
+
+Permitted: academic and educational use, public research, personal
+study, and any other noncommercial purpose. Universities, public
+research organisations, government institutions, and charitable
+organisations are covered regardless of how they are funded. You can
+modify the code and redistribute it under the same terms.
+
+Not permitted without a separate license: commercial use. This
+includes paid consulting on the software, inclusion in a commercial
+product or service, and use by a for-profit company on its own work.
+If you need a commercial license, contact Carolina Mangana
+(cmangana@cemm.at).
