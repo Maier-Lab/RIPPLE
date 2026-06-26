@@ -24,9 +24,9 @@ RIPPLE is an R package that detects distance-dependent gene expression gradients
 
 > *"Which genes in cell type B change expression as a function of physical distance from cell type A, reproducibly across biological replicates?"*
 
-Given a spatial transcriptomics dataset with cell type annotations and biological replicates, RIPPLE fits a per-sample Poisson GLM for each gene in each target cell type, using Euclidean distance to the nearest query cell as the predictor and `log(total_counts)` as an offset. Per-sample coefficients are combined across replicates via Fisher's combined p-value with a sign-consistency gate. The result is a ranked list of genes with signed, interpretable gradient coefficients, calibrated FDR, and per-sample reproducibility.
+For each gene in each target cell type, RIPPLE fits a per-sample Poisson GLM with Euclidean distance to the nearest query cell as the predictor and `log(total_counts)` as an offset. Per-sample coefficients are then combined across biological replicates via Fisher's combined p-value with a sign-consistency gate. The output is a ranked list of genes with signed gradient scores, calibrated FDR, and per-sample reproducibility.
 
-**Supported platforms:** Xenium, CosMx, etc . Ideal for any imaging-based platform with single-cell resolved coordinates and quasi-binary profile of raw integer counts.
+**Supported platforms:** Xenium, CosMx, MERFISH. Suited to any imaging-based platform with single-cell resolved coordinates and integer counts. Not designed for spot-resolution platforms (e.g. Visium without deconvolution) where one spot mixes multiple cell types.
 
 For a standalone SLURM-driven script version, see [HyMy-distance-correlation-analysis](https://github.com/CMangana/HyMy-distance-correlation-analysis).
 
@@ -84,13 +84,14 @@ On real data, `input` can be a `Seurat`, `SingleCellExperiment`, or `SpatialExpe
 
 ## Vignettes
 
-Three long-form vignettes ship with the package. They cover, respectively, a real-data walkthrough, positioning vs. other spatial tools, and benchmark details.
+Four vignettes ship with the package:
 
 | Vignette | Description |
 |----------|-------------|
-| `cosmx_nsclc_walkthrough` | End-to-end example on the public CosMx NSCLC dataset (He et al., 2022). Loads cached results from `inst/extdata/`, so the vignette renders without re-running the full pipeline. |
-| `methods_positioning` | Landscape table comparing RIPPLE with Hotspot, nnSVG, MISTy, COMMOT, and BANKSY. Clarifies the distinction between co-localization tests and continuous gradient detection. |
-| `benchmarks` | FDR calibration and power curves from the synthetic benchmark suite. |
+| `getting_started` | 5-minute end-to-end run on the bundled synthetic dataset. The fastest way to see what RIPPLE does. |
+| `cosmx_nsclc_walkthrough` | Applied walkthrough on the public CosMx NSCLC dataset (He et al., 2022), reproducing paper Figure 4 panel by panel. Loads cached results from `inst/extdata/`, so the vignette renders without re-running the full pipeline. |
+| `methods_positioning` | Landscape table comparing RIPPLE with nnSVG / SpatialDE / SPARK, STdiff (spatialGE), MISTy, COMMOT / CellChat, NicheNet, and BANKSY / CellCharter. Clarifies the distinction between co-localization tests and continuous gradient detection. |
+| `benchmarks` | FDR calibration, power curves, and runtime measurements from the synthetic benchmark suite. |
 
 Browse locally:
 
@@ -99,6 +100,22 @@ browseVignettes("ripple")
 
 # Or build the full pkgdown site (shipped _pkgdown.yml):
 pkgdown::build_site()
+```
+
+### Interactive explainer
+
+A standalone HTML page walks through how RIPPLE works, with diagrams.
+It is not a vignette; open it directly in a browser:
+
+[`vignettes/interactive_ripple_explainer.html`](vignettes/interactive_ripple_explainer.html)
+
+Since the repo is private, GitHub will only show the source. To view
+the page rendered, clone the repo and open the file locally:
+
+```sh
+git clone https://github.com/Maier-Lab/RIPPLE.git
+open RIPPLE/vignettes/interactive_ripple_explainer.html   # macOS
+# or:  xdg-open / start, depending on your OS
 ```
 
 ---
@@ -118,6 +135,9 @@ Each stage is optional except Stage 1.
 
 Diagnostics:
 
+- `ripple_plot_qc()` builds a one-glance multi-panel dashboard from the artefacts `run_ripple()` writes (per-sample distance density, cell composition, sign consistency, dispersion, specificity breakdown, and query-marker bleed-through).
+- `classify_gene_specificity()` flags broad-expression genes (significant in many cell types at once). Three candidate sources to combine: this cross-cell-type flag, the `find_ambient_family_genes()` blocklist for Ig / J-chain / ribosomal / mitochondrial, and a user-supplied `query_signature_genes` list. None of these is a contamination measurement. You decide using domain knowledge.
+- `plot_k_diagnostics()` helps pick `k_neighbors` before running the full pipeline.
 - `check_spatial_autocorrelation()` computes Moran's I on Poisson residuals for selected genes, flagging cases where the independence assumption may be violated.
 - `check_data()` and `load_metadata_only()` give fast metadata access without loading the full expression matrix.
 
@@ -180,26 +200,43 @@ Per-sample coefficients are combined via Fisher's combined p-value. The sign-con
 
 ## Recommended QC workflow
 
-After running `run_ripple()` and `merge_ripple_results()`, always check for contamination before interpreting individual genes:
+After running `run_ripple()` and `merge_ripple_results()`, run the
+specificity check before interpreting individual genes:
 
 ```r
-# 1. Classify gene specificity — do this FIRST
+# 1. Classify gene specificity. Do this FIRST.
 specificity <- classify_gene_specificity(all_results, fdr_threshold = 0.05)
 table(specificity$specificity_class)
-#   specific  moderate  ubiquitous  contamination
-#       412       187          45             23
+#   specific  moderate  ubiquitous  broad
+#       412       187          45     23
 
-# 2. Exclude contamination genes (significant in too many cell types)
-contam_genes <- specificity[specificity_class == "contamination"]$gene
-clean_results <- all_results[!gene %in% contam_genes]
+# 2. Pull the broad-class candidates aside.
+broad_genes <- specificity[specificity_class == "broad"]$gene
+clean_results <- all_results[!gene %in% broad_genes]
 
-# 3. THEN look at individual genes
+# 3. THEN look at individual genes.
 plot_gradient_volcano(clean_results[cell_type == "CD8_T"], query_label = "Tumor")
 ```
 
-Genes flagged as "contamination" are significant in many cell types simultaneously, which usually indicates segmentation artifacts (query cell transcripts leaking into neighboring cells) rather than genuine biology.
+Genes flagged as `broad` are significant in many cell types at once.
+Common reasons: ambient RNA (query transcripts leaking into neighbouring
+cells), housekeeping genes, or real shared biology (cytokines, MHC II,
+stress programs). The flag is a heuristic, not a verdict. You decide
+what is actually contamination using domain knowledge. The
+`getting_started` vignette walks through the full curation workflow.
 
-For k-selection, use `plot_k_diagnostics()` before running the full pipeline to choose an appropriate `k_neighbors` value:
+For a one-glance summary of the whole run, `ripple_plot_qc()` builds a
+multi-panel QC dashboard from the artefacts `run_ripple()` writes:
+
+```r
+ripple_plot_qc(
+  results_dir           = "ripple_output/tumor_ripple",
+  query_signature_genes = c("EPCAM", "KRT8", "KRT19"),  # your query markers
+  query_label           = "Tumor"
+)
+```
+
+For k-selection, use `plot_k_diagnostics()` before the full pipeline:
 
 ```r
 plot_k_diagnostics(my_spe, query_celltype = "Tumor", celltype_column = "cell_type")
@@ -209,9 +246,11 @@ plot_k_diagnostics(my_spe, query_celltype = "Tumor", celltype_column = "cell_typ
 
 ## Citation
 
-A bibentry is shipped in `inst/CITATION` and can be retrieved with `citation("ripple")`. This will be replaced once the accompanying manuscript is posted on bioRxiv.
+A bibentry ships in `inst/CITATION` and can be retrieved with
+`citation("ripple")`. It will be replaced once the accompanying
+manuscript is posted on bioRxiv.
 
-> *Citation  (bioRxiv preprint in preparation).*
+> *Citation (bioRxiv preprint in preparation).*
 
 ---
 
