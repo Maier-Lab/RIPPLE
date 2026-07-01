@@ -1,8 +1,8 @@
 ---
-title: "RIPPLE applied to CosMx NSCLC: reproducing paper Figure 4"
+title: "RIPPLE applied to CosMx NSCLC: reproducing paper Figure 3"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RIPPLE applied to CosMx NSCLC: reproducing paper Figure 4}
+  %\VignetteIndexEntry{RIPPLE applied to CosMx NSCLC: reproducing paper Figure 3}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -34,7 +34,7 @@ one biological replicate. Tumor cells are the query. The question:
 which genes in the other cell types change expression with distance to
 the nearest tumor cell, reproducibly across the 5 patients.
 
-This vignette reproduces panels A to E of **paper Figure 4**. Follow
+This vignette reproduces panels A to E of **paper Figure 3**. Follow
 it to see how to use RIPPLE and what the outputs look like. Each panel
 uses cached results bundled with the package. Running the analysis
 from scratch on the raw 2.6 GB h5ad takes about 6 hours on a 16-core
@@ -43,12 +43,12 @@ machine. We show that step but do not run it.
 The required steps are `run_ripple()` and the specificity check.
 Everything else is optional. Permutation testing, confounder control,
 fGSEA, and ligand-receptor nomination are all downstream stages you
-opt into when the question calls for them. Each optional step below
-includes a one-line why/when.
+opt into when you think the question calls for them. Each optional step below
+includes a brief explanation of why or when to use it.
 
 > **Note:** for a 1-minute end-to-end on the synthetic mock dataset
 > (no download needed), see
-> `vignette("getting_started", package = "ripple")` first.
+> `vignette("getting_started", package = "ripple")` first. You can use this to just have a look at the functions.
 
 ## Dataset preparation (skipped here)
 
@@ -60,7 +60,7 @@ library(SpatialExperiment)
 
 sce <- readH5AD("cosmx_nsclc.h5ad")
 
-# Merge per-patient tumor subtype labels into a single "tumor" class
+# Merge per-patient tumor subtype labels into a single "tumor" class.
 ct <- as.character(colData(sce)$cell_type)
 ct[grepl("^tumor", ct)] <- "tumor"
 
@@ -80,7 +80,7 @@ spe <- SpatialExperiment(
 For dense query populations like this one (~150 K tumor cells across 5
 patients), `k = 1` is fine. The mean per-cell distance to the nearest
 tumor cell stabilises immediately. For sparse query populations (a few
-hundred cells per sample), larger `k` (3 to 5) reduces noise.
+hundred cells per sample), larger `k` (3 to 5) reduces noise. More details on k choice in the preprint.
 `plot_k_diagnostics()` gives a quick visual answer:
 
 ```{r k-diagnostics, eval = FALSE}
@@ -94,8 +94,6 @@ plot_k_diagnostics(
 )
 ```
 
-If no clear elbow appears, the query is too sparse for robust per-cell
-distance estimation; consider a coarser annotation or more replicates.
 
 ## Running RIPPLE
 
@@ -115,13 +113,13 @@ results <- run_ripple(
 )
 ```
 
-Key parameter choices:
+Key parameter choices for the main ripple function:
 
 - **`k_neighbors = 1`**: distance to the single nearest tumor cell;
-  appropriate for paracrine signalling range.
+  appropriate for paracrine signalling range. Run the diagnostic and pick. Alternatively, run the whole analysis with a few different k values.
 - **`max_distance_um = 200`**: cells beyond 200 µm are excluded from the
   GLM. Captures typical secreted-factor gradients without long-range
-  dilution.
+  dilution. Can be shortened for certain factors or increased for others (ex. morphogens).
 - **`sample_column = "patient"`**: each patient is one biological
   replicate (N = 5). Per-patient coefficients are combined via Fisher's
   combined p-value with sign-consistency gating.
@@ -129,7 +127,7 @@ Key parameter choices:
   optional validation step (why/when: run it to confirm a gradient is
   specific to the query labels and not an artefact of cell density);
   add it later via `run_permutation_tests()` or the GPU script in
-  `inst/python/`.
+  `inst/python/`. The gpu version is much faster, so if you have the option...
 
 ## Loading cached results
 
@@ -150,11 +148,12 @@ cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0
 > **Strongly recommended:** run the specificity check **before** any
 > downstream interpretation, top-hit listing, or pathway enrichment.
 > The **broad-expression class** is the set of genes significant in
-> many cell types at once. Common offenders: ribosomal genes, MHC
+> many cell types at once. Common offenders: ribosomal genes,
 > housekeeping, ambient RNA from highly expressed query markers. If
 > you do not filter them, they dominate every "top hits" table and
 > every fGSEA leading edge. The cell-type-specific biology gets
-> masked.
+> masked. There is an argument for keeping them through analysis and then
+> only removing them from interpretation. But it can make things confusing.
 >
 > **Contamination is user-defined. RIPPLE only proposes candidates.**
 > The pipeline gives you three heuristic flags:
@@ -162,9 +161,10 @@ cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0
 > 1. The cross-cell-type `broad` class
 >    (`classify_gene_specificity()`).
 > 2. The ambient-family blocklist (`find_ambient_family_genes()` for
->    Ig, J-chain, Rp, Mt genes, for example). If some genes are known ambient genes (they show up in a lot of unspecific cell types or bleed through) you can provide them here.
+>    Ig, J-chain, Rp, Mt genes, for example). If some genes are known ambient genes (they show up in a lot of unspecific cell types or bleed through) you can provide them here. For example,
+>    you may have observed these genes during cell type annotation to be expressed in nearly all populations.
 > 3. A user-supplied query-marker list (`query_signature_genes` on
->    `run_ripple()`). If your query has very high exprression of certain genes and you want to make sure to remove them from spilling.
+>    `run_ripple()`). If your query has very high exprression of certain genes and you want to make sure to remove them from spilling. If using 10x Xenium, during panel design, you may have observed certain probes being too high when based on a reference scRNA seq. These are candidates for removal too, but make sure they are spilling by looking at their expression in your reference scRNAseq, if available.
 >
 > None of these is a measurement of contamination. A broadly-
 > significant gene can be genuine shared biology. Cytokines, MHC II,
@@ -178,16 +178,15 @@ cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0
 `classify_gene_specificity()` returns one row per significant gene
 with two key fields. `n_celltypes` is the number of cell types it
 appears in. `specificity_class` is a four-level label: `specific`,
-`moderate`, `ubiquitous`, `broad`. We compute it **once**, here, and
+`moderate`, `ubiquitous`/`broad`. We compute it **once**, here, and
 reuse it everywhere downstream.
 
 **A note on the broad-class dials.** There is no universally correct
 cutoff. `classify_gene_specificity()` exposes **two** dials, both of
-which should be reported in your methods:
+which can be edited based on your dataset:
 
 1. **`broad_threshold`** (how many cell types). Default `4` is
-   sensible for the ~10-20 cell-type panel here (and for the original
-   HyMy / TDLN analyses), but tune to your data:
+   sensible for the ~10-20 cell-type panel here (and for the original LN analyses), but tune to your data:
    - **Few cell types (≤ 5):** a cutoff of 4 is barely reachable;
      consider 2 or 3.
    - **Many fine subtypes (~30+):** a cutoff of 4 is too lenient and
@@ -201,8 +200,7 @@ which should be reported in your methods:
    hit counts toward the broad-class tally. Tighten to `"**"`
    (FDR < 0.01) or `"***"` (FDR < 0.001) to make the filter **looser
    overall**: a gene only counts as a hit in cell types where the
-   signal is unambiguous, so fewer genes get flagged. Useful when the
-   default classifies as "broad" things you believe are real biology.
+   signal is unambiguous, so fewer genes get flagged. Be careful loosening this threshold.
 
 ```{r preflight-broad}
 spec <- classify_gene_specificity(
@@ -271,7 +269,7 @@ cat(nrow(results_clean), "rows in `results_clean` (broad class removed)\n")
 > 4. Run fGSEA both with and without `exclude_broad = TRUE` (Panel D
 >    below).
 
-# Reproducing paper Figure 4
+# Reproducing paper Figure
 
 The full multi-panel figure is rendered by `paper/render_figures.R`
 (saves to `paper/figures/fig_4_cosmx.{pdf,png}`). Here we walk through
