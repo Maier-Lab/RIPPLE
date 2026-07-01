@@ -34,9 +34,11 @@ one biological replicate. Tumor cells are the query. The question:
 which genes in the other cell types change expression with distance to
 the nearest tumor cell, reproducibly across the 5 patients.
 
-This vignette reproduces panels A to E of **paper Figure 3**. Follow
-it to see how to use RIPPLE and what the outputs look like. Each panel
-uses cached results bundled with the package. Running the analysis
+This vignette reproduces the panels of **paper Figure 3** (A–F). Follow
+it to see how to use RIPPLE and what the outputs look like. Panel A
+(the k-diagnostic) is covered in the "Choosing `k_neighbors`" section
+below; panels B–F are in the "Reproducing paper Figure 3" section. Each
+panel uses cached results bundled with the package. Running the analysis
 from scratch on the raw 2.6 GB h5ad takes about 6 hours on a 16-core
 machine. We show that step but do not run it.
 
@@ -75,12 +77,19 @@ spe <- SpatialExperiment(
 )
 ```
 
-## Choosing `k_neighbors` with `plot_k_diagnostics()`
+## Panel A: choosing `k_neighbors` with `plot_k_diagnostics()`
+
+This is **paper Figure 3A** (distance to the nearest tumor cell as a
+function of `k`, per patient).
 
 For dense query populations like this one (~150 K tumor cells across 5
 patients), `k = 1` is fine. The mean per-cell distance to the nearest
-tumor cell stabilises immediately. For sparse query populations (a few
-hundred cells per sample), larger `k` (3 to 5) reduces noise. More details on k choice in the preprint.
+tumor cell stabilises immediately. A smooth, concave rise with no
+plateau or step signals a well-distributed query for which `k = 1` is
+interpretable and stable; an early plateau or a step-like discontinuity
+signals a clumped or sparse query whose `k = 1` distances are dominated
+by clump boundaries, so a larger `k` (3 to 5) reduces noise. More
+details on k choice in the preprint.
 `plot_k_diagnostics()` gives a quick visual answer:
 
 ```{r k-diagnostics, eval = FALSE}
@@ -266,18 +275,19 @@ cat(nrow(results_clean), "rows in `results_clean` (broad class removed)\n")
 >    scope.
 > 3. Plot all genes as background. Label and report top hits from
 >    `results_clean`.
-> 4. Run fGSEA both with and without `exclude_broad = TRUE` (Panel D
+> 4. Run fGSEA both with and without `exclude_broad = TRUE` (Panel E
 >    below).
 
-# Reproducing paper Figure
+# Reproducing paper Figure 3
 
 The full multi-panel figure is rendered by `paper/render_figures.R`
-(saves to `paper/figures/fig_4_cosmx.{pdf,png}`). Here we walk through
-each panel with the same cached inputs.
+(saves to `paper/figures/fig_3_cosmx.{pdf,png}`). Here we walk through
+each panel with the same cached inputs. Panel A (the k-diagnostic) was
+shown in the "Choosing `k_neighbors`" section above; panels B–F follow.
 
-## Panel A: gradients per target cell type
+## Panel B: gradients per target cell type
 
-```{r fig4-A, fig.width = 9, fig.height = 5}
+```{r fig3-B, fig.width = 9, fig.height = 5}
 plot_gene_counts_by_celltype(
   results,
   query_label     = "Tumor",
@@ -293,11 +303,13 @@ only matters biologically if its solid portion dominates. Fibroblasts
 and macrophages are the most remodelled cell types near tumor. Both
 show a sizeable specific-to-broad ratio.
 
-## Panel B: fibroblast gradient volcano
+## Panel C: fibroblast gradient volcano
 
-The default `plot_gradient_volcano()` works well as a quick look:
+This is **paper Figure 3C** (fibroblast gradient volcano, IGFBP5
+highlighted). The default `plot_gradient_volcano()` works well as a
+quick look:
 
-```{r fig4-B-quick, fig.width = 8, fig.height = 6}
+```{r fig3-C-quick, fig.width = 8, fig.height = 6}
 plot_gradient_volcano(
   results[cell_type == "fibroblast"],
   query_label = "Tumor",
@@ -312,7 +324,7 @@ broad-class genes remain visible for interpretation. But the labels
 go on genes that are NOT in the broad list. We add a few flagged
 genes by hand (MIF, IGKC) so we can discuss them.
 
-```{r fig4-B-paper, fig.width = 8, fig.height = 6}
+```{r fig3-C-paper, fig.width = 8, fig.height = 6}
 fib <- results[cell_type == "fibroblast"]    # all genes for the scatter
 fib[, neg_log10_fdr := -log10(pmax(fisher_fdr, 1e-300))]
 fib[, direction := fifelse(
@@ -350,7 +362,7 @@ ggplot(fib, aes(x = median_coef, y = neg_log10_fdr)) +
     "Not significant"      = "grey75"
   ), name = NULL) +
   labs(
-    x = "Gradient score (per um)",
+    x = "Gradient score (per µm)",
     y = expression(-log[10] ~ "Fisher FDR"),
     title = "Fibroblasts: tumor-proximity gene gradients"
   ) +
@@ -389,21 +401,59 @@ top-hit list):**
   flags are complementary: the cross-cell-type `broad` flag misses
   focal spillover, but the ambient-family list catches it.
 
-## Panel C: per-patient consistency for MIF
+## Panel D: per-patient consistency for IGFBP5
 
-A key feature of RIPPLE is per-replicate fitting. The forest plot below
-shows per-patient gradient scores ± 95 % CI for MIF in fibroblasts:
+This is **paper Figure 3D** (per-patient forest plot of the top
+cell-type-specific fibroblast hit, IGFBP5). A key feature of RIPPLE is
+per-replicate fitting. The forest plot below shows per-patient gradient
+scores ± 95 % CI for IGFBP5 in fibroblasts. IGFBP5 is induced near tumor
+in all five patients (median gradient score −0.0037, Fisher
+FDR = 2 × 10⁻⁵¹), and unlike MIF it is cell-type-specific, so it
+survives the broad-class filter:
 
-```{r fig4-C, fig.width = 7, fig.height = 3.5}
+```{r fig3-D, fig.width = 7, fig.height = 3.5}
 coef_path <- system.file(
   "extdata/cosmx_cached/per_celltype/fibroblast/coef_per_sample.csv",
   package = "ripple"
 )
 coef_data <- fread(coef_path)
 
-mif <- coef_data[gene == "MIF"]
-mif[, ci_lo := coef - 1.96 * se]
-mif[, ci_hi := coef + 1.96 * se]
+forest_gene <- function(g) {
+  d <- coef_data[gene == g]
+  d[, ci_lo := coef - 1.96 * se]
+  d[, ci_hi := coef + 1.96 * se]
+  d
+}
+
+igfbp5 <- forest_gene("IGFBP5")
+
+ggplot(igfbp5, aes(x = coef, y = sample_id, colour = sample_id)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_errorbar(aes(xmin = ci_lo, xmax = ci_hi),
+                orientation = "y", width = 0.25, alpha = 0.7) +
+  geom_point(size = 3) +
+  scale_colour_brewer(palette = "Set2", guide = "none") +
+  labs(
+    x = "Per-patient gradient score for IGFBP5 (per µm)",
+    y = NULL,
+    title = "IGFBP5 in fibroblasts: per-patient gradient scores"
+  ) +
+  theme_ripple(base_size = 12)
+```
+
+All five patients show a consistent negative coefficient: IGFBP5 RNA
+counts increase near tumor in every replicate, matching the
+CAF-activation biology from Panel C.
+
+### Reproducibility alone is not a contamination check
+
+It is tempting to read a clean, unanimous forest plot as proof a gene is
+real biology. It is not. The same plot for MIF — the top-ranked
+fibroblast gene by Fisher FDR, but flagged as broad-class (significant
+in 9 of 17 cell types) — is just as consistent:
+
+```{r fig3-D-mif, fig.width = 7, fig.height = 3.5}
+mif <- forest_gene("MIF")
 
 ggplot(mif, aes(x = coef, y = sample_id, colour = sample_id)) +
   geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
@@ -412,26 +462,25 @@ ggplot(mif, aes(x = coef, y = sample_id, colour = sample_id)) +
   geom_point(size = 3) +
   scale_colour_brewer(palette = "Set2", guide = "none") +
   labs(
-    x = "Per-patient gradient score for MIF (per um)",
+    x = "Per-patient gradient score for MIF (per µm)",
     y = NULL,
     title = "MIF in fibroblasts: per-patient gradient scores"
   ) +
   theme_ripple(base_size = 12)
 ```
 
-All five patients show a consistent negative coefficient. MIF RNA
-counts increase near tumor in every replicate. Reproducibility alone
-does not rule out systematic ambient RNA. Both real induction and
-ambient RNA can be reproducible across replicates. That is why the
-specificity check is a separate QC step.
+Both real induction (IGFBP5) and likely ambient RNA (MIF) can be
+reproducible across replicates. Reproducibility does not rule out
+systematic ambient RNA. That is why the specificity check is a separate
+QC step, not something the per-replicate consistency can substitute for.
 
-## Panel D: pathway enrichment (fGSEA dotplot)
+## Panel E: pathway enrichment (fGSEA dotplot)
 
 fGSEA is an **optional** step (why/when: run it to summarise dozens of
 significant genes per cell type into interpretable pathway-level
 programs; skip it if you only care about individual gene hits).
 
-```{r fig4-D-run, eval = FALSE}
+```{r fig3-E-run, eval = FALSE}
 # Run fGSEA via the atlas wrapper (writes fgsea_all_celltypes.csv)
 run_ripple_atlas(
   results_dir = "ripple_output/tumor_ripple",
@@ -442,7 +491,7 @@ run_ripple_atlas(
 )
 ```
 
-```{r fig4-D-load}
+```{r fig3-E-load}
 fgsea_path <- system.file("extdata/cosmx_cached/fgsea_all_celltypes.csv",
                           package = "ripple")
 fgsea_dt <- fread(fgsea_path)
@@ -453,7 +502,7 @@ encodes -log10(padj), dot colour encodes NES on the same red/blue
 diverging scale as the gradient volcano (red NES = induced near tumor,
 blue NES = repressed), and non-significant cells are dimmed.
 
-```{r fig4-D, fig.width = 9, fig.height = 7}
+```{r fig3-E, fig.width = 9, fig.height = 7}
 plot_fgsea_dotplot(fgsea_dt, padj_threshold = 0.1, top_n = 12)
 ```
 
@@ -516,7 +565,7 @@ filtered and unfiltered runs. (`run_ripple_fgsea()` also accepts
 `exclude_specificity_class = "broad"` as an equivalent way to drop the
 broad class.)
 
-## Panel E: top tumor → fibroblast ligand-receptor pairs
+## Panel F: top tumor → fibroblast ligand-receptor pairs
 
 Ligand-receptor nomination is an **optional** step (why/when: run it to
 turn a list of gradient genes into testable signalling hypotheses by
@@ -535,7 +584,7 @@ negative gradient score). A receptor that is *repressed* near the
 tumor is not a plausible "tumor signals to fibroblast" axis. So
 `run_ripple_lr()` nominates induced receptors only by default:
 
-```{r fig4-E-run, eval = FALSE}
+```{r fig3-F-run, eval = FALSE}
 lr_out <- run_ripple_lr(
   results_dir           = "ripple_output/tumor_ripple",
   input                 = spe,
@@ -577,7 +626,7 @@ excluded. Every pair has a negative (induced) receptor gradient
 score. The top pair is COL1A1 → DDR1 instead of the CD44 → EPCAM
 spillover artefact:
 
-```{r fig4-E-load}
+```{r fig3-F-load}
 lr_path <- system.file(
   "extdata/cosmx_cached/lr/fibroblast/combined_prioritization.csv",
   package = "ripple"
@@ -590,7 +639,7 @@ head(lr_fib[order(-combined_score),
               receptor_fdr, ligand_pct_query)], 5)
 ```
 
-```{r fig4-E, fig.width = 9, fig.height = 6}
+```{r fig3-F, fig.width = 9, fig.height = 6}
 lr_top <- lr_fib[order(-combined_score)][1:15]
 lr_top[, pair := factor(paste0(ligand, " -> ", receptor),
                         levels = rev(paste0(ligand, " -> ", receptor)))]
@@ -613,8 +662,8 @@ ggplot(lr_top, aes(x = combined_score, y = pair)) +
 After CD44 → EPCAM (the spillover artefact flagged above), the top
 induced pairs are ECM-to-receptor axes: collagens and fibronectin
 signalling to **DDR1** and **ITGB8** (COL1A1 → DDR1, FN1 → ITGB8,
-COL1A2 → DDR1). These match the ECM-remodelling hits in Panel B and
-the matrix/EMT pathway enrichment in Panel D. Gradient, pathway, and
+COL1A2 → DDR1). These match the ECM-remodelling hits in Panel C and
+the matrix/EMT pathway enrichment in Panel E. Gradient, pathway, and
 L-R views all converge on the same stromal-remodelling biology. CD44
 → EPCAM at the top is the cautionary counter-example: a high score
 that is an artefact, not biology. That is why the query-signature
@@ -626,17 +675,17 @@ The exact PDF used in the paper is rendered by:
 
 ```{r render-fig4, eval = FALSE}
 source("paper/render_figures.R")
-# writes paper/figures/fig_4_cosmx.{pdf,png}
+# writes paper/figures/fig_3_cosmx.{pdf,png}
 ```
 
-# Beyond Figure 4: macrophage deep-dive, specificity, and QC
+# Beyond Figure 3: macrophage deep-dive, specificity, and QC
 
 ## Macrophage gradient volcano
 
 Macrophages show a polarised response near tumor (94 significant
 genes). Induced programs: motility, interferon, plus some tumor-RNA
 spillover. Repressed programs: antigen-presentation and homeostatic
-/ complement. The same volcano view as Panel B, applied to
+/ complement. The same volcano view as Panel C, applied to
 macrophages:
 
 ```{r mac-volcano, fig.width = 8, fig.height = 6}
@@ -679,7 +728,7 @@ ggplot(mac, aes(x = median_coef, y = neg_log10_fdr)) +
     "Not significant"      = "grey75"
   ), name = NULL) +
   labs(
-    x = "Gradient score (per um)",
+    x = "Gradient score (per µm)",
     y = expression(-log[10] ~ "Fisher FDR"),
     title = "Macrophages: tumor-proximity gene gradients"
   ) +
@@ -754,6 +803,123 @@ qc <- ripple_plot_qc(
 The bleed-through panel (panel 7) takes a query-marker vector. Any
 marker that shows up significant in many target cell types is
 highlighted in red. That is the smoking gun for ambient RNA.
+
+# Optional stages: confounder control, permutation, diagnostics
+
+The gradient calls above are the core RIPPLE result. The stages in this
+section are optional. They are not part of Figure 3; they are additional
+controls and diagnostics you opt into when the question calls for them.
+None run here (they need the in-memory `spe`, which is not bundled), but
+each shows the exact call and how to read the output.
+
+## Stage 4: confounder control
+
+**Why/when:** use it when a second cell type shares the query's niche
+and you want to know whether a gradient is specific to the query or just
+reflects the shared neighbourhood. Fibroblasts, macrophages, and
+endothelial cells all crowd the tumor-proximal niche here, so a
+fibroblast gradient attributed to "distance to tumor" could partly be
+"distance to the tumor-adjacent myeloid compartment". `run_ripple_confounder()`
+refits a bivariate GLM that adds distance to a control cell type:
+
+```{r stage4-run, eval = FALSE}
+stage4 <- run_ripple_confounder(
+  input            = spe,
+  results_dir      = "ripple_output/tumor_ripple",
+  query_celltype   = "tumor",
+  celltype_column  = "cell_type",
+  sample_column    = "patient",
+  control_celltype = "macrophage",  # shares the tumor-proximal niche
+  query_label      = "Tumor"
+)
+
+table(stage4$classification)
+```
+
+Each Stage 1 gene is reclassified from how its query coefficient behaves
+once distance-to-control is in the model. The `classification` column
+takes five values (the query-specific label is prefixed with
+`query_label`, e.g. `Tumor_specific`):
+
+| Classification | Meaning |
+|---|---|
+| `Tumor_specific` | Fisher FDR < threshold in the bivariate model, same sign as Stage 1 — the gradient holds after controlling for the niche. |
+| `enhanced` | query-specific AND `abs(coef)` grew > 1.1× vs Stage 1 — the control was masking the effect. |
+| `niche_driven` | FDR ≥ threshold AND `abs(coef)` attenuated > 50% — the gradient was largely the shared niche. |
+| `underpowered` | FDR ≥ threshold AND `abs(coef)` preserved ≥ 50% — direction holds but significance was lost (often a power issue). |
+| `reversed` | coefficient flipped sign after controlling for the confounder. |
+
+Because the bivariate GLM fits only one extra linear distance term, these
+labels are hypothesis-generating, not a definitive causal decomposition.
+Three plotting helpers visualise the output — `plot_confounder_bar()`
+(class counts per cell type), `plot_confounder_scatter()` (Stage 1 vs
+Stage 4 coefficient), and `plot_confounder_ratio()`:
+
+```{r stage4-plots, eval = FALSE}
+plot_confounder_bar(stage4, query_label = "Tumor", control_label = "Macrophage")
+plot_confounder_scatter(
+  stage4,
+  label_genes = c("IGFBP5", "CXCL12", "MMP2"),
+  query_label = "Tumor"
+)
+```
+
+If no cell type is both niche-sharing and biologically distinct from the
+query, skip Stage 4 and lean on the permutation null instead.
+
+## Stage 2: permutation validation
+
+**Why/when:** run it to confirm a gradient is specific to the query
+labels and not an artefact of overall cell density. The simplest route
+is to set `n_permutations` on the main `run_ripple()` call (a GPU script,
+`inst/python/run_permutation_gpu.py`, is faster for large datasets):
+
+```{r perm-run, eval = FALSE}
+results_perm <- run_ripple(
+  input           = spe,
+  query_celltype  = "tumor",
+  celltype_column = "cell_type",
+  sample_column   = "patient",
+  output_dir      = "ripple_output",
+  analysis_name   = "tumor_ripple_perm",
+  n_permutations  = 1000            # adds a perm_pval column
+)
+```
+
+Within each sample the permutation draws N random cells (N = the sample's
+query count) from the *full* cell pool to serve as pseudo-query anchors,
+recomputes distances, and refits — building an empirical null for the
+combined coefficient. Note the null tests **location specificity of the
+query**, not specificity against one particular competing cell type; for
+the latter, restrict the permutation to the two populations of interest.
+The Fisher combination and sign gate are not applied on the permutation
+path.
+
+## Spatial autocorrelation diagnostic
+
+The per-sample Poisson GLM assumes independent observations, but nearby
+cells are spatially correlated. Per-sample fitting plus Fisher
+aggregation mitigates this at the sample level; within-sample Wald
+p-values can still be anti-conservative. `check_spatial_autocorrelation()`
+computes Moran's I on the GLM deviance residuals for a set of genes:
+
+```{r moran, eval = FALSE}
+moran <- check_spatial_autocorrelation(
+  input           = spe,
+  genes           = c("IGFBP5", "CXCL12", "MIF"),
+  celltype_column = "cell_type",
+  target_celltype = "fibroblast",
+  query_celltype  = "tumor",
+  sample_column   = "patient",
+  k               = 20
+)
+```
+
+Read it as: `|I| < 0.05` is consistent with the independence assumption;
+`|I| > 0.15` flags non-negligible residual autocorrelation, so interpret
+that gene's within-sample p-values with caution and cross-check with the
+permutation null. This is not run by default; reach for it on specific
+genes of interest.
 
 # Interpretation summary
 

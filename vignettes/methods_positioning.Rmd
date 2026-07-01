@@ -34,7 +34,7 @@ cell type, with replicate-aware inference built in.
 ```{r landscape-table}
 landscape <- data.frame(
   Tool = c(
-    "nnSVG / SpatialDE / SPARK", "STdiff (spatialGE)",
+    "nnSVG / SpatialDE / Hotspot / SPARK", "STdiff (spatialGE)",
     "MISTy", "COMMOT / CellChat",
     "NicheNet", "BANKSY / CellCharter",
     "RIPPLE"
@@ -190,14 +190,16 @@ workflow.
 - `vignette("getting_started", package = "ripple")`: 5-minute end-to-end
   on the bundled synthetic dataset.
 - `vignette("cosmx_nsclc_walkthrough", package = "ripple")`: applied
-  case study reproducing paper Figure 4 (CosMx NSCLC, 5 patients).
+  case study reproducing paper Figure 3 (CosMx NSCLC, 5 patients).
 - `vignette("benchmarks", package = "ripple")`: FDR calibration, power
-  curves, and runtime measurements (paper Figure 2).
+  curves, and runtime measurements (paper Figure S1).
 
 ## References
 
 - Weber et al. (2023). nnSVG for the scalable identification of spatially
   variable genes using nearest-neighbor Gaussian processes. *Nature Methods*.
+- DeTomaso & Yosef (2021). Hotspot identifies informative gene modules
+  across modalities of single-cell genomics. *Cell Systems*.
 - Ospina et al. (2024). spatialGE provides modeling and visualization tools
   for spatial transcriptomics data, including STdiff for spatially informed
   differential expression. *Genome Biology*.

@@ -323,7 +323,7 @@ the specificity check, the QC dashboard. The stages below are
 - **Real data, deep dive:** `vignette("cosmx_nsclc_walkthrough", package = "ripple")`.
   765 K-cell, 5-patient CosMx NSCLC analysis. Covers the broad-class
   specificity check, fGSEA, ligand-receptor integration, and the full
-  reproduction of paper Figure 4.
+  reproduction of paper Figure 3.
 - **Statistical validation:** `vignette("benchmarks", package = "ripple")`.
   FDR calibration and power benchmarks.
 - **Methods comparison:** `vignette("methods_positioning", package = "ripple")`.

@@ -36,7 +36,7 @@ statistical properties and runtime profile:
 4. **Runtime and memory.** Wall time and peak RAM across three dataset
    sizes. Shows how the method scales.
 
-All four panels appear in **paper Figure 2**, rendered by
+All four panels appear in **paper Figure S1**, rendered by
 `paper/render_figures.R`. This vignette uses the same cached RDS
 results from `inst/extdata/`.
 
@@ -110,7 +110,7 @@ multiplicative safety factor on top of Fisher's already-calibrated
 p-value combination. Under the null, the probability that all N
 per-sample coefficients agree on sign is `2 * 0.5^N`, so the gate
 scales the false-positive rate by this factor before FDR correction
-is even applied. Paper Figure 2A overlays this theoretical floor on
+is even applied. Paper Figure S1B overlays this theoretical floor on
 the empirical points.
 
 ## 2. Relaxed-gate calibration cost
@@ -141,7 +141,7 @@ knitr::kable(
 ```
 
 The pooled raw-p rate rises under the relaxed gate (for example at
-N = 10 it goes from 8e-5 strict to 5e-3 relaxed; see paper Figure 2B),
+N = 10 it goes from 8e-5 strict to 5e-3 relaxed; see paper Figure S1),
 but the **FDR rate stays close to strict** (mean FDR is still 0 at
 N = 10). BH correction absorbs most of the gate change. Relaxing the
 gate is cheap on FDR but loosens raw p-value interpretation, so
@@ -193,7 +193,7 @@ ggplot(
   theme(legend.position = "right", legend.box = "vertical")
 ```
 
-Headline numbers (matching paper Figure 2C):
+Headline numbers (matching paper Figure S1C):
 
 - At `|beta| >= 0.005` (a typical biological gradient), power is ~100 %
   for N >= 5 under both gates.
@@ -266,14 +266,14 @@ ggplot(rt_long, aes(x = size, y = value, fill = metric)) +
   theme(legend.position = "bottom")
 ```
 
-## Reproducing paper Figure 2
+## Reproducing paper Figure S1
 
 The exact 4-panel figure used in the paper (with Wilson CIs, theoretical
 floors, and zero-observation triangles) is rendered by:
 
-```{r render-fig2, eval = FALSE}
+```{r render-figS1, eval = FALSE}
 source("paper/render_figures.R")
-# writes paper/figures/fig_2_stat_validation.{pdf,png}
+# renders the statistical-validation figure (paper Figure S1) to paper/figures/
 ```
 
 ## Re-running the benchmarks from scratch
