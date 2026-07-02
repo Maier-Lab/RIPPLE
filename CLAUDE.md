@@ -329,7 +329,6 @@ library(meta)         # Meta-analysis across replicates
 library(scales)       # Axis formatting
 library(ggrepel)      # Volcano label placement
 library(pheatmap)     # Heatmaps
-library(spdep)        # Spatial autocorrelation (Moran's I)
 
 # Suggests (optional, for specific stages)
 library(SingleCellExperiment)  # SCE input support
@@ -337,6 +336,7 @@ library(SpatialExperiment)     # SPE input support
 library(fgsea)        # Pathway enrichment (Stage 5)
 library(msigdbr)      # Gene set collections (Stage 5)
 library(nichenetr)    # Gene alias conversion (Stage 6, optional)
+library(spdep)        # Moran's I via check_spatial_autocorrelation()
 ```
 
 L-R databases for Stage 6 are downloaded from [Zenodo](https://zenodo.org/records/7074291) and cached locally. The `nichenetr` package is NOT required -- only used optionally for gene alias conversion.

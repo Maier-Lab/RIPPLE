@@ -28,8 +28,7 @@ Imports:
     Matrix (>= 1.3),
     scales (>= 1.1),
     ggrepel (>= 0.9),
-    pheatmap (>= 1.0),
-    spdep (>= 1.2)
+    pheatmap (>= 1.0)
 Suggests:
     SingleCellExperiment,
     SpatialExperiment,
@@ -38,6 +37,7 @@ Suggests:
     fgsea (>= 1.18),
     msigdbr (>= 7.4),
     nichenetr (>= 1.1),
+    spdep (>= 1.2),
     R.utils,
     testthat (>= 3.0),
     knitr,

@@ -362,8 +362,12 @@ check_spatial_autocorrelation <- function(input,
                                           y_column = NULL,
                                           verbose = TRUE) {
   if (!requireNamespace("spdep", quietly = TRUE)) {
-    stop("Package 'spdep' is required for spatial autocorrelation testing.\n",
-      "Install with: install.packages('spdep')",
+    stop(
+      "Package 'spdep' is required for spatial autocorrelation testing.\n",
+      "Install with: install.packages('spdep')\n",
+      "On macOS inside a conda env, install via conda instead so the sf ",
+      "system libraries (GDAL, GEOS, PROJ) get resolved:\n",
+      "  conda install -c conda-forge r-spdep",
       call. = FALSE
     )
   }
