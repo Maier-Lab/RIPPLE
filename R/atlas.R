@@ -242,6 +242,28 @@ NULL
 }
 
 
+#' Render a pheatmap to a PDF with a guaranteed device close
+#'
+#' Guards the optional pheatmap dependency and registers dev.off() via on.exit
+#' so the graphics device is always closed -- even if pheatmap errors on a
+#' degenerate matrix. Otherwise a half-written PDF stays locked by the process
+#' on Windows. Returns the path on success, or NULL if pheatmap is unavailable.
+#' @noRd
+.save_pheatmap_pdf <- function(path, width, height, ...) {
+  if (!requireNamespace("pheatmap", quietly = TRUE)) {
+    warning("Package 'pheatmap' is not installed; skipping heatmap panel '",
+      basename(path), "'. Install with install.packages('pheatmap').",
+      call. = FALSE
+    )
+    return(invisible(NULL))
+  }
+  grDevices::pdf(path, width = width, height = height)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  pheatmap::pheatmap(...)
+  invisible(path)
+}
+
+
 #' Build specificity heatmap (Panel 6)
 #' @noRd
 .panel_specific_heatmap <- function(all_results, sig_results, gene_spec,
@@ -285,12 +307,10 @@ NULL
   )
   annot_colors <- list(specificity = specificity_colors)
 
-  grDevices::pdf(output_path,
+  .save_pheatmap_pdf(
+    output_path,
     width = max(8, ncol(heatmap_mat) * 0.8 + 2),
-    height = max(6, nrow(heatmap_mat) * 0.3 + 2)
-  )
-
-  pheatmap::pheatmap(
+    height = max(6, nrow(heatmap_mat) * 0.3 + 2),
     heatmap_mat,
     color = .diverging_palette(100),
     breaks = breaks,
@@ -306,9 +326,6 @@ NULL
     ),
     fontsize_row = 8, fontsize_col = 10, angle_col = 45
   )
-
-  grDevices::dev.off()
-  invisible(output_path)
 }
 
 
@@ -402,7 +419,6 @@ NULL
 #'   element_text scale_fill_manual scale_color_manual scale_color_gradientn
 #'   scale_size_continuous coord_cartesian facet_wrap geom_hline ggsave
 #' @importFrom ggrepel geom_text_repel
-#' @importFrom pheatmap pheatmap
 #' @export
 run_ripple_atlas <- function(results_dir,
                              output_dir = NULL,
@@ -683,11 +699,10 @@ run_ripple_atlas <- function(results_dir,
               breaks <- seq(-max_nes, max_nes, length.out = 101)
 
               f8 <- file.path(output_dir, "fgsea_heatmap.pdf")
-              grDevices::pdf(f8,
+              .save_pheatmap_pdf(
+                f8,
                 width = max(9, ncol(nes_mat) * 0.8 + 4),
-                height = max(6, nrow(nes_mat) * 0.35 + 2)
-              )
-              pheatmap::pheatmap(
+                height = max(6, nrow(nes_mat) * 0.35 + 2),
                 nes_mat,
                 color = .diverging_palette(100), breaks = breaks,
                 display_numbers = star_mat, fontsize_number = 10,
@@ -699,12 +714,13 @@ run_ripple_atlas <- function(results_dir,
                 ),
                 fontsize_row = 9, fontsize_col = 10, angle_col = 45
               )
-              grDevices::dev.off()
-              saved_plots <- c(saved_plots, f8)
-              .msg(
-                "  Saved: fgsea_heatmap.pdf (", length(sig_pathways),
-                " pathways)"
-              )
+              if (file.exists(f8)) {
+                saved_plots <- c(saved_plots, f8)
+                .msg(
+                  "  Saved: fgsea_heatmap.pdf (", length(sig_pathways),
+                  " pathways)"
+                )
+              }
             }
 
             # Pathway dotplot (significant pathways only) — delegates to

@@ -39,10 +39,15 @@ NULL
     )
   )
 
-  # Map shorthand names to msigdbr category/subcategory
+  # msigdbr >= 10.0 renamed the category/subcategory arguments to
+  # collection/subcollection and split "CP:KEGG" into KEGG_LEGACY / KEGG_MEDICUS.
+  new_api <- utils::packageVersion("msigdbr") >= "10.0.0"
+  kegg_sub <- if (new_api) "CP:KEGG_LEGACY" else "CP:KEGG"
+
+  # Map shorthand names to msigdbr collection/subcollection
   params <- switch(tolower(collection),
     "hallmark" = list(category = "H", subcategory = NULL),
-    "kegg" = list(category = "C2", subcategory = "CP:KEGG"),
+    "kegg" = list(category = "C2", subcategory = kegg_sub),
     "reactome" = list(category = "C2", subcategory = "CP:REACTOME"),
     "go_bp" = list(category = "C5", subcategory = "GO:BP"),
     stop("Unknown gene set collection '", collection,
@@ -51,12 +56,27 @@ NULL
     )
   )
 
-  if (is.null(params$subcategory)) {
-    gs_df <- msigdbr::msigdbr(species = species, category = params$category)
+  args <- list(species = species)
+  if (new_api) {
+    args$collection <- params$category
+    if (!is.null(params$subcategory)) args$subcollection <- params$subcategory
   } else {
-    gs_df <- msigdbr::msigdbr(
-      species = species, category = params$category,
-      subcategory = params$subcategory
+    args$category <- params$category
+    if (!is.null(params$subcategory)) args$subcategory <- params$subcategory
+  }
+  gs_df <- do.call(msigdbr::msigdbr, args)
+
+  if (!all(c("gs_name", "gene_symbol") %in% names(gs_df))) {
+    stop("msigdbr returned unexpected columns (need 'gs_name' and ",
+      "'gene_symbol'); installed msigdbr version ",
+      as.character(utils::packageVersion("msigdbr")), " may be unsupported.",
+      call. = FALSE
+    )
+  }
+  if (nrow(gs_df) == 0L) {
+    stop("msigdbr returned no gene sets for collection '", collection,
+      "' (species '", species, "'). Check the collection name and msigdbr version.",
+      call. = FALSE
     )
   }
 

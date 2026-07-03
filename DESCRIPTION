@@ -27,13 +27,13 @@ Imports:
     RANN (>= 2.6),
     Matrix (>= 1.3),
     scales (>= 1.1),
-    ggrepel (>= 0.9),
-    pheatmap (>= 1.0)
+    ggrepel (>= 0.9)
 Suggests:
     SingleCellExperiment,
     SpatialExperiment,
     SummarizedExperiment,
     S4Vectors,
+    pheatmap (>= 1.0),
     fgsea (>= 1.18),
     msigdbr (>= 7.4),
     nichenetr (>= 1.1),
@@ -43,6 +43,8 @@ Suggests:
     testthat (>= 3.0),
     knitr,
     rmarkdown
+Remotes:
+    saeyslab/nichenetr
 VignetteBuilder: knitr
 Depends:
     R (>= 4.0)

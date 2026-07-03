@@ -690,7 +690,15 @@ run_ripple_lr <- function(results_dir,
       response_induced
     }
 
-    if (length(response_in_matrix) >= 10 && length(potential_ligands) >= 5) {
+    if (!requireNamespace("nichenetr", quietly = TRUE)) {
+      .msg("  nichenetr not installed; skipping NicheNet ligand activity (Part 2).")
+      warning("nichenetr is not installed; NicheNet ligand-activity scoring ",
+        "(Part 2) was skipped. Direction-A ligand-receptor pairs are still ",
+        "reported. Install with remotes::install_github('saeyslab/nichenetr') ",
+        "to enable ligand-activity scoring.",
+        call. = FALSE
+      )
+    } else if (length(response_in_matrix) >= 10 && length(potential_ligands) >= 5) {
       ligand_activity <- nichenetr::predict_ligand_activities(
         geneset = response_in_matrix,
         background_expressed_genes = bg_in_matrix,

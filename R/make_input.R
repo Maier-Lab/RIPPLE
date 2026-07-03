@@ -154,10 +154,15 @@ make_ripple_input <- function(counts,
   # 5. Build canonical object
   # ------------------------------------------------------------------
   if (output_class == "SpatialExperiment") {
-    if (!requireNamespace("SpatialExperiment", quietly = TRUE)) {
-      stop("Package 'SpatialExperiment' is required for output_class = ",
-        "'SpatialExperiment'.\n",
-        "Install with: BiocManager::install('SpatialExperiment')",
+    missing_pkgs <- c("SpatialExperiment", "S4Vectors")[
+      !vapply(c("SpatialExperiment", "S4Vectors"), requireNamespace,
+        logical(1), quietly = TRUE)
+    ]
+    if (length(missing_pkgs)) {
+      stop("Package(s) ", paste(missing_pkgs, collapse = ", "),
+        " required for output_class = 'SpatialExperiment'.\n",
+        "Install with: BiocManager::install(c(",
+        paste(sprintf("'%s'", missing_pkgs), collapse = ", "), "))",
         call. = FALSE
       )
     }
