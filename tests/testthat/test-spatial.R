@@ -40,6 +40,19 @@ test_that("calculate_distance_to_type computes distances", {
   expect_true(dists[2] >= 0)
 })
 
+test_that("calculate_distance_to_type is NA-safe for unannotated cells", {
+  # Cell 3 has an NA type; it must not be treated as a target, and must not
+  # corrupt the RANN reference set (the pre-fix bug injected an NA row).
+  coords <- matrix(c(0, 0, 10, 0, 5, 0, 100, 0), ncol = 2, byrow = TRUE)
+  cell_types <- c("A", "B", NA, "B")
+
+  dists <- calculate_distance_to_type(coords, cell_types, "B")
+
+  expect_false(anyNA(dists))
+  expect_equal(dists[1], 10) # (0,0) -> nearest B at (10,0)
+  expect_equal(dists[3], 5) # (5,0) -> nearest B at (10,0), NA cell ignored
+})
+
 test_that("check_spatial_autocorrelation works on synthetic data", {
   skip_if_not_installed("spdep")
   skip_if_not_installed("SpatialExperiment")

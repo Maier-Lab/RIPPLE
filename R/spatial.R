@@ -186,7 +186,10 @@ build_radius_graph <- function(coords, radius) {
 #' @importFrom RANN nn2
 #' @export
 calculate_distance_to_type <- function(coords, cell_types, target_type) {
-  target_mask <- cell_types == target_type
+  # NA-safe: cell_types == target_type yields NA (not FALSE) for unannotated
+  # cells, which would inject NA-coordinate rows into the RANN reference set
+  # and corrupt every cell's nearest-target distance.
+  target_mask <- !is.na(cell_types) & cell_types == target_type
   target_coords <- coords[target_mask, , drop = FALSE]
 
   if (nrow(target_coords) == 0) {
@@ -397,8 +400,9 @@ check_spatial_autocorrelation <- function(input,
     )
   }
 
-  # Calculate distances to query
-  query_mask <- cell_data[[celltype_column]] == query_celltype
+  # Calculate distances to query (NA-safe mask; see calculate_distance_to_type)
+  celltypes_all <- cell_data[[celltype_column]]
+  query_mask <- !is.na(celltypes_all) & celltypes_all == query_celltype
   if (sum(query_mask) < 1) {
     stop("No query cells found for '", query_celltype, "'.", call. = FALSE)
   }
@@ -407,7 +411,8 @@ check_spatial_autocorrelation <- function(input,
   cell_data[, dist_to_query := as.vector(nn$nn.dists)]
 
   # Subset to target cells within max_distance
-  target_mask <- cell_data[[celltype_column]] == target_celltype &
+  target_mask <- !is.na(celltypes_all) &
+    celltypes_all == target_celltype &
     cell_data$dist_to_query <= max_distance_um
   target_data <- cell_data[target_mask]
   target_barcodes <- target_data$barcode

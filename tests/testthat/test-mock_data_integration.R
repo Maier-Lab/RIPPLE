@@ -71,3 +71,40 @@ test_that("run_ripple recovers the planted gradient on ripple_mock_data", {
     label = "Background gene false positive rate (T_cell)"
   )
 })
+
+test_that("run_ripple warns on NA cell types but still recovers the gradient", {
+  skip_if_not_installed("SpatialExperiment")
+  skip_if_not_installed("meta")
+
+  data(ripple_mock_data)
+  spe <- ripple_mock_data
+
+  # Inject NA cell types into a handful of Fibroblasts (not query/target).
+  fib_idx <- which(spe$cell_type == "Fibroblast")[1:5]
+  spe$cell_type[fib_idx] <- NA
+
+  out_dir <- tempfile("ripple_na_test_")
+  dir.create(out_dir)
+  on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
+
+  expect_warning(
+    results <- run_ripple(
+      input                = spe,
+      query_celltype       = "Tumor",
+      celltype_column      = "cell_type",
+      sample_column        = "sample_id",
+      output_dir           = out_dir,
+      min_cells_per_sample = 30,
+      min_expr_pct         = 0,
+      min_expr_floor       = 10,
+      verbose              = FALSE
+    ),
+    "NA in cell-type column"
+  )
+
+  # Distances must be finite (no NA-row corruption) and gradient still found.
+  induced <- results[grepl("^INDUCED", gene) & cell_type == "T_cell"]
+  expect_equal(nrow(induced), 5)
+  expect_true(all(induced$median_coef < 0))
+  expect_true(all(induced$fisher_fdr < 0.01))
+})

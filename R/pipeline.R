@@ -426,7 +426,17 @@ run_ripple <- function(
   coords <- as.matrix(cell_data[, ..coord_cols])
   sample_ids_all <- cell_data[[sample_column]]
 
-  query_mask <- cell_data[[celltype_column]] == query_celltype
+  # NA-safe mask: cell_types == query yields NA (not FALSE) for unannotated
+  # cells, which would inject NA-coordinate rows into the RANN query reference.
+  celltypes_all <- cell_data[[celltype_column]]
+  n_na_type <- sum(is.na(celltypes_all))
+  if (n_na_type > 0) {
+    warning(n_na_type, " cell(s) have NA in cell-type column '", celltype_column,
+      "'; they are excluded from query and target assignment.",
+      call. = FALSE
+    )
+  }
+  query_mask <- !is.na(celltypes_all) & celltypes_all == query_celltype
   n_query <- sum(query_mask)
   .msg("Query cells (", query_celltype, "): ", n_query, verbose = verbose)
 
@@ -1391,8 +1401,16 @@ run_ripple_confounder <- function(
   )
   coords <- as.matrix(cell_data[, ..coord_cols])
 
-  # Distance to query
-  query_mask <- cell_data[[celltype_column]] == query_celltype
+  # Distance to query (NA-safe masks; see run_ripple)
+  celltypes_all <- cell_data[[celltype_column]]
+  n_na_type <- sum(is.na(celltypes_all))
+  if (n_na_type > 0) {
+    warning(n_na_type, " cell(s) have NA in cell-type column '", celltype_column,
+      "'; they are excluded from query, control, and target assignment.",
+      call. = FALSE
+    )
+  }
+  query_mask <- !is.na(celltypes_all) & celltypes_all == query_celltype
   .msg("Query cells (", query_celltype, "): ", sum(query_mask),
     verbose = verbose
   )
@@ -1407,7 +1425,7 @@ run_ripple_confounder <- function(
   )]
 
   # Distance to control
-  control_mask <- cell_data[[celltype_column]] == control_celltype
+  control_mask <- !is.na(celltypes_all) & celltypes_all == control_celltype
   n_control_total <- sum(control_mask)
   .msg("Control cells (", control_celltype, "): ", n_control_total,
     verbose = verbose
