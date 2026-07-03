@@ -52,7 +52,9 @@ test_that("run_ripple honors options() for an omitted argument (regression)", {
     out_dir <- tempfile("ripple_cfg_test_")
     dir.create(out_dir)
     on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
-    run_ripple(
+    # A small max_distance_um legitimately trips the distance-cap warning;
+    # it is orthogonal to the config-precedence behaviour under test here.
+    suppressWarnings(run_ripple(
       input                = ripple_mock_data,
       query_celltype       = "Tumor",
       celltype_column      = "cell_type",
@@ -63,7 +65,7 @@ test_that("run_ripple honors options() for an omitted argument (regression)", {
       min_expr_floor       = 10,
       verbose              = FALSE,
       ...
-    )
+    ))
   }
 
   # Argument omitted, but option set to 60: must match passing 60 explicitly,

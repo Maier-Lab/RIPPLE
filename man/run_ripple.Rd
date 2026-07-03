@@ -152,6 +152,17 @@ using the median per-sample coefficient as the gradient score.
 }
 }
 
+\section{Warnings}{
+
+Data-quality caveats are raised via \code{warning()} (not \code{message()}),
+so they surface even when \code{verbose = FALSE} -- the usual case in
+batch/SLURM runs where an untrustworthy result would otherwise look like a
+clean success. These include: a large fraction of cells beyond
+\code{max_distance_um}, cell types skipped for too few cells/samples/genes,
+only two valid samples (low-power meta-analysis), and an empty result set.
+Suppress with \code{suppressWarnings()} if you have accounted for them.
+}
+
 \examples{
 \dontrun{
 # Minimal run using the synthetic dataset shipped with the package.

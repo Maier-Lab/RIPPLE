@@ -194,6 +194,15 @@ NULL
 #'     = gene is \strong{repressed} near the query cell type.
 #' }
 #'
+#' @section Warnings:
+#' Data-quality caveats are raised via \code{warning()} (not \code{message()}),
+#' so they surface even when \code{verbose = FALSE} -- the usual case in
+#' batch/SLURM runs where an untrustworthy result would otherwise look like a
+#' clean success. These include: a large fraction of cells beyond
+#' \code{max_distance_um}, cell types skipped for too few cells/samples/genes,
+#' only two valid samples (low-power meta-analysis), and an empty result set.
+#' Suppress with \code{suppressWarnings()} if you have accounted for them.
+#'
 #' @examples
 #' \dontrun{
 #' # Minimal run using the synthetic dataset shipped with the package.
@@ -478,11 +487,9 @@ run_ripple <- function(
   cell_data[dist_to_query > max_distance_um, dist_to_query := max_distance_um]
 
   if (pct_beyond > 20) {
-    .msg("  WARNING: ", round(pct_beyond), "% of cells are beyond the distance ",
-      "cap (", max_distance_um, " um). Consider increasing max_distance_um ",
-      "or checking for tissue boundary effects.",
-      verbose = verbose
-    )
+    warning(round(pct_beyond), "% of cells are beyond the distance cap (",
+      max_distance_um, " um) and were clamped to it. Consider increasing ",
+      "max_distance_um or checking for tissue boundary effects.", call. = FALSE)
   }
 
   .msg("Distance distribution:", verbose = verbose)
@@ -584,6 +591,9 @@ run_ripple <- function(
   .msg(strrep("=", 70), verbose = verbose)
 
   all_results <- list()
+  # Cell types dropped mid-loop, with reasons -- surfaced as one warning at the
+  # end so batch/SLURM runs (verbose = FALSE) do not silently omit cell types.
+  skipped_celltypes <- character(0)
 
   for (ct_name in target_celltypes) {
     .msg("\n", strrep("-", 60), verbose = verbose)
@@ -601,6 +611,9 @@ run_ripple <- function(
 
     if (nrow(target_data) < min_cells_per_sample * 2) {
       .msg("  Insufficient cells for analysis", verbose = verbose)
+      skipped_celltypes[ct_name] <- sprintf(
+        "only %d cells (need >= %d)", nrow(target_data), min_cells_per_sample * 2
+      )
       next
     }
 
@@ -616,12 +629,15 @@ run_ripple <- function(
       .msg("  Need at least 2 valid samples for meta-analysis",
         verbose = verbose
       )
+      skipped_celltypes[ct_name] <- sprintf(
+        "only %d sample(s) with >= %d cells (need >= 2)",
+        length(valid_samples), min_cells_per_sample
+      )
       next
     }
     if (length(valid_samples) == 2) {
-      .msg("  WARNING: Only 2 valid samples - meta-analysis will have low power",
-        verbose = verbose
-      )
+      warning("Cell type '", ct_name, "': only 2 valid samples; meta-analysis ",
+        "has low power and Fisher p-values are unstable.", call. = FALSE)
     }
 
     # Target cell barcodes in valid samples
@@ -702,6 +718,10 @@ run_ripple <- function(
 
     if (length(genes_to_analyze) < 10) {
       .msg("  Too few genes passed filtering", verbose = verbose)
+      skipped_celltypes[ct_name] <- sprintf(
+        "only %d genes passed expression filtering (need >= 10)",
+        length(genes_to_analyze)
+      )
       next
     }
 
@@ -1012,6 +1032,16 @@ run_ripple <- function(
     .msg("  Analysis complete for ", ct_name, verbose = verbose)
   }
 
+  # Surface all dropped cell types as a single warning (visible even when
+  # verbose = FALSE, e.g. in SLURM/batch runs).
+  if (length(skipped_celltypes) > 0) {
+    warning(length(skipped_celltypes), " of ", length(target_celltypes),
+      " cell type(s) skipped:\n",
+      paste0("  - ", names(skipped_celltypes), ": ", skipped_celltypes,
+        collapse = "\n"),
+      call. = FALSE)
+  }
+
   # --------------------------------------------------------------------------
   # 11. Merge results across cell types
   # --------------------------------------------------------------------------
@@ -1020,7 +1050,8 @@ run_ripple <- function(
   .msg(strrep("=", 70), verbose = verbose)
 
   if (length(all_results) == 0) {
-    .msg("No cell types had sufficient data for analysis.", verbose = verbose)
+    warning("No cell types had sufficient data for analysis; ",
+      "returning an empty result.", call. = FALSE)
     return(invisible(data.table::data.table()))
   }
 
@@ -1279,9 +1310,8 @@ run_ripple_confounder <- function(
 
   # Verify significance column
   if (!sig_column %in% names(stage1_all)) {
-    .msg("WARNING: '", sig_column, "' not found. Falling back to 'fdr'.",
-      verbose = verbose
-    )
+    warning("Significance column '", sig_column, "' not found in Stage 1 ",
+      "results; falling back to 'fdr'.", call. = FALSE)
     sig_column <- "fdr"
     if (!sig_column %in% names(stage1_all)) {
       stop("Neither 'fisher_fdr' nor 'fdr' found in Stage 1 results.",
@@ -1297,9 +1327,9 @@ run_ripple_confounder <- function(
   )
 
   if (nrow(stage1_sig) == 0) {
-    .msg("No significant genes from Stage 1. Nothing to validate.",
-      verbose = verbose
-    )
+    warning("No significant genes from Stage 1 (", sig_column, " < ",
+      fdr_threshold, "); nothing to validate. Returning an empty result.",
+      call. = FALSE)
     return(invisible(data.table::data.table()))
   }
 
@@ -1451,16 +1481,30 @@ run_ripple_confounder <- function(
   ]
   data.table::setnames(control_per_sample, "N", "n_control")
 
-  # Collinearity check
+  # Collinearity check. High correlation between distance-to-query and
+  # distance-to-control destabilises the bivariate GLM (inflated SEs, unstable
+  # coefficients), so collinear samples are collected and warned about once.
   .msg("\nCollinearity Diagnostics:", verbose = verbose)
   samples_all <- unique(cell_data[[sample_column]])
+  collinear_samples <- character(0)
   for (samp in samples_all) {
     samp_data <- cell_data[get(sample_column) == samp]
     cor_val <- stats::cor(samp_data$dist_to_query, samp_data$dist_to_control,
       use = "complete.obs", method = "pearson"
     )
-    flag <- if (abs(cor_val) > 0.8) " [WARNING: high collinearity]" else ""
+    is_collinear <- !is.na(cor_val) && abs(cor_val) > 0.8
+    if (is_collinear) {
+      collinear_samples[as.character(samp)] <- round(cor_val, 3)
+    }
+    flag <- if (is_collinear) " [WARNING: high collinearity]" else ""
     .msg("  ", samp, ": r = ", round(cor_val, 3), flag, verbose = verbose)
+  }
+  if (length(collinear_samples) > 0) {
+    warning("High collinearity (|r| > 0.8) between distance-to-query and ",
+      "distance-to-control in ", length(collinear_samples), " sample(s): ",
+      paste0(names(collinear_samples), " (r=", collinear_samples, ")",
+        collapse = ", "),
+      ". Stage 4 coefficients for these samples are unstable.", call. = FALSE)
   }
 
   # --------------------------------------------------------------------------
@@ -1988,14 +2032,26 @@ merge_ripple_results <- function(
       ct_idx <- which(all_results$cell_type == ct_name)
       if (length(ct_idx) > 0) {
         matched <- match(all_results$gene[ct_idx], fisher_dt$gene)
-        all_results[ct_idx, median_coef := fisher_dt$median_coef[matched]]
-        all_results[ct_idx, fisher_pval := fisher_dt$fisher_pval[matched]]
-        all_results[ct_idx, fisher_fdr := fisher_dt$fisher_fdr[matched]]
+        # Only update genes that exist in the recomputed table. Genes present
+        # in meta_analysis but absent from coef_per_sample match to NA and must
+        # NOT be overwritten with NA -- keep their original values.
+        keep <- !is.na(matched)
+        n_unmatched <- sum(!keep)
+        if (n_unmatched > 0) {
+          warning(ct_name, ": ", n_unmatched, " gene(s) in the summary have no ",
+            "per-sample coefficients and were left unchanged during Fisher ",
+            "recomputation.", call. = FALSE)
+        }
+        upd_idx <- ct_idx[keep]
+        m <- matched[keep]
+        all_results[upd_idx, median_coef := fisher_dt$median_coef[m]]
+        all_results[upd_idx, fisher_pval := fisher_dt$fisher_pval[m]]
+        all_results[upd_idx, fisher_fdr := fisher_dt$fisher_fdr[m]]
         if ("gradient_score" %in% names(all_results)) {
-          all_results[ct_idx, gradient_score := fisher_dt$median_coef[matched]]
+          all_results[upd_idx, gradient_score := fisher_dt$median_coef[m]]
         }
         if ("sign_consistency" %in% names(all_results)) {
-          all_results[ct_idx, sign_consistency := fisher_dt$sign_consistency[matched]]
+          all_results[upd_idx, sign_consistency := fisher_dt$sign_consistency[m]]
         }
       }
 

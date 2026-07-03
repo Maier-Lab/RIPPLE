@@ -167,6 +167,9 @@ run_permutation_test <- function(counts, coords_target, coords_all,
   # Calculate empirical p-value (two-sided)
   null_coefs <- null_coefs[!is.na(null_coefs)]
   if (length(null_coefs) < 10) {
+    warning("Only ", length(null_coefs), " of ", n_perms, " permutations ",
+      "produced a valid null coefficient (need >= 10); returning NA. This ",
+      "usually means too few samples reach min_cells_per_sample.", call. = FALSE)
     return(list(null_coefs = null_coefs, perm_pval = NA_real_))
   }
 
@@ -325,7 +328,14 @@ run_permutation_tests <- function(genes, count_matrix, target_barcodes,
     data.table::data.table(gene = g, perm_pval = perm_pval)
   })
 
-  data.table::rbindlist(results)
+  out <- data.table::rbindlist(results)
+  n_na <- sum(is.na(out$perm_pval))
+  if (n_na > 0) {
+    warning(n_na, " of ", nrow(out), " gene(s) got an NA permutation p-value ",
+      "(fewer than 10 valid permutations, usually too few samples reaching ",
+      "min_cells_per_sample).", call. = FALSE)
+  }
+  out
 }
 
 

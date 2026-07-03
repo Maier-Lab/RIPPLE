@@ -72,6 +72,64 @@ test_that("run_ripple recovers the planted gradient on ripple_mock_data", {
   )
 })
 
+test_that("run_ripple warns (not just messages) when cell types are skipped", {
+  skip_if_not_installed("SpatialExperiment")
+  skip_if_not_installed("meta")
+
+  data(ripple_mock_data)
+  out_dir <- tempfile("ripple_skip_test_")
+  dir.create(out_dir)
+  on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
+
+  # Fibroblast has 70 cells/sample; a 90-cell floor leaves it with 0 valid
+  # samples, so it must be skipped -- and that must surface as a warning even
+  # with verbose = FALSE (the batch/SLURM case).
+  expect_warning(
+    run_ripple(
+      input                = ripple_mock_data,
+      query_celltype       = "Tumor",
+      celltype_column      = "cell_type",
+      sample_column        = "sample_id",
+      output_dir           = out_dir,
+      target_celltypes     = c("Fibroblast", "T_cell"),
+      min_cells_per_sample = 90,
+      min_expr_pct         = 0,
+      min_expr_floor       = 10,
+      verbose              = FALSE
+    ),
+    "cell type\\(s\\) skipped"
+  )
+})
+
+test_that("run_ripple warns and returns empty when no cell type qualifies", {
+  skip_if_not_installed("SpatialExperiment")
+  skip_if_not_installed("meta")
+
+  data(ripple_mock_data)
+  out_dir <- tempfile("ripple_empty_test_")
+  dir.create(out_dir)
+  on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
+
+  suppressWarnings(
+    res <- expect_warning(
+      run_ripple(
+        input                = ripple_mock_data,
+        query_celltype       = "Tumor",
+        celltype_column      = "cell_type",
+        sample_column        = "sample_id",
+        output_dir           = out_dir,
+        min_cells_per_sample = 500,
+        min_expr_pct         = 0,
+        min_expr_floor       = 10,
+        verbose              = FALSE
+      ),
+      "No cell types had sufficient data"
+    )
+  )
+  expect_true(is.data.frame(res))
+  expect_equal(nrow(res), 0)
+})
+
 test_that("run_ripple warns on NA cell types but still recovers the gradient", {
   skip_if_not_installed("SpatialExperiment")
   skip_if_not_installed("meta")

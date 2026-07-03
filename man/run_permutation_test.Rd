@@ -76,7 +76,9 @@ For each permutation:
 \item Randomly sample pseudo-query cells WITHIN each sample (stratified),
 preserving the original query cell count per sample.
 \item Compute distances from all target cells to the nearest pseudo-query cell.
-\item Fit per-sample Poisson GLMs and combine via inverse-variance weighting.
+\item Fit per-sample Poisson GLMs and take the median of per-sample
+coefficients -- the same statistic as the observed \code{median_coef},
+so the empirical p-value compares like with like.
 }
 
 The empirical p-value is calculated as:
