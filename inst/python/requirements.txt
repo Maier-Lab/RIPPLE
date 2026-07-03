@@ -1,0 +1,11 @@
+# Python dependencies for RIPPLE Stage 2 GPU permutation testing
+# (inst/python/run_permutation_gpu.py).
+#
+# NumPy MUST be < 2: PyTorch 2.1 is not ABI-compatible with NumPy 2.x and
+# fails with an opaque C-level error otherwise. The script also checks this
+# at runtime and exits early with a clear message.
+numpy<2
+torch>=2.0,<2.2
+anndata
+pandas
+scipy

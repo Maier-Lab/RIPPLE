@@ -38,6 +38,15 @@ import torch
 from scipy import sparse
 from pathlib import Path
 
+# PyTorch 2.1 is ABI-incompatible with NumPy 2.x. Fail early with an actionable
+# message instead of a cryptic C-level ABI error deep inside a tensor op.
+if int(np.__version__.split(".")[0]) >= 2:
+    sys.exit(
+        f"NumPy {np.__version__} detected, but this script requires numpy<2 "
+        "(PyTorch 2.1 is not ABI-compatible with NumPy 2.x). "
+        "Install a compatible version with: pip install 'numpy<2'"
+    )
+
 # =============================================================================
 # Configuration
 # =============================================================================
