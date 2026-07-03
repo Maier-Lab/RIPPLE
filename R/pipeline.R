@@ -236,18 +236,18 @@ run_ripple <- function(
   # --------------------------------------------------------------------------
   # 0. Resolve defaults from package options
   # --------------------------------------------------------------------------
-  sample_column <- .resolve(sample_column, "sample_column", "sample_id")
+  if (missing(sample_column)) sample_column <- .resolve(NULL, "sample_column", "sample_id")
   condition_column <- .resolve(condition_column, "condition_column", NULL)
   condition_value <- .resolve(condition_value, "condition_value", NULL)
-  k_neighbors <- .resolve(k_neighbors, "k_neighbors", 1L)
-  max_distance_um <- .resolve(max_distance_um, "max_distance_um", 200)
+  if (missing(k_neighbors)) k_neighbors <- .resolve(NULL, "k_neighbors", 1L)
+  if (missing(max_distance_um)) max_distance_um <- .resolve(NULL, "max_distance_um", 200)
 
-  fdr_threshold <- .resolve(fdr_threshold, "fdr_threshold", 0.05)
-  min_cells_per_sample <- .resolve(min_cells_per_sample, "min_cells_per_sample", 30L)
-  min_expr_floor <- .resolve(min_expr_floor, "min_expr_cells", 25L)
-  min_expr_pct <- .resolve(min_expr_pct, "min_expr_pct", 0.01)
-  sign_consistency <- .resolve(sign_consistency, "sign_consistency", 1.0)
-  verbose <- .resolve(verbose, "verbose", TRUE)
+  if (missing(fdr_threshold)) fdr_threshold <- .resolve(NULL, "fdr_threshold", 0.05)
+  if (missing(min_cells_per_sample)) min_cells_per_sample <- .resolve(NULL, "min_cells_per_sample", 30L)
+  if (missing(min_expr_floor)) min_expr_floor <- .resolve(NULL, "min_expr_cells", 25L)
+  if (missing(min_expr_pct)) min_expr_pct <- .resolve(NULL, "min_expr_pct", 0.01)
+  if (missing(sign_consistency)) sign_consistency <- .resolve(NULL, "sign_consistency", 1.0)
+  if (missing(verbose)) verbose <- .resolve(NULL, "verbose", TRUE)
 
   if (is.null(query_label)) query_label <- query_celltype
   if (is.null(priority_genes)) priority_genes <- .default_priority_genes()
@@ -1220,14 +1220,14 @@ run_ripple_confounder <- function(
   # --------------------------------------------------------------------------
   # 0. Resolve defaults
   # --------------------------------------------------------------------------
-  sample_column <- .resolve(sample_column, "sample_column", "sample_id")
+  if (missing(sample_column)) sample_column <- .resolve(NULL, "sample_column", "sample_id")
   condition_column <- .resolve(condition_column, "condition_column", NULL)
   condition_value <- .resolve(condition_value, "condition_value", NULL)
-  fdr_threshold <- .resolve(fdr_threshold, "fdr_threshold", 0.05)
-  min_cells_per_sample <- .resolve(min_cells_per_sample, "min_cells_per_sample", 30L)
-  sign_consistency <- .resolve(sign_consistency, "sign_consistency", 1.0)
-  max_distance_um <- .resolve(max_distance_um, "max_distance_um", 200)
-  verbose <- .resolve(verbose, "verbose", TRUE)
+  if (missing(fdr_threshold)) fdr_threshold <- .resolve(NULL, "fdr_threshold", 0.05)
+  if (missing(min_cells_per_sample)) min_cells_per_sample <- .resolve(NULL, "min_cells_per_sample", 30L)
+  if (missing(sign_consistency)) sign_consistency <- .resolve(NULL, "sign_consistency", 1.0)
+  if (missing(max_distance_um)) max_distance_um <- .resolve(NULL, "max_distance_um", 200)
+  if (missing(verbose)) verbose <- .resolve(NULL, "verbose", TRUE)
 
   if (is.null(query_label)) query_label <- query_celltype
   min_expr_cells_glm <- 5L
@@ -1885,9 +1885,9 @@ merge_ripple_results <- function(
     sign_threshold = 1.0,
     recompute_fisher = TRUE,
     verbose = TRUE) {
-  fdr_threshold <- .resolve(fdr_threshold, "fdr_threshold", 0.05)
-  sign_threshold <- .resolve(sign_threshold, "sign_consistency", 1.0)
-  verbose <- .resolve(verbose, "verbose", TRUE)
+  if (missing(fdr_threshold)) fdr_threshold <- .resolve(NULL, "fdr_threshold", 0.05)
+  if (missing(sign_threshold)) sign_threshold <- .resolve(NULL, "sign_consistency", 1.0)
+  if (missing(verbose)) verbose <- .resolve(NULL, "verbose", TRUE)
 
   .msg(strrep("=", 70), verbose = verbose)
   .msg("Merge RIPPLE Results", verbose = verbose)

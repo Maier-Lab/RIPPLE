@@ -39,6 +39,7 @@ Suggests:
     nichenetr (>= 1.1),
     spdep (>= 1.2),
     R.utils,
+    withr,
     testthat (>= 3.0),
     knitr,
     rmarkdown

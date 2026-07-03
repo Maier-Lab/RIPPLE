@@ -13,19 +13,35 @@ NULL
 # .onLoad — initialize package options from env vars
 # ============================================================================
 
+# Parse a numeric environment variable, falling back to `default` (with a
+# warning) if the value is set but cannot be coerced to a finite number.
+.env_num <- function(var, default, as_int = FALSE) {
+  raw <- Sys.getenv(var, unset = NA_character_)
+  if (is.na(raw) || !nzchar(raw)) return(default)
+  val <- suppressWarnings(if (as_int) as.integer(raw) else as.numeric(raw))
+  if (length(val) != 1L || is.na(val)) {
+    warning(sprintf(
+      "Environment variable %s = '%s' is not a valid number; using default %s.",
+      var, raw, format(default)
+    ), call. = FALSE)
+    return(default)
+  }
+  val
+}
+
 .onLoad <- function(libname, pkgname) {
   op <- options()
   ripple_defaults <- list(
     ripple.sample_column = Sys.getenv("SAMPLE_COLUMN", "sample_id"),
     ripple.condition_column = Sys.getenv("CONDITION_COLUMN", ""),
     ripple.condition_value = Sys.getenv("CONDITION_VALUE", ""),
-    ripple.k_neighbors = as.integer(Sys.getenv("K_NEIGHBORS", "1")),
-    ripple.max_distance_um = as.numeric(Sys.getenv("MAX_DISTANCE_UM", "200")),
-    ripple.fdr_threshold = as.numeric(Sys.getenv("FDR_THRESHOLD", "0.05")),
-    ripple.min_cells_per_sample = as.integer(Sys.getenv("MIN_CELLS_PER_SAMPLE", "30")),
-    ripple.min_expr_cells = as.integer(Sys.getenv("MIN_EXPR_CELLS", "25")),
-    ripple.min_expr_pct = as.numeric(Sys.getenv("MIN_EXPR_PCT", "0.01")),
-    ripple.sign_consistency = as.numeric(Sys.getenv("SIGN_CONSISTENCY_THRESHOLD", "1.0")),
+    ripple.k_neighbors = .env_num("K_NEIGHBORS", 1L, as_int = TRUE),
+    ripple.max_distance_um = .env_num("MAX_DISTANCE_UM", 200),
+    ripple.fdr_threshold = .env_num("FDR_THRESHOLD", 0.05),
+    ripple.min_cells_per_sample = .env_num("MIN_CELLS_PER_SAMPLE", 30L, as_int = TRUE),
+    ripple.min_expr_cells = .env_num("MIN_EXPR_CELLS", 25L, as_int = TRUE),
+    ripple.min_expr_pct = .env_num("MIN_EXPR_PCT", 0.01),
+    ripple.sign_consistency = .env_num("SIGN_CONSISTENCY_THRESHOLD", 1.0),
     ripple.verbose = TRUE
   )
   # Only set options that aren't already set
@@ -33,6 +49,14 @@ NULL
   if (any(toset)) options(ripple_defaults[toset])
   invisible()
 }
+
+# Recognized RIPPLE option names (without the `ripple.` prefix). Used by
+# ripple_config() to catch typos when setting options.
+.ripple_known_options <- c(
+  "sample_column", "condition_column", "condition_value", "k_neighbors",
+  "max_distance_um", "fdr_threshold", "min_cells_per_sample", "min_expr_cells",
+  "min_expr_pct", "sign_consistency", "verbose"
+)
 
 
 #' Get or set RIPPLE configuration options
@@ -110,6 +134,13 @@ ripple_config <- function(...) {
 
   # Named arguments: set options
   if (!is.null(names(args)) && all(nzchar(names(args)))) {
+    unknown <- setdiff(names(args), .ripple_known_options)
+    if (length(unknown)) {
+      warning("Unknown RIPPLE option(s): ", paste(unknown, collapse = ", "),
+        ". Known options: ", paste(.ripple_known_options, collapse = ", "),
+        call. = FALSE
+      )
+    }
     old_vals <- list()
     new_opts <- list()
     for (nm in names(args)) {
