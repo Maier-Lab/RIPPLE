@@ -1955,48 +1955,87 @@ plot_k_diagnostics <- function(input,
     stop("celltype_column '", celltype_column, "' not found.", call. = FALSE)
   }
 
-  query_mask <- cell_data[[celltype_column]] == query_celltype
+  celltypes_all <- cell_data[[celltype_column]]
+  query_mask <- !is.na(celltypes_all) & celltypes_all == query_celltype
   if (sum(query_mask) < 1) {
     stop("No query cells found for '", query_celltype, "'.", call. = FALSE)
   }
-  query_coords <- coords[query_mask, , drop = FALSE]
 
   # Target cell types (everything except query)
-  all_types <- unique(cell_data[[celltype_column]])
+  all_types <- unique(celltypes_all)
   target_types <- setdiff(all_types, c(query_celltype, NA_character_))
 
   max_k <- max(k_range)
-  .msg("Computing distances for k = 1 to ", max_k, "...")
 
-  # One nn2 call with max k
-  effective_k <- min(max_k, nrow(query_coords))
+  # Distances MUST be measured within each sample's own coordinate frame. A
+  # single pooled nn2 can match a target cell to a query cell in a different
+  # sample whenever coordinate frames overlap (e.g. per-slide/per-patient
+  # coordinates that both start near the origin), producing meaningless
+  # distances -- exactly the failure this diagnostic is meant to catch.
+  use_samples <- !is.null(sample_column) && sample_column %in% names(cell_data)
+  if (!use_samples) {
+    warning("sample_column '", sample_column, "' not found; computing k ",
+      "diagnostics pooled across all cells. If coordinate frames differ per ",
+      "sample, the resulting distances are not meaningful.", call. = FALSE)
+    sample_vec <- rep("__all__", nrow(cell_data))
+  } else {
+    sample_vec <- as.character(cell_data[[sample_column]])
+  }
+  samples <- unique(sample_vec[!is.na(sample_vec)])
+
+  # Cap k at the smallest per-sample query count so every sample supports
+  # every k in the range.
+  query_per_sample <- vapply(samples, function(s) {
+    sum(query_mask & sample_vec == s)
+  }, integer(1))
+  samples_with_query <- samples[query_per_sample >= 1]
+  if (length(samples_with_query) < length(samples)) {
+    warning(length(samples) - length(samples_with_query),
+      " sample(s) have no '", query_celltype, "' cells; their cells are ",
+      "excluded from the k diagnostics.", call. = FALSE)
+  }
+  min_query <- min(query_per_sample[query_per_sample >= 1])
+  effective_k <- min(max_k, min_query)
   if (effective_k < max_k) {
-    .msg("  Only ", nrow(query_coords), " query cells; capping k_range at ",
-      effective_k)
+    .msg("  Smallest per-sample query count is ", min_query,
+      "; capping k_range at ", effective_k)
     k_range <- k_range[k_range <= effective_k]
   }
 
-  nn <- RANN::nn2(query_coords, coords, k = effective_k)
+  .msg("Computing per-sample distances for k = 1 to ", effective_k, "...")
+
+  # Fill an (n_cells x effective_k) distance matrix, one nn2 call per sample.
+  nn_dists <- matrix(NA_real_, nrow = nrow(cell_data), ncol = effective_k)
+  for (s in samples_with_query) {
+    cell_idx <- which(sample_vec == s)
+    q_idx <- which(query_mask & sample_vec == s)
+    nn_s <- RANN::nn2(
+      coords[q_idx, , drop = FALSE],
+      coords[cell_idx, , drop = FALSE],
+      k = effective_k
+    )
+    nn_dists[cell_idx, ] <- nn_s$nn.dists
+  }
 
   # Compute per-k, per-cell-type stats
   .msg("Computing per-cell-type distance statistics...")
   summary_list <- lapply(k_range, function(k) {
     if (k == 1) {
-      dists <- as.vector(nn$nn.dists[, 1])
+      dists <- nn_dists[, 1]
     } else {
-      dists <- rowMeans(nn$nn.dists[, 1:k, drop = FALSE])
+      dists <- rowMeans(nn_dists[, 1:k, drop = FALSE])
     }
     dists <- pmin(dists, max_distance_um)
 
     data.table::rbindlist(lapply(target_types, function(ct) {
-      ct_mask <- cell_data[[celltype_column]] == ct
+      ct_mask <- !is.na(celltypes_all) & celltypes_all == ct
       ct_dists <- dists[ct_mask]
       data.table::data.table(
         k = k,
         cell_type = ct,
         mean_dist = mean(ct_dists, na.rm = TRUE),
         sd_dist = stats::sd(ct_dists, na.rm = TRUE),
-        n_cells = sum(ct_mask)
+        n_cells = sum(ct_mask & !is.na(dists))
       )
     }))
   })

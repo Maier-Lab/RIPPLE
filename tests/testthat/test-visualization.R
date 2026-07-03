@@ -458,6 +458,49 @@ test_that("plot_confounder_ratio errors when no plottable rows remain", {
   )
 })
 
+test_that("plot_k_diagnostics measures distances within each sample", {
+  skip_if_not_installed("SpatialExperiment")
+  skip_if_not_installed("S4Vectors")
+
+  # Two samples occupying the SAME coordinate frame. Sample A: query at x=0,
+  # its target at x=5. Sample B: query at x=5, its target at x=0. Pooled nn2
+  # would match A's target (5,0) to B's query at (5,0) -> distance 0 (wrong);
+  # per-sample it must find its own query at distance exactly 5.
+  qA <- cbind(0, c(0, 1, 2)) # 3 query cells at x=0 (sample A)
+  tA <- cbind(5, 0) # target at x=5 (sample A)
+  qB <- cbind(5, c(0, 1, 2)) # 3 query cells at x=5 (sample B)
+  tB <- cbind(0, 0) # target at x=0 (sample B)
+
+  coords <- rbind(qA, tA, qB, tB)
+  ct <- c(rep("query", 3), "target", rep("query", 3), "target")
+  samp <- c(rep("A", 4), rep("B", 4))
+  colnames(coords) <- c("x", "y")
+  rownames(coords) <- paste0("cell_", seq_len(nrow(coords)))
+
+  counts <- matrix(1L, nrow = 2, ncol = nrow(coords),
+    dimnames = list(c("g1", "g2"), rownames(coords)))
+  counts <- methods::as(counts, "CsparseMatrix")
+
+  spe <- SpatialExperiment::SpatialExperiment(
+    assays = list(counts = counts),
+    colData = S4Vectors::DataFrame(cell_type = ct, patient = samp,
+      row.names = rownames(coords)),
+    spatialCoords = coords
+  )
+
+  grDevices::pdf(tempfile(fileext = ".pdf"))
+  on.exit(grDevices::dev.off(), add = TRUE)
+  res <- plot_k_diagnostics(
+    input = spe, query_celltype = "query", celltype_column = "cell_type",
+    sample_column = "patient", k_range = 1:3, verbose = FALSE
+  )
+
+  # Each target's nearest within-sample query is exactly 5 um away. A pooled
+  # search would instead report 0 (matching the other sample's query).
+  target_k1 <- res[cell_type == "target" & k == 1]
+  expect_equal(target_k1$mean_dist, 5, tolerance = 1e-6)
+})
+
 test_that("ripple_plot_qc errors when summary file is missing", {
   bad <- tempfile("ripple_qc_bad_")
   dir.create(bad)
