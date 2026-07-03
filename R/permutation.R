@@ -49,7 +49,9 @@ NULL
 #'   \item Randomly sample pseudo-query cells WITHIN each sample (stratified),
 #'     preserving the original query cell count per sample.
 #'   \item Compute distances from all target cells to the nearest pseudo-query cell.
-#'   \item Fit per-sample Poisson GLMs and combine via inverse-variance weighting.
+#'   \item Fit per-sample Poisson GLMs and take the median of per-sample
+#'     coefficients -- the same statistic as the observed \code{median_coef},
+#'     so the empirical p-value compares like with like.
 #' }
 #'
 #' The empirical p-value is calculated as:
@@ -72,7 +74,7 @@ NULL
 #' }
 #'
 #' @importFrom RANN nn2
-#' @importFrom stats glm poisson
+#' @importFrom stats glm poisson median
 #' @export
 run_permutation_test <- function(counts, coords_target, coords_all,
                                  sample_ids, n_perms = 500,
@@ -151,11 +153,12 @@ run_permutation_test <- function(counts, coords_target, coords_all,
       }
     }
 
-    # Simple inverse-variance weighted mean (faster than full meta-analysis)
+    # Null statistic must match the observed statistic (median_coef, the
+    # equal-weight median of per-sample coefficients from compute_fisher_pval).
+    # ses > 0 identifies samples whose GLM actually converged.
     valid <- !is.na(coefs) & !is.na(ses) & ses > 0
     if (sum(valid) >= 2) {
-      weights <- 1 / (ses[valid]^2)
-      null_coefs[i] <- sum(weights * coefs[valid]) / sum(weights)
+      null_coefs[i] <- stats::median(coefs[valid])
     } else {
       null_coefs[i] <- NA
     }
@@ -226,7 +229,7 @@ run_permutation_test <- function(counts, coords_target, coords_all,
 #' }
 #'
 #' @importFrom RANN nn2
-#' @importFrom stats glm poisson
+#' @importFrom stats glm poisson median
 #' @importFrom data.table data.table rbindlist
 #' @export
 run_permutation_tests <- function(genes, count_matrix, target_barcodes,
@@ -301,10 +304,11 @@ run_permutation_tests <- function(genes, count_matrix, target_barcodes,
         }
       }
 
+      # Null statistic must match the observed median_coef (see
+      # run_permutation_test). ses > 0 marks samples whose GLM converged.
       valid <- !is.na(coefs) & !is.na(ses) & ses > 0
       if (sum(valid) >= 2) {
-        weights <- 1 / (ses[valid]^2)
-        null_coefs[i] <- sum(weights * coefs[valid]) / sum(weights)
+        null_coefs[i] <- stats::median(coefs[valid])
       } else {
         null_coefs[i] <- NA
       }
