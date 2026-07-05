@@ -560,13 +560,30 @@ run_ripple <- function(
   # --------------------------------------------------------------------------
   # 8. Determine target cell types
   # --------------------------------------------------------------------------
+  all_target_types <- sort(setdiff(
+    unique(cell_data[[celltype_column]]), c(query_celltype, NA_character_)
+  ))
   if (is.null(target_celltypes) || length(target_celltypes) == 0) {
-    all_types <- unique(cell_data[[celltype_column]])
-    target_celltypes <- sort(setdiff(all_types, c(query_celltype, NA_character_)))
+    target_celltypes <- all_target_types
     .msg("Auto-detected ", length(target_celltypes), " target cell types: ",
       paste(target_celltypes, collapse = ", "),
       verbose = verbose
     )
+  } else {
+    # Running on a subset of targets means the cross-cell-type contamination
+    # heuristic (a gene significant in many cell types = likely ambient RNA)
+    # only sees those targets, so it cannot flag genuinely broad contamination
+    # (issue #13). Warn so the user does not trust an incomplete check.
+    omitted <- setdiff(all_target_types, target_celltypes)
+    if (length(omitted) > 0) {
+      warning("Running on ", length(target_celltypes), " of ",
+        length(all_target_types), " target cell types (omitting: ",
+        paste(utils::head(omitted, 10), collapse = ", "),
+        if (length(omitted) > 10) ", ..." else "",
+        "). The cross-cell-type contamination check needs all cell types; ",
+        "with a subset it cannot flag broad ambient-RNA genes. Run on all ",
+        "targets for a complete contamination assessment.", call. = FALSE)
+    }
   }
 
   # --------------------------------------------------------------------------

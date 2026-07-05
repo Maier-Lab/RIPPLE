@@ -124,6 +124,45 @@ list.files(results_dir, recursive = TRUE)
 output directory with per-cell-type CSVs, QC tables, and the per-cell
 distance file that `ripple_plot_qc()` reads.
 
+### One query vs one target cell type
+
+To ask about a single target cell type (for example, only how `T_cell`
+expression changes with distance from `Tumor`), pass a single value to
+`target_celltypes`. This is faster and useful on large datasets or when
+you only care about one interaction.
+
+```{r one-vs-one, message = FALSE}
+one_dir <- file.path(tempdir(), "ripple_one_vs_one")
+unlink(one_dir, recursive = TRUE)
+dir.create(one_dir)
+
+# NOTE: running on a subset of targets makes RIPPLE warn that the
+# cross-cell-type contamination check is incomplete -- see the caveat below.
+tcell_only <- suppressWarnings(run_ripple(
+  input                = ripple_mock_data,
+  query_celltype       = "Tumor",
+  celltype_column      = "cell_type",
+  sample_column        = "sample_id",
+  target_celltypes     = "T_cell",   # one query (Tumor) vs one target (T_cell)
+  output_dir           = one_dir,
+  min_cells_per_sample = 30,
+  min_expr_pct         = 0,
+  min_expr_floor       = 10,
+  verbose              = FALSE
+))
+
+head(tcell_only[order(fisher_fdr), .(gene, cell_type, median_coef, fisher_fdr)])
+```
+
+**Caveat.** The cross-cell-type contamination heuristic (a gene
+significant across many cell types is likely ambient RNA rather than a
+real gradient) only works when RIPPLE has seen *all* cell types. On a
+one-vs-one run it cannot flag broadly-contaminating genes, so
+`run_ripple()` warns you. If contamination is a concern, run on all
+targets, or supply known query markers via `query_signature_genes` (see
+["Contamination is something you define"](#contamination-is-something-you-define-not-something-ripple-decides)
+below).
+
 ## Look at the recovered signal
 
 The planted `INDUCED_*` genes should appear with **negative** gradient

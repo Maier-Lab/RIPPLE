@@ -130,6 +130,35 @@ test_that("run_ripple warns and returns empty when no cell type qualifies", {
   expect_equal(nrow(res), 0)
 })
 
+test_that("run_ripple warns when run on a subset of target cell types (#13)", {
+  skip_if_not_installed("SpatialExperiment")
+  skip_if_not_installed("meta")
+
+  data(ripple_mock_data)
+  out_dir <- tempfile("ripple_subset_test_")
+  dir.create(out_dir)
+  on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
+
+  # Query = Tumor; available targets = Fibroblast, T_cell. Running on only
+  # T_cell omits Fibroblast, so the cross-cell-type contamination check is
+  # incomplete and must warn.
+  expect_warning(
+    run_ripple(
+      input                = ripple_mock_data,
+      query_celltype       = "Tumor",
+      celltype_column      = "cell_type",
+      sample_column        = "sample_id",
+      output_dir           = out_dir,
+      target_celltypes     = "T_cell",
+      min_cells_per_sample = 30,
+      min_expr_pct         = 0,
+      min_expr_floor       = 10,
+      verbose              = FALSE
+    ),
+    "cross-cell-type contamination check needs all cell types"
+  )
+})
+
 test_that("run_ripple warns on NA cell types but still recovers the gradient", {
   skip_if_not_installed("SpatialExperiment")
   skip_if_not_installed("meta")
