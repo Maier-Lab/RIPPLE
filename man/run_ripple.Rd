@@ -23,6 +23,7 @@ run_ripple(
   min_expr_pct = 0.01,
   min_expr_floor = 25,
   priority_genes = NULL,
+  organism = c("auto", "mouse", "human"),
   query_signature_genes = NULL,
   query_label = NULL,
   analysis_name = "ripple",
@@ -84,8 +85,15 @@ lower bound for the strict tier (default: \code{25}).}
 
 \item{priority_genes}{Character vector of priority gene names that receive
 lenient expression filtering. Set to \code{NULL} to use the built-in
-chemokine/cytokine/receptor list, or \code{character(0)} to disable
-lenient filtering entirely.}
+chemokine/cytokine/receptor list (species-matched via \code{organism}),
+or \code{character(0)} to disable lenient filtering entirely.}
+
+\item{organism}{Character: \code{"auto"} (default), \code{"mouse"}, or
+\code{"human"}. Selects the built-in priority gene list when
+\code{priority_genes = NULL}. \code{"auto"} infers the species from the
+casing of the gene symbols in the data (human HGNC symbols are
+uppercase, mouse MGI symbols are title-case). Ignored when
+\code{priority_genes} is supplied explicitly.}
 
 \item{query_signature_genes}{Character vector of query cell markers for
 contamination checking (default: \code{NULL} = no check).}

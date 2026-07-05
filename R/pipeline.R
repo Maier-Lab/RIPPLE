@@ -48,8 +48,29 @@ NULL
 
 #' Default priority genes for lenient expression filtering
 #' @noRd
-.default_priority_genes <- function() {
-  c(
+#' Detect whether gene symbols are mouse (MGI) or human (HGNC) style
+#'
+#' Human HGNC symbols are all-uppercase (e.g. CXCL12); mouse MGI symbols are
+#' title-case (e.g. Cxcl12). Decides by the fraction of alphabetic symbols that
+#' are fully uppercase. Falls back to "mouse" when there is no clear signal.
+#' @noRd
+.detect_organism <- function(gene_symbols) {
+  g <- gene_symbols[!is.na(gene_symbols) & nzchar(gene_symbols)]
+  g <- g[grepl("[A-Za-z]", g)]
+  if (length(g) == 0) {
+    return("mouse")
+  }
+  frac_upper <- mean(g == toupper(g) & g != tolower(g))
+  if (frac_upper > 0.5) "human" else "mouse"
+}
+
+#' @param organism Character: "mouse" (MGI symbols, default) or "human" (HGNC
+#'   symbols). Human is derived from the mouse list by uppercasing, collapsing
+#'   the mouse-specific multi-orthologs (Ccl21a/b/c -> CCL21, Ccl27a/b ->
+#'   CCL27), and dropping genes with no human ortholog (Cxcl15).
+#' @noRd
+.default_priority_genes <- function(organism = "mouse") {
+  mouse <- c(
     # CC Chemokines
     "Ccl1", "Ccl2", "Ccl3", "Ccl4", "Ccl5", "Ccl6", "Ccl7", "Ccl8", "Ccl9",
     "Ccl11", "Ccl12", "Ccl17", "Ccl19", "Ccl20", "Ccl21a", "Ccl21b", "Ccl21c",
@@ -90,6 +111,15 @@ NULL
     # Other Cytokines
     "Tslp", "Mif", "Spp1", "Kitl", "Kit"
   )
+
+  if (identical(organism, "human")) {
+    human <- toupper(mouse)
+    human[human %in% c("CCL21A", "CCL21B", "CCL21C")] <- "CCL21"
+    human[human %in% c("CCL27A", "CCL27B")] <- "CCL27"
+    human <- setdiff(human, "CXCL15") # no human ortholog
+    return(unique(human))
+  }
+  mouse
 }
 
 
@@ -140,8 +170,14 @@ NULL
 #'   lower bound for the strict tier (default: \code{25}).
 #' @param priority_genes Character vector of priority gene names that receive
 #'   lenient expression filtering. Set to \code{NULL} to use the built-in
-#'   chemokine/cytokine/receptor list, or \code{character(0)} to disable
-#'   lenient filtering entirely.
+#'   chemokine/cytokine/receptor list (species-matched via \code{organism}),
+#'   or \code{character(0)} to disable lenient filtering entirely.
+#' @param organism Character: \code{"auto"} (default), \code{"mouse"}, or
+#'   \code{"human"}. Selects the built-in priority gene list when
+#'   \code{priority_genes = NULL}. \code{"auto"} infers the species from the
+#'   casing of the gene symbols in the data (human HGNC symbols are
+#'   uppercase, mouse MGI symbols are title-case). Ignored when
+#'   \code{priority_genes} is supplied explicitly.
 #' @param query_signature_genes Character vector of query cell markers for
 #'   contamination checking (default: \code{NULL} = no check).
 #' @param query_label Display label for the query cell type in plots
@@ -237,6 +273,7 @@ run_ripple <- function(
     min_expr_pct = 0.01,
     min_expr_floor = 25,
     priority_genes = NULL,
+    organism = c("auto", "mouse", "human"),
     query_signature_genes = NULL,
     query_label = NULL,
     analysis_name = "ripple",
@@ -259,7 +296,10 @@ run_ripple <- function(
   if (missing(verbose)) verbose <- .resolve(NULL, "verbose", TRUE)
 
   if (is.null(query_label)) query_label <- query_celltype
-  if (is.null(priority_genes)) priority_genes <- .default_priority_genes()
+  organism <- match.arg(organism)
+  # Priority genes are resolved after the counts load (below) so "auto" can
+  # infer the species from the gene symbols in the data.
+  resolve_priority_genes <- is.null(priority_genes)
 
   # Minimum cells for stable GLM fit (internal constant)
   min_expr_cells_glm <- 5L
@@ -316,6 +356,20 @@ run_ripple <- function(
     ncol(count_matrix_full), " cells",
     verbose = verbose
   )
+
+  # Resolve the built-in priority gene list now that gene symbols are known,
+  # so organism = "auto" can match the list to the data's species (a mouse
+  # list silently misses every gene on human data -- issue #6).
+  if (resolve_priority_genes) {
+    resolved_organism <- if (organism == "auto") {
+      .detect_organism(rownames(count_matrix_full))
+    } else {
+      organism
+    }
+    priority_genes <- .default_priority_genes(resolved_organism)
+    .msg("Priority genes: ", resolved_organism, " list (",
+      length(priority_genes), " genes)", verbose = verbose)
+  }
 
   # Validate required columns exist in metadata
   if (!celltype_column %in% names(cell_data)) {
