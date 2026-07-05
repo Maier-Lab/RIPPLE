@@ -583,6 +583,24 @@ classify_gene_specificity <- function(results,
     )
   }
 
+  # The "broad" class needs a gene significant in >= broad_threshold cell
+  # types. If the results contain fewer cell types than that (e.g. run_ripple
+  # was called with a limited target_celltypes for memory reasons), the
+  # broad-expression / ambient-RNA heuristic can never fire -- silently, unless
+  # we say so (issue #14).
+  n_total_celltypes <- data.table::uniqueN(results$cell_type)
+  if (n_total_celltypes > 0 && n_total_celltypes < broad_threshold) {
+    warning(
+      "broad_threshold (", broad_threshold, ") exceeds the number of cell ",
+      "types in the results (", n_total_celltypes, "), so no gene can be ",
+      "classified 'broad' and the cross-cell-type contamination heuristic is ",
+      "inactive. This usually means run_ripple() was run on a subset of cell ",
+      "types. Run on all cell types, or lower broad_threshold, for a valid ",
+      "broad-expression / ambient-RNA flag.",
+      call. = FALSE
+    )
+  }
+
   # Resolve broad_sig_threshold:
   #   NULL -> use fdr_threshold (any "*" hit counts)
   #   "*" / "**" / "***" / "****" -> 0.05 / 0.01 / 0.001 / 1e-4

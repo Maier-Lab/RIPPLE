@@ -100,19 +100,22 @@ test_that("ripple_plot_qc assembles a dashboard from run_ripple output", {
     results_dir, "qc", "cell_distances.csv.gz"
   )))
 
+  # Mock data has only 2 target cell types, so the default broad_threshold (4)
+  # trips the unreachable warning (issue #14); orthogonal to dashboard assembly.
+
   # Without query markers — bleed-through panel renders without highlight
-  qc <- ripple_plot_qc(
+  qc <- suppressWarnings(ripple_plot_qc(
     results_dir, query_label = "Tumor", top_n_bleed = 5
-  )
+  ))
   expect_s3_class(qc, "patchwork")
 
   # With query markers — bleed-through panel highlights matching genes
-  qc2 <- ripple_plot_qc(
+  qc2 <- suppressWarnings(ripple_plot_qc(
     results_dir,
     query_signature_genes = c("INDUCED_1", "INDUCED_2"),
     query_label = "Tumor",
     top_n_bleed = 5
-  )
+  ))
   expect_s3_class(qc2, "patchwork")
 })
 

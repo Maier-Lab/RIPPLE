@@ -2412,6 +2412,19 @@ ripple_plot_qc <- function(results_dir,
   }
   results <- data.table::fread(results_path)
 
+  # Issue #14: warn once here if the broad-expression class is unreachable.
+  # The specificity/bleed-through panels below re-run classify_gene_specificity
+  # and would otherwise repeat the same warning, so those calls are muffled.
+  n_ct_qc <- data.table::uniqueN(results$cell_type)
+  if (n_ct_qc > 0 && n_ct_qc < broad_threshold) {
+    warning(
+      "broad_threshold (", broad_threshold, ") exceeds the number of cell ",
+      "types in the results (", n_ct_qc, "); the specificity and bleed-through ",
+      "panels cannot flag broad-expression / contaminating genes. Run on all ",
+      "cell types or lower broad_threshold.", call. = FALSE
+    )
+  }
+
   dist_path <- file.path(qc_dir, "cell_distances.csv.gz")
   cell_distances <- if (file.exists(dist_path)) {
     data.table::fread(dist_path)
@@ -2531,18 +2544,19 @@ ripple_plot_qc <- function(results_dir,
   )
 
   # -- Panel 6: specificity breakdown --
-  panels$spec <- plot_specificity_breakdown(
+  # (unreachable-broad_threshold warning already emitted once above)
+  panels$spec <- suppressWarnings(plot_specificity_breakdown(
     results,
     fdr_threshold   = fdr_threshold,
     broad_threshold = broad_threshold
-  )
+  ))
 
   # -- Panel 7: bleed-through (top widely-shared genes, optional query-marker flag) --
-  spec_dt <- classify_gene_specificity(
+  spec_dt <- suppressWarnings(classify_gene_specificity(
     results,
     fdr_threshold   = fdr_threshold,
     broad_threshold = broad_threshold
-  )
+  ))
   if (nrow(spec_dt) > 0) {
     top_bleed <- spec_dt[order(-n_celltypes)][seq_len(min(top_n_bleed, .N))]
     if (is.null(query_signature_genes)) {

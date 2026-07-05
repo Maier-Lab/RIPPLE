@@ -126,6 +126,27 @@ test_that("classify_gene_specificity handles empty input gracefully", {
   expect_equal(nrow(spec), 0)
 })
 
+test_that("classify_gene_specificity warns when broad_threshold is unreachable", {
+  # Only 2 cell types present but broad_threshold = 4 -> no gene can ever be
+  # classified 'broad', so the contamination heuristic is inactive (issue #14).
+  results <- data.table::data.table(
+    gene      = c("G1", "G1", "G2", "G2"),
+    cell_type = c("CT1", "CT2", "CT1", "CT2"),
+    fisher_fdr = c(0.001, 0.001, 0.4, 0.001)
+  )
+  expect_warning(
+    spec <- classify_gene_specificity(results, broad_threshold = 4),
+    "broad_threshold \\(4\\) exceeds the number of cell types"
+  )
+  # No gene classified broad; function still returns a valid table.
+  expect_false("broad" %in% spec$specificity_class)
+
+  # Reachable threshold -> no warning.
+  expect_no_warning(
+    classify_gene_specificity(results, broad_threshold = 2)
+  )
+})
+
 test_that("classify_lr_artifacts flags LR pairs by rule", {
   lr <- data.table::data.table(
     ligand = c("Ccl5", "Il6", "Csf3", "Tnf", "Cxcl12"),
@@ -328,7 +349,12 @@ test_that("downstream stages chain off a single run_ripple run", {
   expect_true(all(induced$fisher_fdr < 0.01))
 
   # --- classify_gene_specificity on merged output ---
-  spec <- classify_gene_specificity(merged, fdr_threshold = 0.05)
+  # Mock data has only 2 target cell types, so the default broad_threshold (4)
+  # legitimately triggers the "unreachable" warning (issue #14); suppress it
+  # here since it is orthogonal to the classification behaviour under test.
+  spec <- suppressWarnings(
+    classify_gene_specificity(merged, fdr_threshold = 0.05)
+  )
   expect_s3_class(spec, "data.table")
   # Planted signal is T_cell-specific — the 10 planted genes should appear
   # as either specific or moderate (not broad)
