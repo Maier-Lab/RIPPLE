@@ -232,9 +232,14 @@ plot_spatial_by_sample <- function(data, color_var, sample_col = "sample",
 #'   (default: 0.05).
 #' @param query_label Character. Display label for the query cell type
 #'   (default: "Query").
+#' @param target_label Character or NULL. Display label for the target cell
+#'   type being plotted. When supplied (and \code{title} is NULL), the title
+#'   becomes "<target_label> near <query_label>", which self-documents
+#'   one-vs-one runs. Default \code{NULL}.
 #' @param n_label Integer. Maximum number of genes to label (default: 20).
 #'   Ignored when \code{label_genes} is supplied.
-#' @param title Character or NULL. Plot title. If NULL, auto-generated.
+#' @param title Character or NULL. Plot title. If NULL, auto-generated
+#'   (uses \code{target_label} when provided).
 #' @param exclude_specificity_class Optional character vector. Specificity-class
 #'   labels to exclude from the *label-selection pool only* (genes still
 #'   appear as dots, just without text labels). Typical use:
@@ -315,6 +320,7 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
                                   fdr_col = "fisher_fdr",
                                   fdr_threshold = 0.05,
                                   query_label = "Query",
+                                  target_label = NULL,
                                   n_label = 20,
                                   title = NULL,
                                   exclude_specificity_class = NULL,
@@ -440,7 +446,13 @@ plot_gradient_volcano <- function(results, coef_col = "median_coef",
       min.segment.length = 0
     ) +
     ggplot2::labs(
-      title = if (!is.null(title)) title else "Distance-Expression Gradient Volcano",
+      title = if (!is.null(title)) {
+        title
+      } else if (!is.null(target_label)) {
+        sprintf("%s near %s", target_label, query_label)
+      } else {
+        "Distance-Expression Gradient Volcano"
+      },
       subtitle = sprintf(
         "%d genes significant (FDR < %.2f)",
         sum(plot_data$significant, na.rm = TRUE), fdr_threshold
@@ -854,7 +866,12 @@ plot_gradient_curve <- function(bin_stats, gene_name, cell_type,
     ggplot2::scale_x_continuous(breaks = seq(0, max_distance, by = 50)) +
     ggplot2::ylim(0, min(1, y_max)) +
     ggplot2::labs(
-      title    = gene_name,
+      # Name both the gene and the target cell type; the query is on the x-axis.
+      title    = if (!is.null(cell_type) && nzchar(cell_type)) {
+        paste0(gene_name, " in ", cell_type)
+      } else {
+        gene_name
+      },
       subtitle = sub_text,
       x        = paste0("Distance to ", query_label, " (um)"),
       y        = y_lab
@@ -1491,13 +1508,10 @@ create_gradient_volcano <- function(results, cell_type, output_path,
       size = 3, max.overlaps = 20, box.padding = 0.5
     ) +
     ggplot2::labs(
-      title = sprintf(
-        "Distance-Expression Analysis (Poisson GLM, k=%d): %s",
-        k_neighbors, cell_type
-      ),
+      title = sprintf("%s near %s", cell_type, query_label),
       subtitle = sprintf(
-        "%d genes significant (FDR < %.2f)",
-        sum(plot_data$significant, na.rm = TRUE),
+        "Distance-Expression gradients (Poisson GLM, k=%d) | %d genes significant (FDR < %.2f)",
+        k_neighbors, sum(plot_data$significant, na.rm = TRUE),
         fdr_threshold
       ),
       x = paste0(

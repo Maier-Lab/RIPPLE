@@ -10,6 +10,7 @@ plot_gradient_volcano(
   fdr_col = "fisher_fdr",
   fdr_threshold = 0.05,
   query_label = "Query",
+  target_label = NULL,
   n_label = 20,
   title = NULL,
   exclude_specificity_class = NULL,
@@ -37,10 +38,16 @@ minimum a coefficient column and an FDR column.}
 \item{query_label}{Character. Display label for the query cell type
 (default: "Query").}
 
+\item{target_label}{Character or NULL. Display label for the target cell
+type being plotted. When supplied (and \code{title} is NULL), the title
+becomes "<target_label> near <query_label>", which self-documents
+one-vs-one runs. Default \code{NULL}.}
+
 \item{n_label}{Integer. Maximum number of genes to label (default: 20).
 Ignored when \code{label_genes} is supplied.}
 
-\item{title}{Character or NULL. Plot title. If NULL, auto-generated.}
+\item{title}{Character or NULL. Plot title. If NULL, auto-generated
+(uses \code{target_label} when provided).}
 
 \item{exclude_specificity_class}{Optional character vector. Specificity-class
 labels to exclude from the \emph{label-selection pool only} (genes still

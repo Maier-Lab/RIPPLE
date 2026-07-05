@@ -120,6 +120,36 @@ test_that("ripple_plot_qc assembles a dashboard from run_ripple output", {
 })
 
 
+test_that("gradient plot titles name the target cell type (#13)", {
+  # Volcano: target_label produces a "<target> near <query>" title.
+  vres <- data.table::data.table(
+    gene = c("A", "B", "C"),
+    median_coef = c(-0.01, 0.02, 0.001),
+    fisher_fdr = c(1e-5, 1e-3, 0.5)
+  )
+  p_named <- plot_gradient_volcano(
+    vres, query_label = "Tumor", target_label = "Fibroblast"
+  )
+  expect_equal(p_named$labels$title, "Fibroblast near Tumor")
+
+  # Without target_label, the generic default title is used.
+  p_default <- plot_gradient_volcano(vres, query_label = "Tumor")
+  expect_equal(p_default$labels$title, "Distance-Expression Gradient Volcano")
+
+  # Curve: title names the gene and the target cell type.
+  bin_stats <- data.table::data.table(
+    dist_mid = seq(5, 195, by = 10),
+    prop_expressing = seq(0.5, 0.05, length.out = 20),
+    n_cells = round(seq(200, 50, length.out = 20)),
+    se = rep(0.02, 20)
+  )
+  p_curve <- plot_gradient_curve(
+    bin_stats, gene_name = "IGFBP5", cell_type = "Fibroblast",
+    gradient_score = -0.005, fdr = 1e-3
+  )
+  expect_equal(p_curve$labels$title, "IGFBP5 in Fibroblast")
+})
+
 test_that("plot_gradient_curve renders pooled mode", {
   bin_stats <- data.table::data.table(
     dist_mid        = seq(5, 195, by = 10),
