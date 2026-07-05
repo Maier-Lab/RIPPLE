@@ -39,22 +39,43 @@ For a standalone SLURM-driven script version, see [HyMy-distance-correlation-ana
 devtools::install_github("Maier-Lab/RIPPLE")
 ```
 
-Installing from GitHub pulls in all required dependencies automatically. Optional functionality requires additional packages:
-
-| Optional feature | Extra packages |
-|------------------|----------------|
-| Multi-panel figures and vignettes | `knitr`, `rmarkdown` |
-| Pathway enrichment (`run_ripple_fgsea`) | `fgsea`, `msigdbr` (Bioconductor) |
-| Ligand-receptor integration (`run_ripple_lr`) | `nichenetr` (GitHub: `saeyslab/nichenetr`) |
-| Input from `SingleCellExperiment`/`SpatialExperiment` | `SingleCellExperiment`, `SpatialExperiment`, `SummarizedExperiment`, `S4Vectors` (Bioconductor) |
-| GPU permutation testing (Stage 2) | Python 3, PyTorch (CUDA), NumPy < 2, SciPy |
-
-Install Bioconductor extras with:
+`SpatialExperiment` is needed even for the quick start below, because the
+bundled `ripple_mock_data` is a `SpatialExperiment`. Install the Bioconductor
+packages first so the object loads and the vignettes build:
 
 ```r
 if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
-BiocManager::install(c("fgsea", "msigdbr", "SpatialExperiment", "SingleCellExperiment"))
+BiocManager::install(c(
+  "SpatialExperiment", "SingleCellExperiment", "SummarizedExperiment",
+  "S4Vectors", "fgsea", "msigdbr"
+))
+install.packages(c("R.utils", "knitr", "rmarkdown"))
 ```
+
+To build the vignettes at install time (they are skipped by default), install
+the packages above first, then:
+
+```r
+devtools::install_github("Maier-Lab/RIPPLE", build_vignettes = TRUE)
+```
+
+Optional functionality requires additional packages:
+
+| Optional feature | Extra packages |
+|------------------|----------------|
+| Bundled data + quick start (`ripple_mock_data` is a `SpatialExperiment`) | `SpatialExperiment`, `SummarizedExperiment`, `S4Vectors` (Bioconductor) |
+| QC dashboard (`ripple_plot_qc`, reads `cell_distances.csv.gz`) | `R.utils` |
+| Multi-panel figures and vignettes | `knitr`, `rmarkdown` |
+| Pathway enrichment (`run_ripple_fgsea`) | `fgsea`, `msigdbr` (Bioconductor) |
+| Ligand-receptor integration (`run_ripple_lr`) | `nichenetr` (GitHub: `saeyslab/nichenetr`) |
+| Input from `SingleCellExperiment` | `SingleCellExperiment` (Bioconductor) |
+| GPU permutation testing (Stage 2) | Python 3, PyTorch (CUDA), NumPy < 2, SciPy |
+
+**System-level note:** building the vignettes may pull in the `magick`
+R package, which needs ImageMagick installed at the system level. If you hit a
+`magick`/ImageMagick error, install it via your OS package manager (e.g.
+`conda install -c conda-forge r-magick`, which bundles the system library) and
+reinstall.
 
 ---
 

@@ -38,7 +38,16 @@ distance to a query cell type, in the same direction in every replicate.
 
 ## Install and load
 
+The bundled `ripple_mock_data` is a `SpatialExperiment`, so its Bioconductor
+dependencies must be present before loading the package or this vignette.
+
 ```{r install, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+BiocManager::install(c(
+  "SpatialExperiment", "SingleCellExperiment", "SummarizedExperiment", "S4Vectors"
+))
+install.packages("R.utils") # for ripple_plot_qc() to read the .gz QC table
+
 # From a private mirror or local source
 remotes::install_github("Maier-Lab/RIPPLE")
 ```
