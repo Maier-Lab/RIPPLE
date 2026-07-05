@@ -148,7 +148,7 @@ Each stage is optional except Stage 1.
 | Stage | Function(s) | Purpose |
 |-------|-------------|---------|
 | 1. Distance correlation | `run_ripple()` | Per-sample Poisson GLM + Fisher combined p-value with sign-consistency gate |
-| 2. Permutation validation | `run_permutation_tests()` (R) or `inst/python/run_permutation_gpu.py` (GPU) | Validates query specificity via label permutation |
+| 2. Permutation validation | `run_permutation_tests()` (R) or `inst/python/run_permutation_gpu.py` (GPU) | Validates query specificity via label permutation. Warning: running without GPU is very slow, you may only want to do it later for genes of interest. |
 | 3. Merge and summarize | `merge_ripple_results()`, `compute_fisher_pval()` | Combines per-celltype results, recomputes Fisher p-values |
 | 4. Confounder control | `run_ripple_confounder()` | Bivariate GLM isolating query-specific from shared-niche effects |
 | 5. Atlas figures | `run_ripple_atlas()`, `run_ripple_fgsea()`, `plot_gradient_volcano()`, `plot_gradient_curve()` | Multi-panel figures, pathway enrichment, contamination flagging |
