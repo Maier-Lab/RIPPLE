@@ -26,9 +26,7 @@ RIPPLE is an R package that detects distance-dependent gene expression gradients
 
 For each gene in each target cell type, RIPPLE fits a per-sample Poisson GLM with Euclidean distance to the nearest query cell as the predictor and `log(total_counts)` as an offset. Per-sample coefficients are then combined across biological replicates via Fisher's combined p-value with a sign-consistency gate. The output is a ranked list of genes with signed gradient scores, calibrated FDR, and per-sample reproducibility.
 
-**Supported platforms:** Xenium, CosMx, MERFISH. Suited to any imaging-based platform with single-cell resolved coordinates and integer counts. Not designed for spot-resolution platforms (e.g. Visium without deconvolution) where one spot mixes multiple cell types.
-
-For a standalone SLURM-driven script version, see [HyMy-distance-correlation-analysis](https://github.com/CMangana/HyMy-distance-correlation-analysis).
+**Supported platforms:** Xenium, CosMx, MERFISH, etc. Suited to any imaging-based platform with single-cell resolved coordinates and integer counts. Not designed for spot-resolution platforms (e.g. Visium without deconvolution) where one spot mixes multiple cell types.
 
 ---
 
@@ -40,8 +38,6 @@ the packages above first, then:
 ```r
 devtools::install_github("Maier-Lab/RIPPLE", build_vignettes = TRUE)
 ```
-
-
 
 It is recommended you install this as well, because `SpatialExperiment` is needed even for the quick start below. Install the Bioconductor
 packages first so the object loads and the vignettes build:
@@ -149,8 +145,8 @@ Each stage is optional except Stage 1.
 | Stage | Function(s) | Purpose |
 |-------|-------------|---------|
 | 1. Distance correlation | `run_ripple()` | Per-sample Poisson GLM + Fisher combined p-value with sign-consistency gate |
-| 2. Permutation validation | `run_permutation_tests()` (R) or `inst/python/run_permutation_gpu.py` (GPU) | Validates query specificity via label permutation. Warning: running without GPU is very slow, you may only want to do it later for genes of interest. |
-| 3. Merge and summarize | `merge_ripple_results()`, `compute_fisher_pval()` | Combines per-celltype results, recomputes Fisher p-values |
+| 2. Merge and summarize | `merge_ripple_results()`, `compute_fisher_pval()` | Combines per-celltype results, recomputes Fisher p-values. IF you run_ripple(), you will get these out too, but you can use these functions if your run gets interrupted, for ex. |
+| 3. Permutation validation | `run_permutation_tests()` (R) or `inst/python/run_permutation_gpu.py` (GPU) | Validates query specificity via label permutation. Warning: running without GPU is very slow, you may only want to do it later for genes of interest. |
 | 4. Confounder control | `run_ripple_confounder()` | Bivariate GLM isolating query-specific from shared-niche effects |
 | 5. Atlas figures | `run_ripple_atlas()`, `run_ripple_fgsea()`, `plot_gradient_volcano()`, `plot_gradient_curve()` | Multi-panel figures, pathway enrichment, contamination flagging |
 | 6. Ligand-receptor integration | `run_ripple_lr()`, `classify_lr_artifacts()` | Matches gradient genes to L-R pairs via NicheNet |
@@ -167,7 +163,7 @@ Diagnostics:
 
 ## Core statistical model
 
-For each gene $g$ in target cell type $t$, per biological replicate $s$:
+For each gene in each target cell type, per biological replicate:
 
 ```r
 glm(counts ~ distance_to_query + offset(log(total_counts)), family = poisson)
