@@ -1,63 +1,8 @@
-# ripple 0.2.0 (development)
-
-## Decay curves: per-sample default, low-cell / low-coverage filters
-
-* `bin_decay_data()` gains a `sample_ids` argument. When supplied, the
-  function returns a per-(sample, bin) table with a `sample_id` column
-  instead of pooling cells across samples. This makes the recommended
-  per-sample workflow a one-liner.
-* `bin_decay_data()` also gains a `min_cells_per_bin` argument
-  (default `10L`, matching the HyMy companion-manuscript script). Bins
-  with fewer cells are dropped to avoid unstable proportions.
-* `plot_gradient_curve()` auto-detects per-sample mode when the input
-  has a `sample_id` column, so `bin_decay_data(sample_ids = ...) →
-  plot_gradient_curve()` is a clean two-step. Pooled mode remains
-  available via `bin_decay_data()` without `sample_ids`.
-* `plot_gradient_curve()` per-sample mode gains `min_cells_per_bin`
-  (default `10L`) and `min_samples_per_bin` (default `2L`) filters,
-  applied before and after the cross-sample aggregation respectively.
-* `plot_gradient_curve()` default `x_col` is now `"bin_center"` (matches
-  `bin_decay_data()`); falls back to `"dist_mid"` or `"bin_mid_um"` if
-  the table uses a different name. Same fallback for `se_col`
-  (`"se_prop"` → `"se"`).
-* Docstring on `plot_gradient_curve()` flags that pooled mode overstates
-  precision when replicates disagree and recommends per-sample mode for
-  manuscript figures.
-
-## Breaking changes — hot-path simplification
-
-* `run_meta_analysis()` (REML inverse-variance random-effects meta-analysis
-  via `meta::metagen`) has been **removed**. Profiling showed it accounted
-  for ~60% of `run_ripple()` wall-clock while populating columns that
-  duplicated the Fisher path.
-* `gradient_score` is now defined as `median_coef` (median of per-sample
-  Poisson GLM coefficients), not as the REML inverse-variance combined
-  coefficient. Per-gene shifts vs the previous value are small for typical
-  N = 3–10 replicates.
-* The following columns are no longer written by `run_ripple()`:
-  `combined_coef`, `combined_se`, `pval`, `i2`, `fdr`. Downstream
-  functions (`run_ripple_atlas()`, `run_ripple_lr()`, `merge_ripple_results()`,
-  `run_ripple_confounder()`) retain legacy fallbacks so older CSV results
-  on disk still load.
-* `meta` is no longer an `Imports` dependency.
-* `create_forest_plot()` summary row is now drawn at the median of
-  per-sample coefficients (no horizontal CI bar). The subtitle reports only
-  the sign-consistency count.
-
-## Speedup
-
-* Medium synthetic benchmark (5 samples × 300 genes × 2 target types):
-  32.5 s → 14.5 s (~2.2× faster end-to-end).
-* Real-data runs on full imaging panels with many target cell types should
-  see proportional gains. Parallelisation across target cell types via
-  SLURM array templates in `inst/slurm/` remains the largest additional
-  lever.
-
----
-
 # ripple 0.1.0
 
-Initial public release of the RIPPLE package.
+Initial release of the RIPPLE package, accompanying the preprint. Version
+numbering starts counting from the first public release; all pre-release
+development is collected here under 0.1.0.
 
 ## Core method
 
@@ -65,23 +10,29 @@ Initial public release of the RIPPLE package.
   gene expression (`fit_poisson()`, `fit_poisson_controlled()`).
 * Cross-replicate inference via Fisher's combined p-value with sign-consistency
   gating (`compute_fisher_pval()`).
+* `gradient_score` is defined as `median_coef`, the median of the per-sample
+  Poisson GLM coefficients (equal weight per replicate).
 * Two-tier expression filtering (strict for regular genes, lenient for
-  user-supplied priority genes) to rescue sparse but biologically important
-  transcripts.
+  a curated set of priority genes) to rescue sparse but biologically important
+  transcripts. The built-in priority list (chemokines, cytokines, interleukins,
+  interferons, and receptors) is curated from MGI, NCBI Gene, and Zlotnik &
+  Yoshie (2012); a species-matched human list is derived automatically.
 * Optional confounder control via bivariate GLM with a second cell type
   (`run_ripple_confounder()`), with classification of genes as
   query-specific / enhanced / niche-driven / underpowered.
 
 ## Pipeline
 
-* `run_ripple()` is the main entry point; `merge_ripple_results()`
-  aggregates per-celltype output.
+* `run_ripple()` is the main entry point; a single call already combines
+  across samples (Fisher) and across cell types, and writes
+  `summary/all_genes_results.csv`. `merge_ripple_results()` stitches together
+  cell types that were run as separate jobs.
 * `run_ripple_atlas()` produces publication-style figures
   (volcano, decay curves, dotplot, heatmap, fGSEA panels, contamination
   flagging).
 * `run_ripple_fgsea()` performs reproducible pathway enrichment with a
   user-supplied seed; `run_ripple_lr()` integrates results with
-  ligand–receptor databases via NicheNet.
+  ligand-receptor databases via NicheNet.
 * CPU permutation via `run_permutation_tests()`; GPU permutation script
   shipped under `inst/python/run_permutation_gpu.py`.
 
@@ -93,10 +44,57 @@ Initial public release of the RIPPLE package.
   and coordinates; `read_ripple_csv()` loads from a directory of CSVs.
 * All entry points perform input validation with informative error messages
   before any compute begins.
+* Configuration is resolved as explicit argument, then `options(ripple.*)`,
+  then environment variable, then a built-in default, so SLURM/env-driven
+  runs honour the documented options.
+
+## Gene specificity
+
+* `classify_gene_specificity()` labels genes `specific` (1 cell type),
+  `moderate` (2 up to `broad_threshold` - 1), or `broad`
+  (>= `broad_threshold`). `broad_threshold` is the single boundary that
+  defines the broad class; raising it flags fewer genes.
+
+## Decay curves
+
+* `bin_decay_data()` gains a `sample_ids` argument. When supplied, it returns
+  a per-(sample, bin) table with a `sample_id` column instead of pooling cells
+  across samples, making the recommended per-sample workflow a one-liner. It
+  also gains `min_cells_per_bin` (default `10L`); bins with fewer cells are
+  dropped to avoid unstable proportions.
+* `plot_gradient_curve()` auto-detects per-sample mode when the input has a
+  `sample_id` column, and gains `min_cells_per_bin` (default `10L`) and
+  `min_samples_per_bin` (default `2L`) filters. Pooled mode remains available.
+  Its docstring flags that pooled mode overstates precision when replicates
+  disagree, and recommends per-sample mode for manuscript figures.
+* `plot_k_diagnostics()` computes distances within each sample (never pooled
+  across samples), so overlapping per-sample coordinate frames cannot produce
+  meaningless cross-sample distances.
+
+## Diagnostics and warnings
+
+* Data-quality caveats are raised via `warning()` (not verbose-only messages),
+  so they surface in batch/SLURM runs: distance-cap saturation, cell types
+  skipped for too few cells/samples/genes, only two valid samples, high
+  collinearity in the confounder model, empty results, and running on a
+  subset of target cell types (which weakens the cross-cell-type
+  contamination check).
+
+## Performance
+
+* Cross-replicate combination uses the Fisher path only; an earlier REML
+  inverse-variance meta-analysis (`meta::metagen`) was removed after profiling
+  showed it dominated runtime while duplicating the Fisher result. `meta` is
+  no longer a dependency.
+* Medium synthetic benchmark (5 samples x 300 genes x 2 target types):
+  32.5 s -> 14.5 s (~2.2x faster end-to-end). Real-data runs on full imaging
+  panels with many target cell types should see proportional gains;
+  parallelising across target cell types via the `inst/slurm/` array templates
+  remains the largest additional lever.
 
 ## Data
 
-* `ripple_mock_data` — synthetic 50-gene × 600-cell × 3-sample dataset with
+* `ripple_mock_data`, a synthetic 50-gene x 600-cell x 3-sample dataset with
   a planted distance-dependent gradient in T cells; ships with the package
   for examples, tests, and tutorials.
 
@@ -104,12 +102,15 @@ Initial public release of the RIPPLE package.
 
 * fGSEA results are deterministic given a user seed (`fgsea_seed`).
 * Sign-consistency gating handles zero-coefficient samples consistently.
+* Permutation testing compares the observed statistic against a null built
+  from the same statistic (the median of per-sample coefficients).
 
 ## Documentation
 
 * Comprehensive README covering pipeline stages, statistical model,
   configuration, and troubleshooting.
-* Roxygen2 documentation for all 37 exported functions.
+* Roxygen2 documentation for all exported functions; four vignettes
+  (getting started, CosMx NSCLC walkthrough, benchmarks, methods positioning).
 
 ## Packaging
 
@@ -117,3 +118,6 @@ Initial public release of the RIPPLE package.
   been removed from the main code path (still available in
   [HyMy-distance-correlation-analysis](https://github.com/CMangana/HyMy-distance-correlation-analysis)
   for SLURM-driven workflows).
+* Optional dependencies (Bioconductor input classes, fgsea/msigdbr, spdep,
+  nichenetr, pheatmap) are guarded at runtime with actionable install
+  messages.
