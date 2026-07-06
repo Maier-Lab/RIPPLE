@@ -34,13 +34,16 @@ For a standalone SLURM-driven script version, see [HyMy-distance-correlation-ana
 
 ## Installation
 
+To build the vignettes at install time (they are skipped by default), install
+the packages above first, then:
+
 ```r
-# install.packages("devtools")
-devtools::install_github("Maier-Lab/RIPPLE")
+devtools::install_github("Maier-Lab/RIPPLE", build_vignettes = TRUE)
 ```
 
-`SpatialExperiment` is needed even for the quick start below, because the
-bundled `ripple_mock_data` is a `SpatialExperiment`. Install the Bioconductor
+
+
+It is recommended you install this as well, because `SpatialExperiment` is needed even for the quick start below. Install the Bioconductor
 packages first so the object loads and the vignettes build:
 
 ```r
@@ -51,12 +54,10 @@ BiocManager::install(c(
 ))
 install.packages(c("R.utils", "knitr", "rmarkdown"))
 ```
-
-To build the vignettes at install time (they are skipped by default), install
-the packages above first, then:
-
+Then:
 ```r
-devtools::install_github("Maier-Lab/RIPPLE", build_vignettes = TRUE)
+# install.packages("devtools")
+devtools::install_github("Maier-Lab/RIPPLE")
 ```
 
 Optional functionality requires additional packages:
@@ -71,10 +72,10 @@ Optional functionality requires additional packages:
 | Input from `SingleCellExperiment` | `SingleCellExperiment` (Bioconductor) |
 | GPU permutation testing (Stage 2) | Python 3, PyTorch (CUDA), NumPy < 2, SciPy |
 
-**System-level note:** building the vignettes may pull in the `magick`
+**Note:** building the vignettes may pull in the `magick`
 R package, which needs ImageMagick installed at the system level. If you hit a
 `magick`/ImageMagick error, install it via your OS package manager (e.g.
-`conda install -c conda-forge r-magick`, which bundles the system library) and
+`conda install -c conda-forge r-magick`) and
 reinstall.
 
 ---
