@@ -5,6 +5,9 @@ docs/
 .RData
 .Ruserdata
 
+# Claude Code local settings — personal, never commit
+.claude/
+
 # Large raw data files — never commit
 *.h5ad
 *.rds
