@@ -40,7 +40,7 @@ test_that("classify_gene_specificity classifies genes by cell-type breadth", {
   expect_equal(
     spec[gene == "MODERATE_B"]$specificity_class, "moderate"
   )
-  # WIDE_C is sig in 3 ct — below broad_threshold, so "moderate"
+  # WIDE_C is sig in 3 ct, below broad_threshold, so "moderate"
   expect_equal(
     spec[gene == "WIDE_C"]$specificity_class, "moderate"
   )

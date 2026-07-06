@@ -171,12 +171,12 @@ cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0
 >    (`classify_gene_specificity()`).
 > 2. The ambient-family blocklist (`find_ambient_family_genes()` for
 >    Ig, J-chain, Rp, Mt genes). Add genes you already know are ambient
->    in your data — e.g. ones you saw expressed across nearly all
+>    in your data, e.g. ones you saw expressed across nearly all
 >    populations during cell-type annotation.
 > 3. A user-supplied query-marker list (`query_signature_genes` on
 >    `run_ripple()`), for genes your query expresses very highly that may
 >    spill into neighbours. On 10x Xenium, probes that looked too high
->    versus a reference scRNA-seq are candidates too — confirm they are
+>    versus a reference scRNA-seq are candidates too; confirm they are
 >    spilling by checking that reference first.
 >
 > None of these is a measurement of contamination. A broadly-
