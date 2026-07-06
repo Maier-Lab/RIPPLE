@@ -170,10 +170,14 @@ cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0
 > 1. The cross-cell-type `broad` class
 >    (`classify_gene_specificity()`).
 > 2. The ambient-family blocklist (`find_ambient_family_genes()` for
->    Ig, J-chain, Rp, Mt genes, for example). If some genes are known ambient genes (they show up in a lot of unspecific cell types or bleed through) you can provide them here. For example,
->    you may have observed these genes during cell type annotation to be expressed in nearly all populations.
+>    Ig, J-chain, Rp, Mt genes). Add genes you already know are ambient
+>    in your data — e.g. ones you saw expressed across nearly all
+>    populations during cell-type annotation.
 > 3. A user-supplied query-marker list (`query_signature_genes` on
->    `run_ripple()`). If your query has very high exprression of certain genes and you want to make sure to remove them from spilling. If using 10x Xenium, during panel design, you may have observed certain probes being too high when based on a reference scRNA seq. These are candidates for removal too, but make sure they are spilling by looking at their expression in your reference scRNAseq, if available.
+>    `run_ripple()`), for genes your query expresses very highly that may
+>    spill into neighbours. On 10x Xenium, probes that looked too high
+>    versus a reference scRNA-seq are candidates too — confirm they are
+>    spilling by checking that reference first.
 >
 > None of these is a measurement of contamination. A broadly-
 > significant gene can be genuine shared biology. Cytokines, MHC II,
@@ -230,12 +234,9 @@ head(spec[specificity_class == "broad"][order(-n_celltypes)], 10)
 ```
 
 ```{r preflight-clean}
-# Filtered copy used downstream when picking labels / top-hit lists.
-# Plots that show *all* genes as background (volcanos, fGSEA) still use
-# `results`; only the curated label / top-hit selections come from
-# `results_clean`. This way a flagged gene is still visible as
-# a dot on the volcano, but it does NOT crowd out the cell-type-specific
-# hits in the labelled set.
+# Filtered copy for label / top-hit selection only. Background plots
+# (volcanos, fGSEA) still use `results`, so flagged genes stay visible
+# as dots but don't crowd out cell-type-specific hits in the labels.
 results_clean <- results[!gene %in% broad_genes]
 cat(nrow(results),       "rows in `results` (unfiltered)\n")
 cat(nrow(results_clean), "rows in `results_clean` (broad class removed)\n")
@@ -696,13 +697,10 @@ mac[, direction := fifelse(
   fifelse(fisher_fdr < 0.05 & median_coef > 0, "Repressed near tumor",
           "Not significant"))]
 
-# Same labelling pattern as the fibroblast panel:
-# top hits from `results_clean` (cell-type-specific signal) plus a
-# curated set of biologically interesting macrophage markers (some of
-# which, e.g. MHC II, are multi-cell-type by nature and therefore
-# appear in `broad_genes`; we keep them because the macrophage gradient
-# is the biological point of interest). Only genes with fisher_fdr <
-# 0.05 in macrophages are actually labelled (the `to_label` gate below).
+# Same pattern as the fibroblast panel: top hits from `results_clean`
+# plus a curated set of macrophage markers (some, e.g. MHC II, are
+# broad-class but kept because they are the biological point here).
+# Only fisher_fdr < 0.05 genes are labelled (the `to_label` gate below).
 top_clean_mac <- results_clean[
   cell_type == "macrophage" & fisher_fdr < 0.05
 ][order(fisher_fdr)][1:10]$gene
