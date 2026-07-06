@@ -9,7 +9,7 @@ test_that("classify_gene_specificity classifies genes by cell-type breadth", {
     gene = c(
       "SPECIFIC_A", "SPECIFIC_A",    # sig in 1 ct only
       "MODERATE_B", "MODERATE_B", "MODERATE_B",
-      "UBIQUITOUS_C", "UBIQUITOUS_C", "UBIQUITOUS_C",
+      "WIDE_C", "WIDE_C", "WIDE_C",
       "BROAD_D", "BROAD_D", "BROAD_D", "BROAD_D", "BROAD_D"
     ),
     cell_type = c(
@@ -21,7 +21,7 @@ test_that("classify_gene_specificity classifies genes by cell-type breadth", {
     fisher_fdr = c(
       0.001, 0.5,                      # SPECIFIC_A: sig in CT1 only
       0.001, 0.001, 0.02,              # MODERATE_B: sig in 3 ct
-      0.001, 0.001, 0.001,             # UBIQUITOUS_C: sig in 3 ct (boundary)
+      0.001, 0.001, 0.001,             # WIDE_C: sig in 3 ct (boundary)
       0.001, 0.001, 0.001, 0.001, 0.01 # BROAD_D: sig in 5 ct
     )
   )
@@ -32,23 +32,44 @@ test_that("classify_gene_specificity classifies genes by cell-type breadth", {
   )
 
   expect_s3_class(spec, "data.table")
-  expect_setequal(spec$gene, c(
-    "SPECIFIC_A", "MODERATE_B", "UBIQUITOUS_C", "BROAD_D"
-  ))
+  # Only three classes exist now; "ubiquitous" was removed.
+  expect_true(all(spec$specificity_class %in% c("specific", "moderate", "broad")))
   expect_equal(
     spec[gene == "SPECIFIC_A"]$specificity_class, "specific"
   )
   expect_equal(
     spec[gene == "MODERATE_B"]$specificity_class, "moderate"
   )
-  # UBIQUITOUS_C is sig in 3 ct — below broad_threshold, so "moderate"
+  # WIDE_C is sig in 3 ct — below broad_threshold, so "moderate"
   expect_equal(
-    spec[gene == "UBIQUITOUS_C"]$specificity_class, "moderate"
+    spec[gene == "WIDE_C"]$specificity_class, "moderate"
   )
   expect_equal(
     spec[gene == "BROAD_D"]$specificity_class, "broad"
   )
   expect_equal(spec[gene == "BROAD_D"]$n_celltypes, 5L)
+})
+
+test_that("raising broad_threshold demotes genes from broad to moderate", {
+  # WIDE is significant in exactly 4 cell types.
+  results <- data.table::data.table(
+    gene = rep("WIDE", 4),
+    cell_type = c("CT1", "CT2", "CT3", "CT4"),
+    fisher_fdr = rep(0.001, 4)
+  )
+
+  # broad_threshold = 4 -> WIDE (4 cell types) is broad.
+  s4 <- classify_gene_specificity(results, broad_threshold = 4)
+  expect_equal(s4[gene == "WIDE"]$specificity_class, "broad")
+
+  # Raise broad_threshold to 6 -> 4 cell types no longer clears the bar, so
+  # WIDE is demoted to moderate. broad_threshold is the boundary (its name).
+  # (6 > the 4 cell types present trips the #14 unreachable warning, which is
+  # expected here and orthogonal to the demotion behaviour under test.)
+  s6 <- suppressWarnings(classify_gene_specificity(results, broad_threshold = 6))
+  expect_equal(s6[gene == "WIDE"]$specificity_class, "moderate")
+  # And no "ubiquitous" phantom tier appears in between.
+  expect_false("ubiquitous" %in% s6$specificity_class)
 })
 
 test_that("classify_gene_specificity respects broad_sig_threshold", {
@@ -81,15 +102,15 @@ test_that("classify_gene_specificity respects broad_sig_threshold", {
   expect_equal(spec_default[gene == "SHARED"]$n_celltypes_strict, 4L)
 
   # Tighten to ** (FDR < 0.01) -> SHARED only hits CT1 strictly -> NOT
-  # broad; classified by loose count (4 -> "ubiquitous" since
-  # n_celltypes >= 4 and not broad).
+  # broad. With "ubiquitous" removed, a widely-but-weakly significant gene
+  # that misses the strict broad bar is classified "moderate".
   spec_strict <- classify_gene_specificity(
     results, fdr_threshold = 0.05,
     broad_threshold     = 4,
     broad_sig_threshold = "**"
   )
   expect_equal(spec_strict[gene == "SHARED"]$specificity_class,
-               "ubiquitous")
+               "moderate")
   expect_equal(spec_strict[gene == "SHARED"]$n_celltypes,        4L)
   expect_equal(spec_strict[gene == "SHARED"]$n_celltypes_strict, 1L)
 

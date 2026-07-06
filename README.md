@@ -229,8 +229,12 @@ specificity check before interpreting individual genes:
 # 1. Classify gene specificity. Do this FIRST.
 specificity <- classify_gene_specificity(all_results, fdr_threshold = 0.05)
 table(specificity$specificity_class)
-#   specific  moderate  ubiquitous  broad
-#       412       187          45     23
+#   broad  moderate  specific
+#      68       187       412
+# Three classes: "specific" (1 cell type), "moderate" (2 up to
+# broad_threshold-1), and "broad" (>= broad_threshold cell types).
+# broad_threshold (default 4) is the single boundary -- raise it to flag
+# fewer genes as broad. See ?classify_gene_specificity.
 
 # 2. Pull the broad-class candidates aside.
 broad_genes <- specificity[specificity_class == "broad"]$gene

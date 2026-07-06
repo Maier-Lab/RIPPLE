@@ -19,28 +19,29 @@ significance column specified by \code{fdr_col}.}
 \item{fdr_col}{Character. Column name for the significance measure.
 Default: "fisher_fdr".}
 
-\item{fdr_threshold}{Numeric. Loose significance cutoff used to decide
-what counts as "significant in a cell type" for the
-specific/moderate/ubiquitous classes and for the
-\code{n_celltypes} count. Default: 0.05.}
+\item{fdr_threshold}{Numeric. Significance cutoff used to decide what
+counts as "significant in a cell type" for the specific/moderate
+classes and for the \code{n_celltypes} count. Default: 0.05.}
 
 \item{broad_threshold}{Integer. Genes significant in at least this
 many cell types (at \code{broad_sig_threshold}) are flagged as
-"broad". Default: \code{4}. \strong{This default is illustrative,
-not universal -- you should pick a value appropriate to your
-dataset.} See "Choosing \code{broad_threshold}" below.}
+"broad"; this is the single boundary that defines the broad class, so
+raising it flags fewer genes. Default: \code{4}. \strong{This default
+is illustrative, not universal -- you should pick a value appropriate
+to your dataset.} See "Choosing \code{broad_threshold}" below.}
 
 \item{broad_sig_threshold}{Numeric or character. Stricter significance
 cutoff used \emph{only} for the broad-class flag. Lets you require,
 e.g., \code{**} significance (FDR < 0.01) before a gene counts
 toward the broad-class tally, while still allowing \code{*}
-(FDR < 0.05) for the broader specific/moderate/ubiquitous classes.
+(FDR < 0.05) for the specific/moderate classes.
 Accepts a numeric FDR (e.g. \code{0.01}) or a star string:
 \code{"*"} -> 0.05, \code{"**"} -> 0.01, \code{"***"} -> 0.001,
 \code{"****"} -> 1e-4. Default \code{NULL} -> use \code{fdr_threshold}
 (any "*"-significant gene contributes). Tightening this makes the
 broad-class filter \strong{looser} (fewer genes flagged) because
-each cell-type "hit" must clear a higher bar.}
+each cell-type "hit" must clear a higher bar; genes that fall short
+are classified "moderate" rather than "broad".}
 }
 \value{
 A \code{data.table} with columns:
@@ -54,16 +55,15 @@ is significant at \code{broad_sig_threshold}. Equal to
 \item{celltypes}{Character. Comma-separated list of cell type names
 (using the loose \code{fdr_threshold}).}
 \item{specificity_class}{Character. One of: "specific" (1 cell type),
-"moderate" (2-3 cell types), "ubiquitous" (4+ but below the broad
-threshold), or "broad" (\code{n_celltypes_strict >=
-    broad_threshold}). "broad" is the descriptive name for the class;
-it is a heuristic proxy for ambient-RNA / cross-cell-type
-artefacts but not a measurement of them.}
+"moderate" (2 or more cell types but below \code{broad_threshold}),
+or "broad" (\code{n_celltypes_strict >= broad_threshold}). "broad"
+is a heuristic proxy for ambient-RNA / cross-cell-type artefacts,
+not a measurement of them.}
 }
 }
 \description{
 For each significant gene, counts how many cell types it is significant in
-and classifies it as specific, moderate, ubiquitous, or broad.
+and classifies it as specific, moderate, or broad.
 }
 \details{
 Genes significant in many cell types (the "broad" class) are more likely

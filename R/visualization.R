@@ -2115,7 +2115,7 @@ plot_k_diagnostics <- function(input,
 #'
 #' Builds a stacked bar chart of significant gene counts per target cell type,
 #' split by direction (induced vs repressed) and by specificity class
-#' (specific + moderate = cell-type-restricted signal; ubiquitous + broad =
+#' (specific + moderate = cell-type-restricted signal; broad =
 #' broadly-expressed, the heuristic flag for potential ambient RNA / segmentation
 #' artefacts).
 #'
@@ -2254,7 +2254,7 @@ plot_gene_counts_by_celltype <- function(results,
 #' Summary bar of gene counts by specificity class
 #'
 #' Produces a compact bar chart of significant genes, one bar per specificity
-#' class (specific, moderate, ubiquitous, broad). Designed for the
+#' class (specific, moderate, broad). Designed for the
 #' "breakdown" figure used in the TDLN analysis: it shows at a glance how much
 #' of the significant-gene pool is cell-type-restricted versus broadly
 #' expressed across many cell types (the heuristic flag for potential
@@ -2296,35 +2296,27 @@ plot_specificity_breakdown <- function(results,
     )
   }
 
-  # At threshold = 4 the "ubiquitous" range (4..threshold-1) is empty, so we
-  # drop that class from the plot. At threshold >= 5 it becomes meaningful.
-  has_ubiquitous <- broad_threshold > 4L
-  class_levels <- if (has_ubiquitous) {
-    c("specific", "moderate", "ubiquitous", "broad")
-  } else {
-    c("specific", "moderate", "broad")
-  }
+  # Three classes: specific (1 cell type), moderate (2 up to broad_threshold-1),
+  # broad (>= broad_threshold). broad_threshold is the single boundary.
+  class_levels <- c("specific", "moderate", "broad")
   counts <- spec[, .(n_genes = .N), by = specificity_class]
   counts <- counts[specificity_class %in% class_levels]
   counts[, specificity_class := factor(specificity_class, levels = class_levels)]
   counts <- counts[order(specificity_class)]
 
-  all_colours <- c(specific = "#1B7837", moderate = "#7FBC41",
-                   ubiquitous = "#F4A582", broad = "#B2182B")
-  class_colours <- all_colours[class_levels]
+  class_colours <- c(specific = "#1B7837", moderate = "#7FBC41",
+                     broad = "#B2182B")
 
-  ubiquitous_label <- if (has_ubiquitous) {
-    sprintf("Ubiquitous (4 to %d)", broad_threshold - 1L)
+  moderate_label <- if (broad_threshold > 2L) {
+    sprintf("Moderate (2 to %d cell types)", broad_threshold - 1L)
   } else {
-    "Ubiquitous"
+    "Moderate"
   }
-  all_labels <- c(
-    specific   = "Specific (1 cell type)",
-    moderate   = "Moderate (2-3 cell types)",
-    ubiquitous = ubiquitous_label,
-    broad      = sprintf("Broad (>= %d cell types)", broad_threshold)
+  class_labels <- c(
+    specific = "Specific (1 cell type)",
+    moderate = moderate_label,
+    broad    = sprintf("Broad (>= %d cell types)", broad_threshold)
   )
-  class_labels <- all_labels[class_levels]
 
   ggplot2::ggplot(counts,
                   ggplot2::aes(x = specificity_class, y = n_genes,

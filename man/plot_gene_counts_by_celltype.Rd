@@ -48,7 +48,7 @@ A \code{ggplot2} object.
 \description{
 Builds a stacked bar chart of significant gene counts per target cell type,
 split by direction (induced vs repressed) and by specificity class
-(specific + moderate = cell-type-restricted signal; ubiquitous + broad =
+(specific + moderate = cell-type-restricted signal; broad =
 broadly-expressed, the heuristic flag for potential ambient RNA / segmentation
 artefacts).
 }

@@ -33,7 +33,7 @@ A \code{ggplot2} object.
 }
 \description{
 Produces a compact bar chart of significant genes, one bar per specificity
-class (specific, moderate, ubiquitous, broad). Designed for the
+class (specific, moderate, broad). Designed for the
 "breakdown" figure used in the TDLN analysis: it shows at a glance how much
 of the significant-gene pool is cell-type-restricted versus broadly
 expressed across many cell types (the heuristic flag for potential

@@ -84,7 +84,7 @@ for the full discussion.}
 specificity-class labels (e.g. \code{"broad"}) to drop from the
 ranked list. Lower-level alternative to \code{exclude_broad}
 when you want to drop other classes (e.g. \code{c("broad",
-  "ubiquitous")}). Requires the input to carry a \code{specificity_class}
+  "moderate")}). Requires the input to carry a \code{specificity_class}
 column. Default \code{NULL}.}
 
 \item{query_signature_genes}{Optional character vector of query-cell marker

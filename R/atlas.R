@@ -29,7 +29,7 @@ NULL
   count_by_dir <- sig_results[, .(
     total = .N,
     specific = sum(specificity_class %in% c("specific", "moderate")),
-    broad    = sum(specificity_class %in% c("ubiquitous", "broad"))
+    broad    = sum(specificity_class == "broad")
   ), by = .(cell_type, direction)]
 
   count_long <- data.table::melt(

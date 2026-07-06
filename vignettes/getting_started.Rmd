@@ -219,8 +219,8 @@ spec
 
 In this synthetic dataset every planted gene comes back as `specific`,
 significant in T_cell only. Real data is messier. You will see a mix of
-`specific` (1 cell type), `moderate` (2-3), `ubiquitous` (several but
-below the broad cutoff), and `broad` (at or above the cutoff).
+`specific` (1 cell type), `moderate` (2 up to `broad_threshold` - 1 cell
+types), and `broad` (at or above `broad_threshold`).
 
 ### Contamination is something you define, not something RIPPLE decides
 

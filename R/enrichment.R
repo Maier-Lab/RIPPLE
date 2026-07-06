@@ -163,7 +163,7 @@ NULL
 #'   specificity-class labels (e.g. \code{"broad"}) to drop from the
 #'   ranked list. Lower-level alternative to \code{exclude_broad}
 #'   when you want to drop other classes (e.g. \code{c("broad",
-#'   "ubiquitous")}). Requires the input to carry a \code{specificity_class}
+#'   "moderate")}). Requires the input to carry a \code{specificity_class}
 #'   column. Default \code{NULL}.
 #' @param query_signature_genes Optional character vector of query-cell marker
 #'   genes to drop from the ranked list before enrichment. These are
@@ -453,7 +453,7 @@ run_ripple_fgsea <- function(results,
 #' Classify gene specificity across cell types
 #'
 #' For each significant gene, counts how many cell types it is significant in
-#' and classifies it as specific, moderate, ubiquitous, or broad.
+#' and classifies it as specific, moderate, or broad.
 #'
 #' Genes significant in many cell types (the "broad" class) are more likely
 #' to be ambient-RNA / segmentation artefacts (query transcripts leaking
@@ -467,26 +467,27 @@ run_ripple_fgsea <- function(results,
 #'   significance column specified by \code{fdr_col}.
 #' @param fdr_col Character. Column name for the significance measure.
 #'   Default: "fisher_fdr".
-#' @param fdr_threshold Numeric. Loose significance cutoff used to decide
-#'   what counts as "significant in a cell type" for the
-#'   specific/moderate/ubiquitous classes and for the
-#'   \code{n_celltypes} count. Default: 0.05.
+#' @param fdr_threshold Numeric. Significance cutoff used to decide what
+#'   counts as "significant in a cell type" for the specific/moderate
+#'   classes and for the \code{n_celltypes} count. Default: 0.05.
 #' @param broad_threshold Integer. Genes significant in at least this
 #'   many cell types (at \code{broad_sig_threshold}) are flagged as
-#'   "broad". Default: \code{4}. \strong{This default is illustrative,
-#'   not universal -- you should pick a value appropriate to your
-#'   dataset.} See "Choosing \code{broad_threshold}" below.
+#'   "broad"; this is the single boundary that defines the broad class, so
+#'   raising it flags fewer genes. Default: \code{4}. \strong{This default
+#'   is illustrative, not universal -- you should pick a value appropriate
+#'   to your dataset.} See "Choosing \code{broad_threshold}" below.
 #' @param broad_sig_threshold Numeric or character. Stricter significance
 #'   cutoff used \emph{only} for the broad-class flag. Lets you require,
 #'   e.g., \code{**} significance (FDR < 0.01) before a gene counts
 #'   toward the broad-class tally, while still allowing \code{*}
-#'   (FDR < 0.05) for the broader specific/moderate/ubiquitous classes.
+#'   (FDR < 0.05) for the specific/moderate classes.
 #'   Accepts a numeric FDR (e.g. \code{0.01}) or a star string:
 #'   \code{"*"} -> 0.05, \code{"**"} -> 0.01, \code{"***"} -> 0.001,
 #'   \code{"****"} -> 1e-4. Default \code{NULL} -> use \code{fdr_threshold}
 #'   (any "*"-significant gene contributes). Tightening this makes the
 #'   broad-class filter \strong{looser} (fewer genes flagged) because
-#'   each cell-type "hit" must clear a higher bar.
+#'   each cell-type "hit" must clear a higher bar; genes that fall short
+#'   are classified "moderate" rather than "broad".
 #'
 #' @return A \code{data.table} with columns:
 #' \describe{
@@ -499,11 +500,10 @@ run_ripple_fgsea <- function(results,
 #'   \item{celltypes}{Character. Comma-separated list of cell type names
 #'     (using the loose \code{fdr_threshold}).}
 #'   \item{specificity_class}{Character. One of: "specific" (1 cell type),
-#'     "moderate" (2-3 cell types), "ubiquitous" (4+ but below the broad
-#'     threshold), or "broad" (\code{n_celltypes_strict >=
-#'     broad_threshold}). "broad" is the descriptive name for the class;
-#'     it is a heuristic proxy for ambient-RNA / cross-cell-type
-#'     artefacts but not a measurement of them.}
+#'     "moderate" (2 or more cell types but below \code{broad_threshold}),
+#'     or "broad" (\code{n_celltypes_strict >= broad_threshold}). "broad"
+#'     is a heuristic proxy for ambient-RNA / cross-cell-type artefacts,
+#'     not a measurement of them.}
 #' }
 #'
 #' @section Choosing \code{broad_threshold}:
@@ -635,7 +635,7 @@ classify_gene_specificity <- function(results,
   }
 
   # Loose set: significant at fdr_threshold (drives n_celltypes,
-  # specific/moderate/ubiquitous classes, and the celltypes string).
+  # specific/moderate classes, and the celltypes string).
   sig <- results[!is.na(get(fdr_col)) & get(fdr_col) < fdr_threshold]
 
   if (nrow(sig) == 0) {
@@ -660,17 +660,14 @@ classify_gene_specificity <- function(results,
   gene_counts <- merge(gene_counts, strict, by = "gene", all.x = TRUE)
   gene_counts[is.na(n_celltypes_strict), n_celltypes_strict := 0L]
 
-  # Classify: broad first (uses strict count), then
-  # specific/moderate/ubiquitous (uses loose count).
+  # Classify: broad first (uses the strict count, i.e. the number of cell
+  # types significant at broad_sig_threshold; defaults to fdr_threshold), then
+  # specific (1 cell type) vs moderate (everything else below broad_threshold).
+  # broad_threshold is the single boundary that decides "broad": raise it and
+  # fewer genes qualify.
   gene_counts[, specificity_class := data.table::fifelse(
     n_celltypes_strict >= broad_threshold, "broad",
-    data.table::fifelse(
-      n_celltypes == 1, "specific",
-      data.table::fifelse(
-        n_celltypes <= 3, "moderate",
-        "ubiquitous"
-      )
-    )
+    data.table::fifelse(n_celltypes == 1, "specific", "moderate")
   )]
 
   gene_counts[]

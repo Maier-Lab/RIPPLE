@@ -186,9 +186,9 @@ cat(sum(results$fisher_fdr < 0.05, na.rm = TRUE), "significant at Fisher FDR < 0
 
 `classify_gene_specificity()` returns one row per significant gene
 with two key fields. `n_celltypes` is the number of cell types it
-appears in. `specificity_class` is a four-level label: `specific`,
-`moderate`, `ubiquitous`/`broad`. We compute it **once**, here, and
-reuse it everywhere downstream.
+appears in. `specificity_class` is a three-level label: `specific`,
+`moderate`, `broad`. We compute it **once**, here, and reuse it
+everywhere downstream.
 
 **A note on the broad-class dials.** There is no universally correct
 cutoff. `classify_gene_specificity()` exposes **two** dials, both of
@@ -297,8 +297,8 @@ plot_gene_counts_by_celltype(
 
 Each bar is split two ways. By direction: induced near tumor vs
 repressed near tumor. By specificity class: solid for cell-type
-specific, faded for the "ubiquitous / broad" fraction (genes
-significant in >= 4 cell types). This is the key QC view. A tall bar
+specific, faded for the "broad" fraction (genes significant in
+>= `broad_threshold` cell types). This is the key QC view. A tall bar
 only matters biologically if its solid portion dominates. Fibroblasts
 and macrophages are the most remodelled cell types near tumor. Both
 show a sizeable specific-to-broad ratio.
