@@ -3,7 +3,8 @@ citHeader("To cite RIPPLE in publications, please use:")
 bibentry(
   bibtype  = "Misc",
   title    = "RIPPLE: Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation",
-  author   = c(person("Carolina", "Mangana")),
+  author   = c(person("Carolina", "Mangana",
+                      comment = c(ORCID = "0009-0002-2218-8262"))),
   year     = format(Sys.Date(), "%Y"),
   note     = "R package version 0.1.0",
   url      = "https://github.com/Maier-Lab/RIPPLE",

@@ -3,7 +3,8 @@ Title: Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation
 Version: 0.1.0
 Authors@R:
     person("Carolina", "Mangana", role = c("aut", "cre"),
-           email = "cmangana@cemm.at")
+           email = "cmangana@cemm.at",
+           comment = c(ORCID = "0009-0002-2218-8262"))
 Description: Detects distance-dependent gene expression gradients from any
     query cell type in spatial transcriptomics data. For each gene in each
     target cell type, fits a per-sample Poisson GLM with cell-size offset,
