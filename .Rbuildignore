@@ -17,3 +17,5 @@
 ^figure$
 ^cell_type_assignment$
 ^qc_dashboard_demo\.pdf$
+^doc$
+^Meta$

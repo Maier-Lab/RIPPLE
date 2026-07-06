@@ -20,3 +20,5 @@ data-raw/benchmarks/_*.log
 
 # Manuscript drafts — kept local only
 paper/
+/doc/
+/Meta/
