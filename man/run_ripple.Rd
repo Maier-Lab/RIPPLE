@@ -85,8 +85,11 @@ lower bound for the strict tier (default: \code{25}).}
 
 \item{priority_genes}{Character vector of priority gene names that receive
 lenient expression filtering. Set to \code{NULL} to use the built-in
-chemokine/cytokine/receptor list (species-matched via \code{organism}),
-or \code{character(0)} to disable lenient filtering entirely.}
+list (species-matched via \code{organism}), or \code{character(0)} to
+disable lenient filtering entirely. The built-in list is roughly 200
+secreted-signalling genes and their receptors (chemokines, cytokines,
+interleukins, interferons, and receptors), curated from MGI, NCBI Gene,
+and Zlotnik & Yoshie (2012), \doi{10.1016/j.immuni.2012.05.008}.}
 
 \item{organism}{Character: \code{"auto"} (default), \code{"mouse"}, or
 \code{"human"}. Selects the built-in priority gene list when

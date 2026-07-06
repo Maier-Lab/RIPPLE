@@ -46,8 +46,6 @@ NULL
 # Priority gene list (chemokines, cytokines, receptors)
 # ============================================================================
 
-#' Default priority genes for lenient expression filtering
-#' @noRd
 #' Detect whether gene symbols are mouse (MGI) or human (HGNC) style
 #'
 #' Human HGNC symbols are all-uppercase (e.g. CXCL12); mouse MGI symbols are
@@ -64,6 +62,24 @@ NULL
   if (frac_upper > 0.5) "human" else "mouse"
 }
 
+#' Default priority genes for lenient expression filtering
+#'
+#' A curated set of roughly 200 secreted-signalling genes and their receptors:
+#' CC / CXC / CX3C / XC chemokines and chemokine receptors, interleukins and
+#' interleukin receptors, interferons and their receptors, the TNF superfamily,
+#' colony-stimulating factors, the TGF-beta family, the VEGF family, gp130-family
+#' cytokines, and a handful of other cytokines (Mif, Spp1, Kitl, Tslp). These
+#' receive the lenient (priority) expression-filter tier in run_ripple(), so
+#' biologically important but sparsely expressed paracrine genes are not dropped
+#' by the strict filter.
+#'
+#' The gene set was curated from MGI (Mouse Genome Informatics), NCBI Gene, and
+#' the chemokine/receptor nomenclature of Zlotnik & Yoshie (2012).
+#'
+#' @references
+#' Zlotnik, A., and Yoshie, O. (2012). The chemokine superfamily revisited.
+#' Immunity 36, 705-716. \doi{10.1016/j.immuni.2012.05.008}
+#'
 #' @param organism Character: "mouse" (MGI symbols, default) or "human" (HGNC
 #'   symbols). Human is derived from the mouse list by uppercasing, collapsing
 #'   the mouse-specific multi-orthologs (Ccl21a/b/c -> CCL21, Ccl27a/b ->
@@ -170,8 +186,11 @@ NULL
 #'   lower bound for the strict tier (default: \code{25}).
 #' @param priority_genes Character vector of priority gene names that receive
 #'   lenient expression filtering. Set to \code{NULL} to use the built-in
-#'   chemokine/cytokine/receptor list (species-matched via \code{organism}),
-#'   or \code{character(0)} to disable lenient filtering entirely.
+#'   list (species-matched via \code{organism}), or \code{character(0)} to
+#'   disable lenient filtering entirely. The built-in list is roughly 200
+#'   secreted-signalling genes and their receptors (chemokines, cytokines,
+#'   interleukins, interferons, and receptors), curated from MGI, NCBI Gene,
+#'   and Zlotnik & Yoshie (2012), \doi{10.1016/j.immuni.2012.05.008}.
 #' @param organism Character: \code{"auto"} (default), \code{"mouse"}, or
 #'   \code{"human"}. Selects the built-in priority gene list when
 #'   \code{priority_genes = NULL}. \code{"auto"} infers the species from the
