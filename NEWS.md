@@ -82,10 +82,6 @@ development is collected here under 0.1.0.
 
 ## Performance
 
-* Cross-replicate combination uses the Fisher path only; an earlier REML
-  inverse-variance meta-analysis (`meta::metagen`) was removed after profiling
-  showed it dominated runtime while duplicating the Fisher result. `meta` is
-  no longer a dependency.
 * Medium synthetic benchmark (5 samples x 300 genes x 2 target types):
   32.5 s -> 14.5 s (~2.2x faster end-to-end). Real-data runs on full imaging
   panels with many target cell types should see proportional gains;
@@ -115,9 +111,7 @@ development is collected here under 0.1.0.
 ## Packaging
 
 * Installable as a standalone R package; legacy standalone scripts have
-  been removed from the main code path (still available in
-  [HyMy-distance-correlation-analysis](https://github.com/CMangana/HyMy-distance-correlation-analysis)
-  for SLURM-driven workflows).
+  been removed from the main code path
 * Optional dependencies (Bioconductor input classes, fgsea/msigdbr, spdep,
   nichenetr, pheatmap) are guarded at runtime with actionable install
   messages.
