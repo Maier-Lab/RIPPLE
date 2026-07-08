@@ -31,3 +31,6 @@ paper/
 inst/extdata/naive_trc_cached/
 inst/extdata/ksweep_T_cell_all_results.rds
 data-raw/xenium_tdln/frc_subcluster_annotation.csv
+
+# Project dev notes — kept local, not for the public repo
+/CLAUDE.md
