@@ -25,3 +25,9 @@ data-raw/benchmarks/_*.log
 paper/
 /doc/
 /Meta/
+
+# Unpublished Xenium TDLN data — kept local only until the manuscript is posted.
+# These patterns come after the inst/extdata negation above so they win.
+inst/extdata/naive_trc_cached/
+inst/extdata/ksweep_T_cell_all_results.rds
+data-raw/xenium_tdln/frc_subcluster_annotation.csv

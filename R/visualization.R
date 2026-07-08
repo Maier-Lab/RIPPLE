@@ -2703,9 +2703,9 @@ ripple_plot_qc <- function(results_dir,
 #'
 #' @examples
 #' \dontrun{
-#' s4 <- data.table::fread(system.file(
-#'   "extdata/naive_trc_cached/confounder_cxcl12/stage2_multitarget_results.csv",
-#'   package = "ripple"))
+#' # s4 is a Stage 4 confounder-control table, e.g. the stage2 results
+#' # written by run_ripple_confounder().
+#' s4 <- data.table::fread("path/to/stage2_multitarget_results.csv")
 #' plot_confounder_bar(
 #'   s4,
 #'   query_label   = "TRC-Ccl21a",
@@ -2816,9 +2816,9 @@ plot_confounder_bar <- function(stage4_results,
 #'
 #' @examples
 #' \dontrun{
-#' s4 <- data.table::fread(system.file(
-#'   "extdata/naive_trc_cached/confounder_cxcl12/stage2_all_results.csv",
-#'   package = "ripple"))
+#' # s4 is a Stage 4 confounder-control table, e.g. the stage2 results
+#' # written by run_ripple_confounder().
+#' s4 <- data.table::fread("path/to/stage2_all_results.csv")
 #' plot_confounder_scatter(
 #'   s4,
 #'   label_genes   = c("Ccr7", "Sell", "Lef1", "Tcf7", "Cxcr4", "Gzma"),
@@ -2961,9 +2961,9 @@ plot_confounder_scatter <- function(stage4_results,
 #'
 #' @examples
 #' \dontrun{
-#' s4 <- data.table::fread(system.file(
-#'   "extdata/naive_trc_cached/confounder_cxcl12/stage2_all_results.csv",
-#'   package = "ripple"))
+#' # s4 is a Stage 4 confounder-control table, e.g. the stage2 results
+#' # written by run_ripple_confounder().
+#' s4 <- data.table::fread("path/to/stage2_all_results.csv")
 #' plot_confounder_ratio(
 #'   s4,
 #'   label_genes   = c("Ccr7", "Sell", "Lef1", "Tcf7", "Cxcr4", "Gzma"),
