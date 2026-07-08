@@ -127,8 +127,8 @@ It is not a vignette; open it directly in a browser:
 
 [`vignettes/interactive_ripple_explainer.html`](vignettes/interactive_ripple_explainer.html)
 
-Since the repo is private, GitHub will only show the source. To view
-the page rendered, clone the repo and open the file locally:
+GitHub shows the raw source rather than the rendered page for standalone
+HTML files. To view it rendered, clone the repo and open the file locally:
 
 ```sh
 git clone https://github.com/Maier-Lab/RIPPLE.git

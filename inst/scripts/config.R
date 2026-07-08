@@ -41,12 +41,10 @@ Y_COL_ENV <- Sys.getenv("Y_COLUMN", unset = "")
 # =============================================================================
 
 if (nchar(INPUT_PATH) == 0) {
-  if (.Platform$OS.type == "windows") {
-    BASE_PATH <- "N:/lab_maier/Projects/mXenium"
-  } else {
-    BASE_PATH <- "/nobackup/lab_maier/Projects/mXenium"
-  }
-  PROJECT_ROOT <- file.path(BASE_PATH, "CMM")
+  # No INPUT_PATH set: fall back to a base path from the RIPPLE_BASE_PATH
+  # environment variable (point this at your project root).
+  BASE_PATH <- Sys.getenv("RIPPLE_BASE_PATH", unset = "/path/to/project")
+  PROJECT_ROOT <- file.path(BASE_PATH, "analysis")
   MXENIUM_ROOT <- BASE_PATH  # Parent project root
 } else {
   # External mode: derive PROJECT_ROOT from OUTPUT_DIR or working directory
@@ -115,7 +113,7 @@ message("--- RIPPLE Configuration ---")
 if (nchar(INPUT_PATH) > 0) {
   message(sprintf("  INPUT_PATH:       %s", INPUT_PATH))
 } else {
-  message(sprintf("  INPUT_PATH:       (legacy CeMM paths)"))
+  message(sprintf("  INPUT_PATH:       (not set; using RIPPLE_BASE_PATH fallback)"))
 }
 message(sprintf("  OUTPUT_ROOT:      %s", OUTPUT_ROOT))
 message(sprintf("  SAMPLE_COL:       %s", SAMPLE_COL))

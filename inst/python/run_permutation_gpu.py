@@ -25,7 +25,7 @@ Usage:
   QUERY_CELLTYPE=MyType CELLTYPE_COLUMN=my_col python run_permutation_gpu.py
 
 Requirements: PyTorch with CUDA, anndata, numpy, pandas, scipy
-Environment: harpy (/nobackup/lab_maier/envs/harpy)
+Environment: a CUDA-enabled Python env (PyTorch, anndata, numpy<2, scipy)
 """
 
 import os
@@ -70,15 +70,13 @@ elif INPUT_PATH:
 else:
     ADATA_PATH = None  # Will be set from legacy paths below
 
-# Platform detection (legacy — only needed when INPUT_PATH is not set)
+# Legacy fallback (only needed when INPUT_PATH is not set): derive a base path
+# from the RIPPLE_BASE_PATH environment variable (point this at your project root).
 if not INPUT_PATH:
-    if sys.platform == "win32":
-        BASE_PATH = Path("N:/lab_maier/Projects/mXenium")
-    else:
-        BASE_PATH = Path("/nobackup/lab_maier/Projects/mXenium")
-    PROJECT_ROOT = BASE_PATH / "CMM"
+    BASE_PATH = Path(os.environ.get("RIPPLE_BASE_PATH", "/path/to/project"))
+    PROJECT_ROOT = BASE_PATH / "analysis"
     if ADATA_PATH is None:
-        ADATA_PATH = BASE_PATH / "results" / "cell_type_assignment" / "adata_incl_hymy.h5ad"
+        ADATA_PATH = BASE_PATH / "results" / "cell_type_assignment" / "adata.h5ad"
 else:
     PROJECT_ROOT = Path(OUTPUT_DIR).parent if OUTPUT_DIR else Path.cwd()
 
@@ -632,7 +630,7 @@ def main():
         print(f"\nNo CONDITION_VALUE set; using all cells (CONDITION_COLUMN={CONDITION_COL} present but unfiltered)")
         cond_mask = np.ones(len(adata), dtype=bool)
     elif "group" in adata.obs.columns and not INPUT_PATH:
-        # Legacy CeMM behavior: filter to TDLN
+        # Legacy fallback behavior for the internal dataset's "group" column
         print("\nFiltering to TDLN (legacy)...")
         cond_mask = adata.obs["group"] == "TDLN"
     else:

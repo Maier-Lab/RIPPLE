@@ -63,7 +63,7 @@ load_metadata_only <- function(path = NULL) {
 
   # Handle cell type annotation based on configuration
   if (USE_HYMY_ANNOTATION && nchar(INPUT_PATH) == 0) {
-    # HyMy annotation: Merge from CSV (legacy CeMM mode only)
+    # HyMy annotation: Merge from CSV (legacy fallback mode only)
     if (!"cell_type_with_HyMy" %in% names(meta) ||
         !any(meta$cell_type_with_HyMy == "HyMy_GMM", na.rm = TRUE)) {
       message("\nMerging HyMy annotations from CSV...")

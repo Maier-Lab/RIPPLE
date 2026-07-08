@@ -73,9 +73,9 @@ total class breakdown is visible.
 }
 \examples{
 \dontrun{
-s4 <- data.table::fread(system.file(
-  "extdata/naive_trc_cached/confounder_cxcl12/stage2_all_results.csv",
-  package = "ripple"))
+# s4 is a Stage 4 confounder-control table, e.g. the stage2 results
+# written by run_ripple_confounder().
+s4 <- data.table::fread("path/to/stage2_all_results.csv")
 plot_confounder_ratio(
   s4,
   label_genes   = c("Ccr7", "Sell", "Lef1", "Tcf7", "Cxcr4", "Gzma"),

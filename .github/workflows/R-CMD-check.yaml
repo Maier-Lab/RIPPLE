@@ -1,7 +1,7 @@
 # R CMD check on every push to main and every PR.
-# Single Ubuntu job, latest R release. The plan is to keep this minimal
-# while the package is private and unreleased. Add macOS / Windows /
-# multiple R versions later if the deployment story changes.
+# Single Ubuntu job, latest R release. Kept minimal for now; add
+# macOS / Windows / multiple R versions later if the deployment story
+# changes.
 #
 # nichenetr is in Suggests but only ships on GitHub (saeyslab/nichenetr),
 # not CRAN or Bioconductor. pak refuses to resolve it without an explicit

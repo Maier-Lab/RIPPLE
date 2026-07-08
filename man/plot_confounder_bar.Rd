@@ -53,9 +53,9 @@ the dynamic \code{<query_label>_specific} produced by
 }
 \examples{
 \dontrun{
-s4 <- data.table::fread(system.file(
-  "extdata/naive_trc_cached/confounder_cxcl12/stage2_multitarget_results.csv",
-  package = "ripple"))
+# s4 is a Stage 4 confounder-control table, e.g. the stage2 results
+# written by run_ripple_confounder().
+s4 <- data.table::fread("path/to/stage2_multitarget_results.csv")
 plot_confounder_bar(
   s4,
   query_label   = "TRC-Ccl21a",

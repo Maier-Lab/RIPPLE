@@ -71,7 +71,7 @@ if (nchar(INPUT_PATH) > 0) {
     ADATA_PATH <- if (length(.h5ad_candidates) > 0) .h5ad_candidates[1] else ""
   }
 } else {
-  # Legacy CeMM paths
+  # Legacy fallback paths (relative to RIPPLE_BASE_PATH)
   SEURAT_PATH <- file.path(MXENIUM_ROOT, "results", "cell_type_assignment",
                            "HyMy_annotation", "seurat_xenium_filtered.rds")
   ADATA_PATH_ENV <- Sys.getenv("ADATA_PATH", unset = "")
@@ -903,7 +903,7 @@ save_plot <- function(p, output_dir, filename, width = 8, height = 6,
 
 #' Infer condition from sample name (LEGACY)
 #'
-#' Only used when CONDITION_COL is not set. Assumes CeMM mXenium naming
+#' Only used when CONDITION_COL is not set. Assumes the legacy internal naming
 #' convention (naive_*, TDLN_*). External users should set CONDITION_COLUMN
 #' and CONDITION_VALUE env vars instead.
 #'

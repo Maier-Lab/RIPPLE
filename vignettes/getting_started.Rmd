@@ -48,7 +48,7 @@ BiocManager::install(c(
 ))
 install.packages("R.utils") # for ripple_plot_qc() to read the .gz QC table
 
-# From a private mirror or local source
+# Install from GitHub
 remotes::install_github("Maier-Lab/RIPPLE")
 ```
 
