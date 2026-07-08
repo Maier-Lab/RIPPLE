@@ -11,7 +11,7 @@ Description: Detects distance-dependent gene expression gradients from any
     then combines across replicates via Fisher's combined p-value with sign
     consistency gating. Supports confounder control, permutation testing,
     pathway enrichment, and ligand-receptor integration.
-License: PolyForm-Noncommercial-1.0.0 + file LICENSE
+License: GPL-3
 URL: https://github.com/Maier-Lab/RIPPLE
 BugReports: https://github.com/Maier-Lab/RIPPLE/issues
 Encoding: UTF-8
