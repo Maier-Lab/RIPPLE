@@ -28,6 +28,12 @@ For each gene in each target cell type, RIPPLE fits a per-sample Poisson GLM wit
 
 **Supported platforms:** Xenium, CosMx, MERFISH, etc. Suited to any imaging-based platform with single-cell resolved coordinates and integer counts. Not designed for spot-resolution platforms (e.g. Visium without deconvolution) where one spot mixes multiple cell types.
 
+
+### Interactive explainer
+
+This page walks through how RIPPLE works, with diagrams you can interact with!
+**[How RIPPLE Works (interactive explainer)](https://maier-lab.github.io/RIPPLE/)**
+
 ---
 
 ## Installation
@@ -119,18 +125,6 @@ browseVignettes("ripple")
 # Or build the full pkgdown site (shipped _pkgdown.yml):
 pkgdown::build_site()
 ```
-
-### Interactive explainer
-
-A standalone HTML page walks through how RIPPLE works, with diagrams:
-
-**[How RIPPLE Works (interactive explainer)](https://maier-lab.github.io/RIPPLE/)**
-
-The source lives at
-[`pkgdown/assets/interactive_ripple_explainer.html`](pkgdown/assets/interactive_ripple_explainer.html);
-you can also clone the repo and open that file directly in a browser.
-
----
 
 ## Pipeline overview
 
