@@ -377,10 +377,10 @@ function PoissonWalkthrough() {
     desc: "Each dot is one target cell. X-axis = distance to nearest query cell. Y-axis = transcript counts for gene X."
   }, {
     label: "Poisson assumption",
-    desc: "Transcript counts are non-negative integers \u2014 classic count data. The Poisson distribution models the probability of observing 0, 1, 2, \u2026 transcripts per cell."
+    desc: "Transcript counts are non-negative integers (classic count data). The Poisson distribution models the probability of observing 0, 1, 2, \u2026 transcripts per cell."
   }, {
     label: "Fit the GLM",
-    desc: "We fit log(E[counts]) = \u03B2\u2080 + \u03B2\u2081 \u00B7 distance. The line shows expected counts decreasing with distance \u2014 gene X is expressed more near the query cells."
+    desc: "We fit log(E[counts]) = \u03B2\u2080 + \u03B2\u2081 \u00B7 distance. The line shows expected counts decreasing with distance; gene X is expressed more near the query cells."
   }];
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("svg", {
     viewBox: "0 0 " + chartW + " " + chartH,
@@ -600,7 +600,7 @@ function OffsetDiagram() {
     fontSize: "10",
     fill: C.red,
     fontFamily: "monospace"
-  }, "Cell A looks 2\u00D7 higher \u2014 but it also has 4\u00D7 more total transcripts") : /*#__PURE__*/React.createElement("text", {
+  }, "Cell A looks 2\u00D7 higher, but it also has 4\u00D7 more total transcripts") : /*#__PURE__*/React.createElement("text", {
     fontSize: "10",
     fill: C.dark,
     fontFamily: "monospace"
@@ -959,7 +959,7 @@ function App() {
       margin: "0 auto",
       lineHeight: 1.5
     }
-  }, "Detecting spatial gene expression gradients around cell types in spatial transcriptomics data, one Poisson regression at a time.")), /*#__PURE__*/React.createElement("nav", {
+  }, "Detecting spatial gene expression gradients around cell types in spatial transcriptomics data, one Poisson regression at a time."), /*#__PURE__*/React.createElement("a", { href: "https://github.com/Maier-Lab/RIPPLE", target: "_blank", rel: "noopener", style: { display: "inline-block", marginTop: 16, fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: C.blue, textDecoration: "none", border: "1px solid " + C.border, borderRadius: 8, padding: "6px 14px" } }, "View source on GitHub")), /*#__PURE__*/React.createElement("nav", {
     className: "flex flex-wrap gap-1.5 justify-center mb-12 sticky top-0 z-10 py-3",
     style: {
       background: "rgba(255,255,255,0.92)",
@@ -1011,12 +1011,12 @@ function App() {
       marginTop: 12,
       textAlign: "center"
     }
-  }, "Hover over target cells to see their distance to the query cluster."), /*#__PURE__*/React.createElement(Callout, null, "Each target cell has a measurable physical distance (in \\u00B5m) to the nearest query cell. RIPPLE uses this distance as the sole predictor of gene expression.")), /*#__PURE__*/React.createElement(Section, {
+  }, "Hover over target cells to see their distance to the query cluster."), /*#__PURE__*/React.createElement(Callout, null, "Each target cell has a measurable physical distance (in \u00B5m) to the nearest query cell. RIPPLE uses this distance as the sole predictor of gene expression.")), /*#__PURE__*/React.createElement(Section, {
     id: "poisson"
   }, /*#__PURE__*/React.createElement(SectionTitle, {
     num: "02",
     title: "Why a Poisson GLM?",
-    subtitle: "Transcript counts are integers \\u2014 the model should know that."
+    subtitle: "Transcript counts are integers; the model should know that."
   }), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 14,
@@ -1024,7 +1024,7 @@ function App() {
       lineHeight: 1.7,
       marginBottom: 16
     }
-  }, "Spatial transcriptomics platforms like Xenium report the number of transcript molecules detected per cell. These are ", /*#__PURE__*/React.createElement("strong", null, "count data"), " \\u2014 non-negative integers (0, 1, 2, 3, \\u2026). The Poisson distribution is the standard statistical model for counts: it naturally handles zeros, is defined only for non-negative integers, and has a single rate parameter \\u03BB that controls both the mean and variance."), /*#__PURE__*/React.createElement("p", {
+  }, "Spatial transcriptomics platforms like Xenium report the number of transcript molecules detected per cell. These are ", /*#__PURE__*/React.createElement("strong", null, "count data"), ", non-negative integers (0, 1, 2, 3, \u2026). The Poisson distribution is the standard statistical model for counts: it naturally handles zeros, is defined only for non-negative integers, and has a single rate parameter \u03BB that controls both the mean and variance."), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 14,
       color: C.text,
@@ -1067,7 +1067,7 @@ function App() {
       lineHeight: 1.7,
       marginBottom: 16
     }
-  }, "Not every cell captures the same number of transcripts. Cells that are larger, better-segmented, or simply captured more efficiently will have ", /*#__PURE__*/React.createElement("strong", null, "higher total counts across all genes"), ". Without correction, such cells would appear to express more of ", /*#__PURE__*/React.createElement("em", null, "every"), " gene \\u2014 a technical artifact, not biology."), /*#__PURE__*/React.createElement("p", {
+  }, "Not every cell captures the same number of transcripts. Cells that are larger, better-segmented, or simply captured more efficiently will have ", /*#__PURE__*/React.createElement("strong", null, "higher total counts across all genes"), ". Without correction, such cells would appear to express more of ", /*#__PURE__*/React.createElement("em", null, "every"), " gene, a technical artifact, not biology."), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 14,
       color: C.text,
@@ -1081,7 +1081,7 @@ function App() {
       lineHeight: 1.7,
       marginBottom: 16
     }
-  }, "The log(total) term is fixed \\u2014 it is not estimated. It shifts the baseline so that the model effectively asks: \"What fraction of this cell's transcripts are gene X, and does that fraction change with distance?\" Try toggling the view below:"), /*#__PURE__*/React.createElement(OffsetDiagram, null), /*#__PURE__*/React.createElement(Callout, null, "The offset is the Poisson-GLM equivalent of library-size normalization in scRNA-seq. It is statistically cleaner than pre-normalizing because it keeps the data as integer counts, preserving the Poisson likelihood.")), /*#__PURE__*/React.createElement(Section, {
+  }, "The log(total) term is fixed; it is not estimated. It shifts the baseline so that the model effectively asks: \"What fraction of this cell's transcripts are gene X, and does that fraction change with distance?\" Try toggling the view below:"), /*#__PURE__*/React.createElement(OffsetDiagram, null), /*#__PURE__*/React.createElement(Callout, null, "The offset is the Poisson-GLM equivalent of library-size normalization in scRNA-seq. It is statistically cleaner than pre-normalizing because it keeps the data as integer counts, preserving the Poisson likelihood.")), /*#__PURE__*/React.createElement(Section, {
     id: "replication"
   }, /*#__PURE__*/React.createElement(SectionTitle, {
     num: "04",
@@ -1094,7 +1094,7 @@ function App() {
       lineHeight: 1.7,
       marginBottom: 16
     }
-  }, "A single tissue section may contain thousands of cells, but these cells are ", /*#__PURE__*/React.createElement("strong", null, "not independent observations"), ". Cells near each other share the same local microenvironment, creating spatial autocorrelation. If you pool all cells from all samples into one regression, the model treats every cell as an independent data point and will be severely ", /*#__PURE__*/React.createElement("strong", null, "overconfident"), " \\u2014 reporting tiny p-values for gradients that exist in only one sample."), /*#__PURE__*/React.createElement("p", {
+  }, "A single tissue section may contain thousands of cells, but these cells are ", /*#__PURE__*/React.createElement("strong", null, "not independent observations"), ". Cells near each other share the same local microenvironment, creating spatial autocorrelation. If you pool all cells from all samples into one regression, the model treats every cell as an independent data point and will be severely ", /*#__PURE__*/React.createElement("strong", null, "overconfident"), ", reporting tiny p-values for gradients that exist in only one sample."), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 14,
       color: C.text,
@@ -1103,7 +1103,7 @@ function App() {
     }
   }, "RIPPLE solves this by fitting a ", /*#__PURE__*/React.createElement("strong", null, "separate Poisson GLM per biological replicate"), " (e.g., per mouse). Each sample yields its own ", "\u03B2\u2081", " estimate. These per-sample estimates are then aggregated into a single significance test. A gradient is only called significant if it is ", /*#__PURE__*/React.createElement("strong", null, "reproducible across independent samples"), "."), /*#__PURE__*/React.createElement(PerSampleDiagram, null), /*#__PURE__*/React.createElement(Callout, {
     accent: "red"
-  }, /*#__PURE__*/React.createElement("strong", null, "This is the most important statistical design choice in RIPPLE."), " It prevents inflated significance from pseudoreplication \\u2014 a common pitfall in spatial and single-cell analyses where n = cells but the true n = samples.")), /*#__PURE__*/React.createElement(Section, {
+  }, /*#__PURE__*/React.createElement("strong", null, "This is the most important statistical design choice in RIPPLE."), " It prevents inflated significance from pseudoreplication, a common pitfall in spatial and single-cell analyses where n = cells but the true n = samples.")), /*#__PURE__*/React.createElement(Section, {
     id: "output"
   }, /*#__PURE__*/React.createElement(SectionTitle, {
     num: "05",
@@ -1120,7 +1120,7 @@ function App() {
     className: "grid grid-cols-1 sm:grid-cols-3 gap-3 my-6 max-w-lg mx-auto"
   }, [{
     label: "Sign",
-    desc: "Direction \u2014 is the gene higher or lower near the query?"
+    desc: "Direction: is the gene higher or lower near the query?"
   }, {
     label: "Magnitude",
     desc: "Fold-change per unit distance (log scale)"
@@ -1157,7 +1157,7 @@ function App() {
       lineHeight: 1.7,
       marginBottom: 12
     }
-  }, "Below is what a typical RIPPLE output table looks like. Bars extend left for genes enriched near the query and right for genes depleted near it. Greyed-out entries (like ", /*#__PURE__*/React.createElement("em", null, "Tox"), ") are not significant:"), /*#__PURE__*/React.createElement(GradientOutput, null), /*#__PURE__*/React.createElement(Callout, null, "Because the gradient score has physical units (log fold-change per \\u00B5m), you can compute the expected expression fold-change over ", /*#__PURE__*/React.createElement("em", null, "any"), " distance. For example, a score of ", "\u22120.02", " means expression roughly doubles every ~35 \\u00B5m closer to the query (since e", /*#__PURE__*/React.createElement("sup", null, "0.02 \u00D7 35"), " ", "\u2248", " 2).")), /*#__PURE__*/React.createElement(Section, {
+  }, "Below is what a typical RIPPLE output table looks like. Bars extend left for genes enriched near the query and right for genes depleted near it. Greyed-out entries (like ", /*#__PURE__*/React.createElement("em", null, "Tox"), ") are not significant:"), /*#__PURE__*/React.createElement(GradientOutput, null), /*#__PURE__*/React.createElement(Callout, null, "Because the gradient score has physical units (log fold-change per \u00B5m), you can compute the expected expression fold-change over ", /*#__PURE__*/React.createElement("em", null, "any"), " distance. For example, a score of ", "\u22120.02", " means expression roughly doubles every ~35 \u00B5m closer to the query (since e", /*#__PURE__*/React.createElement("sup", null, "0.02 \u00D7 35"), " ", "\u2248", " 2).")), /*#__PURE__*/React.createElement(Section, {
     id: "pipeline"
   }, /*#__PURE__*/React.createElement(SectionTitle, {
     num: "06",
@@ -1170,7 +1170,7 @@ function App() {
       lineHeight: 1.7,
       marginBottom: 16
     }
-  }, "Because RIPPLE summarizes every gene as an effect size + p-value pair, its output is ", /*#__PURE__*/React.createElement("strong", null, "a ranked gene list"), " \\u2014 the same data structure used by pathway enrichment tools (GSEA, enrichR), ligand-receptor inference methods (LIANA, CellChat), and gene-set analyses. You can drop RIPPLE's gradient list directly into these workflows:"), /*#__PURE__*/React.createElement("svg", {
+  }, "Because RIPPLE summarizes every gene as an effect size + p-value pair, its output is ", /*#__PURE__*/React.createElement("strong", null, "a ranked gene list"), ", the same data structure used by pathway enrichment tools (GSEA, enrichR), ligand-receptor inference methods (LIANA, CellChat), and gene-set analyses. You can drop RIPPLE's gradient list directly into these workflows:"), /*#__PURE__*/React.createElement("svg", {
     viewBox: "0 0 420 90",
     className: "w-full max-w-lg mx-auto mb-4"
   }, /*#__PURE__*/React.createElement("defs", null, /*#__PURE__*/React.createElement("marker", {
@@ -1246,7 +1246,7 @@ function App() {
       color: C.text,
       lineHeight: 1.7
     }
-  }, "The model itself \\u2014 one Poisson regression per gene \\u2014 is computationally lightweight, making RIPPLE fast enough to run genome-wide across multiple query cell types without specialized hardware.")), /*#__PURE__*/React.createElement("footer", {
+  }, "The model itself, one Poisson regression per gene, is computationally lightweight, making RIPPLE fast enough to run genome-wide across multiple query cell types without specialized hardware.")), /*#__PURE__*/React.createElement("footer", {
     className: "mt-16 pt-6 text-center",
     style: {
       borderTop: "1px solid " + C.border
@@ -1257,7 +1257,7 @@ function App() {
       color: C.muted,
       fontFamily: "monospace"
     }
-  }, "RIPPLE \\u00B7 Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation")));
+  }, "RIPPLE \u00B7 Replicate-Aware Inference of Paracrine Profiles via Likelihood Estimation")));
 }
 var root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(/*#__PURE__*/React.createElement(App, null));
