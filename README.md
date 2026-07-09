@@ -122,19 +122,13 @@ pkgdown::build_site()
 
 ### Interactive explainer
 
-A standalone HTML page walks through how RIPPLE works, with diagrams.
-It is not a vignette; open it directly in a browser:
+A standalone HTML page walks through how RIPPLE works, with diagrams:
 
-[`pkgdown/assets/interactive_ripple_explainer.html`](pkgdown/assets/interactive_ripple_explainer.html)
+**[How RIPPLE Works (interactive explainer)](https://maier-lab.github.io/RIPPLE/)**
 
-GitHub shows the raw source rather than the rendered page for standalone
-HTML files. To view it rendered, clone the repo and open the file locally:
-
-```sh
-git clone https://github.com/Maier-Lab/RIPPLE.git
-open RIPPLE/pkgdown/assets/interactive_ripple_explainer.html   # macOS
-# or:  xdg-open / start, depending on your OS
-```
+The source lives at
+[`pkgdown/assets/interactive_ripple_explainer.html`](pkgdown/assets/interactive_ripple_explainer.html);
+you can also clone the repo and open that file directly in a browser.
 
 ---
 
