@@ -18,6 +18,9 @@
 
 RIPPLE is an R package that detects distance-dependent gene expression gradients from a chosen query cell type in spatial transcriptomics data.
 
+This page walks through how RIPPLE works, with diagrams you can interact with!
+**[How RIPPLE Works (interactive explainer)](https://maier-lab.github.io/RIPPLE/)**
+
 ---
 
 ## The question
@@ -27,12 +30,6 @@ RIPPLE is an R package that detects distance-dependent gene expression gradients
 For each gene in each target cell type, RIPPLE fits a per-sample Poisson GLM with Euclidean distance to the nearest query cell as the predictor and `log(total_counts)` as an offset. Per-sample coefficients are then combined across biological replicates via Fisher's combined p-value with a sign-consistency gate. The output is a ranked list of genes with signed gradient scores, calibrated FDR, and per-sample reproducibility.
 
 **Supported platforms:** Xenium, CosMx, MERFISH, etc. Suited to any imaging-based platform with single-cell resolved coordinates and integer counts. Not designed for spot-resolution platforms (e.g. Visium without deconvolution) where one spot mixes multiple cell types.
-
-
-### Interactive explainer
-
-This page walks through how RIPPLE works, with diagrams you can interact with!
-**[How RIPPLE Works (interactive explainer)](https://maier-lab.github.io/RIPPLE/)**
 
 ---
 
