@@ -206,6 +206,14 @@ NULL
 #' @param sign_consistency Minimum fraction of replicates that must agree on
 #'   coefficient direction for Fisher's combined p-value to be computed. Set
 #'   to \code{1.0} (the default) to require unanimous agreement.
+#' @param assay Seurat assay to pull counts from (Seurat input only). When
+#'   \code{NULL} (default), RIPPLE tries \code{"Xenium"}, then \code{"RNA"},
+#'   then \code{"Spatial"}; the first one present in the object wins. If none
+#'   match, RIPPLE falls back to the object's active assay with a warning.
+#'   The auto-selection prevents a common trap: after \code{SCTransform()},
+#'   the active assay is \code{"SCT"} (normalized floats, not raw counts),
+#'   which would silently break the Poisson GLM. Pass \code{assay} explicitly
+#'   to override. Ignored for SCE / SPE / file-path inputs.
 #' @param verbose Print progress messages (default: \code{TRUE}).
 #'
 #' @return A \code{data.table} with columns: \code{gene}, \code{cell_type},
@@ -297,6 +305,7 @@ run_ripple <- function(
     query_label = NULL,
     analysis_name = "ripple",
     sign_consistency = 1.0,
+    assay = NULL,
     verbose = TRUE) {
   # --------------------------------------------------------------------------
   # 0. Resolve defaults from package options
@@ -366,7 +375,9 @@ run_ripple <- function(
   # 3. Load and normalize data
   # --------------------------------------------------------------------------
   .msg("\nLoading data...", verbose = verbose)
-  data <- .resolve_input(input, require_expr = FALSE, verbose = verbose)
+  data <- .resolve_input(
+    input, require_expr = FALSE, verbose = verbose, assay = assay
+  )
   count_matrix_full <- data$counts
   cell_data <- data$meta
   rm(data)
@@ -474,9 +485,25 @@ run_ripple <- function(
 
   .msg("Data summary (after filtering):", verbose = verbose)
   .msg("  Total cells: ", nrow(cell_data), verbose = verbose)
-  .msg("  Samples: ", data.table::uniqueN(cell_data[[sample_column]]),
-    verbose = verbose
-  )
+  n_samples_avail <- data.table::uniqueN(cell_data[[sample_column]])
+  .msg("  Samples: ", n_samples_avail, verbose = verbose)
+
+  if (n_samples_avail < 2) {
+    stop(
+      "RIPPLE needs at least 2 biological samples to run replicate-aware ",
+      "inference. Got ", n_samples_avail, " unique value(s) in ",
+      "sample_column = '", sample_column, "'",
+      if (!is.null(condition_value) && nzchar(condition_value)) {
+        paste0(" after filtering to condition = '", condition_value, "'")
+      } else {
+        ""
+      },
+      ".\nIf you are analysing one section, aggregate across independent ",
+      "replicates first, or use a per-sample analysis method instead of ",
+      "RIPPLE. See vignette('methods_positioning') for alternatives.",
+      call. = FALSE
+    )
+  }
 
   # Subset count matrix to filtered barcodes
   count_matrix <- count_matrix_full[, cell_data$barcode, drop = FALSE]
@@ -1292,6 +1319,10 @@ run_ripple <- function(
 #'   \code{query_celltype}).
 #' @param sign_consistency Sign consistency threshold for Fisher's p-value
 #'   (default: \code{1.0}).
+#' @param assay Seurat assay to pull counts from (Seurat input only). See
+#'   \code{\link{run_ripple}} for the auto-selection logic. Default
+#'   \code{NULL} tries Xenium then RNA then Spatial before falling back to
+#'   the active assay.
 #' @param verbose Print progress messages (default: \code{TRUE}).
 #'
 #' @return A \code{data.table} with Stage 1 vs Stage 2 comparison and
@@ -1347,6 +1378,7 @@ run_ripple_confounder <- function(
     sig_column = "fisher_fdr",
     query_label = NULL,
     sign_consistency = 1.0,
+    assay = NULL,
     verbose = TRUE) {
   # --------------------------------------------------------------------------
   # 0. Resolve defaults
@@ -1447,7 +1479,9 @@ run_ripple_confounder <- function(
   # 4. Load and normalize data
   # --------------------------------------------------------------------------
   .msg("\nLoading data...", verbose = verbose)
-  data <- .resolve_input(input, require_expr = FALSE, verbose = verbose)
+  data <- .resolve_input(
+    input, require_expr = FALSE, verbose = verbose, assay = assay
+  )
   count_matrix_full <- data$counts
   cell_data <- data$meta
   rm(data)
@@ -1462,6 +1496,15 @@ run_ripple_confounder <- function(
   if (!sample_column %in% names(cell_data)) {
     stop("Sample column '", sample_column, "' not found in metadata. ",
       "Available: ", paste(head(names(cell_data), 20), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  n_samples_avail <- data.table::uniqueN(cell_data[[sample_column]])
+  if (n_samples_avail < 2) {
+    stop(
+      "RIPPLE needs at least 2 biological samples to run replicate-aware ",
+      "inference. Got ", n_samples_avail, " unique value(s) in ",
+      "sample_column = '", sample_column, "'.",
       call. = FALSE
     )
   }

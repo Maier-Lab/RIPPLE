@@ -41,7 +41,8 @@ NULL
 #' }
 #'
 #' @keywords internal
-.resolve_input <- function(input, require_expr = FALSE, verbose = TRUE) {
+.resolve_input <- function(input, require_expr = FALSE, verbose = TRUE,
+                           assay = NULL) {
   .msg <- function(...) if (isTRUE(verbose)) message(...)
 
   # ------------------------------------------------------------------
@@ -53,7 +54,9 @@ NULL
     }
     .msg("Loading from file: ", input)
     obj <- readRDS(input)
-    return(.resolve_input(obj, require_expr = require_expr, verbose = verbose))
+    return(.resolve_input(
+      obj, require_expr = require_expr, verbose = verbose, assay = assay
+    ))
   }
 
   # ------------------------------------------------------------------
@@ -61,15 +64,18 @@ NULL
   # ------------------------------------------------------------------
   if (inherits(input, "Seurat")) {
     .msg("Detected Seurat object")
-    counts <- .get_seurat_layer(input, "counts")
-    meta <- data.table::as.data.table(input@meta.data, keep.rownames = "barcode")
+    chosen_assay <- .resolve_seurat_assay(input, assay = assay, verbose = verbose)
+    counts <- .get_seurat_layer(input, "counts", assay = chosen_assay)
+    .check_integer_counts(counts, chosen_assay)
+    meta_df <- .inject_seurat_fov_coords(input, verbose = verbose)
+    meta <- data.table::as.data.table(meta_df, keep.rownames = "barcode")
 
     result <- list(counts = counts, meta = meta)
 
     if (require_expr) {
       # Suppress Seurat's "empty layer" warning; we fall back to log-normalizing
       expr <- suppressWarnings(tryCatch(
-        .get_seurat_layer(input, "data"),
+        .get_seurat_layer(input, "data", assay = chosen_assay),
         error = function(e) NULL
       ))
       if (is.null(expr) || identical(dim(expr), c(0L, 0L)) ||
@@ -165,21 +171,196 @@ NULL
 #' Get a layer from a Seurat object, handling v4/v5 differences
 #' @keywords internal
 #' @noRd
-.get_seurat_layer <- function(obj, layer) {
+.get_seurat_layer <- function(obj, layer, assay = NULL) {
+  args_v5 <- list(object = obj, layer = layer)
+  args_v4 <- list(object = obj, slot = layer)
+  if (!is.null(assay)) {
+    args_v5$assay <- assay
+    args_v4$assay <- assay
+  }
   tryCatch(
-    Seurat::GetAssayData(obj, layer = layer),
+    do.call(Seurat::GetAssayData, args_v5),
     error = function(e) {
       tryCatch(
-        Seurat::GetAssayData(obj, slot = layer),
+        do.call(Seurat::GetAssayData, args_v4),
         error = function(e2) {
-          stop("Could not extract '", layer, "' from Seurat object. ",
-            "Error: ", e$message,
+          stop("Could not extract '", layer, "' from Seurat object",
+            if (!is.null(assay)) paste0(" (assay '", assay, "')") else "",
+            ". Error: ", e$message,
             call. = FALSE
           )
         }
       )
     }
   )
+}
+
+#' Pick which Seurat assay to use for RIPPLE
+#'
+#' Resolution order:
+#' 1. If \code{assay} is explicitly provided, validate it exists.
+#' 2. Otherwise try known raw-count assay names in order: Xenium, RNA, Spatial.
+#'    First match wins.
+#' 3. Otherwise fall back to the object's active assay, with a warning.
+#'
+#' This avoids the common trap where SCTransform (or another normalization)
+#' has taken over as the active assay, and RIPPLE silently gets normalized
+#' values instead of raw counts.
+#'
+#' @keywords internal
+#' @noRd
+.resolve_seurat_assay <- function(obj, assay = NULL, verbose = TRUE) {
+  .msg <- function(...) if (isTRUE(verbose)) message(...)
+  available <- Seurat::Assays(obj)
+
+  if (!is.null(assay)) {
+    if (!assay %in% available) {
+      stop(
+        "Assay '", assay, "' not found. Available: ",
+        paste(available, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    .msg("  Using assay: '", assay, "' (user-specified)")
+    return(assay)
+  }
+
+  priority <- c("Xenium", "RNA", "Spatial")
+  match <- priority[priority %in% available]
+  if (length(match) > 0) {
+    chosen <- match[1]
+    .msg("  Using assay: '", chosen, "' (auto-selected raw-count assay)")
+    return(chosen)
+  }
+
+  active <- Seurat::DefaultAssay(obj)
+  warning(
+    "No standard raw-count assay found (looked for Xenium, RNA, Spatial). ",
+    "Falling back to the active assay '", active, "'. ",
+    "If this is normalized data (e.g. SCT), RIPPLE's Poisson GLM will ",
+    "misbehave. Pass assay = '<name>' to run_ripple(), or set ",
+    "DefaultAssay(obj) <- '<name>' before calling. ",
+    "Available assays: ", paste(available, collapse = ", "),
+    call. = FALSE
+  )
+  active
+}
+
+#' Extract centroids from Seurat FOV objects into @meta.data if missing
+#'
+#' Xenium (and MERSCOPE / CosMx via Seurat's FOV class) data loaded via
+#' \code{LoadXenium()} keeps per-cell spatial centroids inside FOV objects
+#' at \code{obj@@images$fov}, not in \code{@@meta.data}. RIPPLE's
+#' coordinate resolver (\code{\link{get_coord_columns}}) only reads
+#' \code{@@meta.data}, so out of the box a Xenium Seurat object errors
+#' with "Could not find spatial coordinate columns".
+#'
+#' This helper closes that gap. If the metadata already has any of the
+#' recognised coordinate column names (x/y, x_centroid/y_centroid,
+#' spatial_x/spatial_y), it does nothing. Otherwise it iterates every
+#' FOV-class image, calls \code{Seurat::GetTissueCoordinates()} on each,
+#' row-binds the results, aligns rows to the metadata's cell order, and
+#' adds \code{x_centroid} / \code{y_centroid} columns. A one-line
+#' message reports what was done.
+#'
+#' Never overwrites existing metadata coordinate columns.
+#'
+#' @keywords internal
+#' @noRd
+.inject_seurat_fov_coords <- function(obj, verbose = TRUE) {
+  meta <- obj@meta.data
+
+  # Already has coordinates in meta.data — respect the user's setup.
+  known <- c("x", "y", "x_centroid", "y_centroid", "spatial_x", "spatial_y")
+  if (any(known %in% names(meta))) {
+    return(meta)
+  }
+
+  img_names <- tryCatch(Seurat::Images(obj), error = function(e) character())
+  if (!length(img_names)) return(meta)
+  fov_names <- Filter(function(nm) inherits(obj[[nm]], "FOV"), img_names)
+  if (!length(fov_names)) return(meta)
+
+  coord_list <- lapply(fov_names, function(nm) {
+    tryCatch(
+      Seurat::GetTissueCoordinates(obj[[nm]]),
+      error = function(e) NULL
+    )
+  })
+  coord_list <- Filter(Negate(is.null), coord_list)
+  if (!length(coord_list)) return(meta)
+
+  all_coords <- do.call(rbind, coord_list)
+
+  # GetTissueCoordinates returns a data.frame with x/y numeric cols and
+  # (Seurat >= 4) a "cell" column carrying the barcode. Older versions
+  # use rownames instead.
+  cell_col <- if ("cell" %in% names(all_coords)) {
+    as.character(all_coords$cell)
+  } else {
+    rownames(all_coords)
+  }
+
+  # Align to meta.data cell order; drop cells with no FOV entry.
+  match_idx <- match(rownames(meta), cell_col)
+  if (all(is.na(match_idx))) {
+    warning(
+      "FOV centroids present but none of the barcodes matched @meta.data. ",
+      "Skipping FOV coordinate extraction. Add x_centroid / y_centroid to ",
+      "@meta.data manually.",
+      call. = FALSE
+    )
+    return(meta)
+  }
+  meta$x_centroid <- all_coords$x[match_idx]
+  meta$y_centroid <- all_coords$y[match_idx]
+
+  n_missing <- sum(is.na(meta$x_centroid))
+  if (isTRUE(verbose)) {
+    message(
+      "  Extracted centroids from ", length(fov_names),
+      " FOV(s) (", paste(fov_names, collapse = ", "),
+      ") into x_centroid / y_centroid",
+      if (n_missing) paste0(" (", n_missing, " cells missing coords)") else ""
+    )
+  }
+  meta
+}
+
+#' Warn if the counts matrix contains non-integer values
+#'
+#' RIPPLE fits a Poisson GLM with an offset for cell size, which assumes
+#' raw integer counts. SCTransform, normalization, and imputation all
+#' produce non-integer values that break the assumption silently.
+#'
+#' Samples the first \code{n_sample} non-zero values rather than the whole
+#' matrix so the check is O(1) even on 100M-cell inputs.
+#'
+#' @keywords internal
+#' @noRd
+.check_integer_counts <- function(counts, assay_name = NULL,
+                                  n_sample = 1000) {
+  if (!nrow(counts) || !ncol(counts)) return(invisible(NULL))
+  vals <- if (inherits(counts, "Matrix") && .hasSlot(counts, "x")) {
+    utils::head(counts@x, n_sample)
+  } else {
+    utils::head(as.numeric(counts), n_sample)
+  }
+  vals <- vals[is.finite(vals) & vals != 0]
+  if (!length(vals)) return(invisible(NULL))
+  if (!isTRUE(all.equal(vals, round(vals), tolerance = 1e-8))) {
+    warning(
+      "Counts matrix ",
+      if (!is.null(assay_name)) paste0("(assay '", assay_name, "') "),
+      "contains non-integer values. RIPPLE fits a Poisson GLM and expects ",
+      "raw integer counts. Common cause: SCTransform, LogNormalize, or ",
+      "another normalization has replaced the counts. Pass assay = '<raw ",
+      "assay>' to run_ripple(), or set DefaultAssay(obj) <- '<raw assay>' ",
+      "before calling.",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
 }
 
 #' Extract an assay from an SCE/SPE, preferring 'counts' if the name is missing

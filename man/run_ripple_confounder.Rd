@@ -24,6 +24,7 @@ run_ripple_confounder(
   sig_column = "fisher_fdr",
   query_label = NULL,
   sign_consistency = 1,
+  assay = NULL,
   verbose = TRUE
 )
 }
@@ -79,6 +80,11 @@ significant genes. Typically \code{"fisher_fdr"} (default) or
 
 \item{sign_consistency}{Sign consistency threshold for Fisher's p-value
 (default: \code{1.0}).}
+
+\item{assay}{Seurat assay to pull counts from (Seurat input only). See
+\code{\link{run_ripple}} for the auto-selection logic. Default
+\code{NULL} tries Xenium then RNA then Spatial before falling back to
+the active assay.}
 
 \item{verbose}{Print progress messages (default: \code{TRUE}).}
 }

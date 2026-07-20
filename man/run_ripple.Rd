@@ -28,6 +28,7 @@ run_ripple(
   query_label = NULL,
   analysis_name = "ripple",
   sign_consistency = 1,
+  assay = NULL,
   verbose = TRUE
 )
 }
@@ -110,6 +111,15 @@ contamination checking (default: \code{NULL} = no check).}
 \item{sign_consistency}{Minimum fraction of replicates that must agree on
 coefficient direction for Fisher's combined p-value to be computed. Set
 to \code{1.0} (the default) to require unanimous agreement.}
+
+\item{assay}{Seurat assay to pull counts from (Seurat input only). When
+\code{NULL} (default), RIPPLE tries \code{"Xenium"}, then \code{"RNA"},
+then \code{"Spatial"}; the first one present in the object wins. If none
+match, RIPPLE falls back to the object's active assay with a warning.
+The auto-selection prevents a common trap: after \code{SCTransform()},
+the active assay is \code{"SCT"} (normalized floats, not raw counts),
+which would silently break the Poisson GLM. Pass \code{assay} explicitly
+to override. Ignored for SCE / SPE / file-path inputs.}
 
 \item{verbose}{Print progress messages (default: \code{TRUE}).}
 }

@@ -4,7 +4,7 @@
 \alias{.resolve_input}
 \title{Resolve RIPPLE input to normalized list}
 \usage{
-.resolve_input(input, require_expr = FALSE, verbose = TRUE)
+.resolve_input(input, require_expr = FALSE, verbose = TRUE, assay = NULL)
 }
 \arguments{
 \item{input}{One of the supported input formats (see Details).}
