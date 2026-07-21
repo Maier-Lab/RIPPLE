@@ -712,7 +712,19 @@ run_ripple <- function(
   # end so batch/SLURM runs (verbose = FALSE) do not silently omit cell types.
   skipped_celltypes <- character(0)
 
-  for (ct_name in target_celltypes) {
+  n_target <- length(target_celltypes)
+  loop_start <- Sys.time()
+  for (ct_idx in seq_along(target_celltypes)) {
+    ct_name <- target_celltypes[ct_idx]
+    ct_start <- Sys.time()
+    message(sprintf(
+      "[%s] Cell type %d of %d: %s%s",
+      format(ct_start, "%H:%M:%S"), ct_idx, n_target, ct_name,
+      if (ct_idx > 1) sprintf(
+        " (elapsed %.1f min)",
+        as.numeric(difftime(ct_start, loop_start, units = "mins"))
+      ) else ""
+    ))
     .msg("\n", strrep("-", 60), verbose = verbose)
     .msg("Analyzing: ", ct_name, verbose = verbose)
     .msg(strrep("-", 60), verbose = verbose)

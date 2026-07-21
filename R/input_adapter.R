@@ -169,9 +169,38 @@ NULL
 # ------------------------------------------------------------------
 
 #' Get a layer from a Seurat object, handling v4/v5 differences
+#'
+#' In Seurat v5, \code{merge()} preserves per-object layers with names like
+#' \code{counts.1}, \code{counts.2}, ... until the user calls
+#' \code{JoinLayers()}. \code{GetAssayData(layer = "counts")} errors on such
+#' assays ("doesn't work for multiple layers in v5 assay"). Every user who
+#' merges multiple Xenium samples then passes the object to RIPPLE hits
+#' this. Detect the multi-layer case and join transparently.
+#'
 #' @keywords internal
 #' @noRd
 .get_seurat_layer <- function(obj, layer, assay = NULL) {
+  effective_assay <- if (!is.null(assay)) assay else Seurat::DefaultAssay(obj)
+
+  joined_counts <- tryCatch({
+    layer_pat <- paste0("^", layer, "(\\.|$)")
+    all_layers <- Seurat::Layers(obj, assay = effective_assay)
+    matching <- all_layers[grepl(layer_pat, all_layers)]
+    if (length(matching) > 1) {
+      message(
+        "  Joining ", length(matching), " '", layer, "' layers in assay '",
+        effective_assay, "' (", paste(matching, collapse = ", "),
+        "). Call JoinLayers(obj) once to persist this on your object."
+      )
+      joined <- Seurat::JoinLayers(obj[[effective_assay]])
+      Seurat::LayerData(joined, layer = layer)
+    } else {
+      NULL
+    }
+  }, error = function(e) NULL)
+
+  if (!is.null(joined_counts)) return(joined_counts)
+
   args_v5 <- list(object = obj, layer = layer)
   args_v4 <- list(object = obj, slot = layer)
   if (!is.null(assay)) {
