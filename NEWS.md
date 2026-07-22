@@ -47,6 +47,19 @@ development is collected here under 0.1.0.
 * Configuration is resolved as explicit argument, then `options(ripple.*)`,
   then environment variable, then a built-in default, so SLURM/env-driven
   runs honour the documented options.
+* Seurat input auto-selects the raw-counts assay in priority order
+  Xenium -> RNA -> Spatial before falling back to the active assay with
+  a warning. The earlier default (active assay) silently picked up `SCT`
+  after `SCTransform()`. Override with `assay = "..."`.
+* Seurat v5 multi-layer assays (e.g. `counts.1`, `counts.2` after
+  `merge()`) are joined transparently at load. Users no longer have to
+  call `JoinLayers()` manually before `run_ripple()`.
+* Xenium FOV centroids in `obj@images$fov[.N]` are extracted into
+  `x_centroid` / `y_centroid` automatically when `@meta.data` has no
+  coordinate columns, using `Seurat::GetTissueCoordinates()`.
+* Non-integer counts (from `SCT`, `LogNormalize`, or similar) trigger
+  an immediate warning at input load, not silent misuse of the Poisson
+  GLM.
 
 ## Gene specificity
 
@@ -79,6 +92,12 @@ development is collected here under 0.1.0.
   collinearity in the confounder model, empty results, and running on a
   subset of target cell types (which weakens the cross-cell-type
   contamination check).
+* `run_ripple()` and `run_ripple_confounder()` error clearly if the input
+  has fewer than 2 unique sample IDs, instead of silently skipping every
+  cell type with per-type "need >= 2 samples" warnings.
+* A `[HH:MM:SS] Cell type N of M: <name>` message fires at each cell-type
+  boundary regardless of `verbose`, so long runs show progress even in
+  batch scripts.
 
 ## Performance
 
@@ -87,6 +106,10 @@ development is collected here under 0.1.0.
   panels with many target cell types should see proportional gains;
   parallelising across target cell types via the `inst/slurm/` array templates
   remains the largest additional lever.
+* Local fan-out over target cell types via `future.apply::future_lapply()`
+  is documented in the `parallelization` vignette. No changes to
+  `run_ripple()`; users subset the input to `query + one target` per worker
+  and `rbindlist()` the results.
 
 ## Data
 
@@ -105,8 +128,9 @@ development is collected here under 0.1.0.
 
 * Comprehensive README covering pipeline stages, statistical model,
   configuration, and troubleshooting.
-* Roxygen2 documentation for all exported functions; four vignettes
-  (getting started, CosMx NSCLC walkthrough, benchmarks, methods positioning).
+* Roxygen2 documentation for all exported functions; five vignettes
+  (getting started, CosMx NSCLC walkthrough, methods positioning,
+  parallelization, benchmarks).
 
 ## Packaging
 

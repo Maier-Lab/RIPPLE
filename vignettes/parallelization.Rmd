@@ -1,0 +1,141 @@
+---
+title: "Parallelising RIPPLE on large datasets"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Parallelising RIPPLE on large datasets}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+`run_ripple()` runs on one core. On the Xenium 5K panel with ~70,000
+cells and ~7 cell types, that can mean several hours. If you have a
+multi-core machine, you can fan out over cell types externally
+without changing anything in RIPPLE itself.
+
+In summary, subset the input to `query + one target` per cell type,
+dispatch each subset to its own worker with `future.apply`, and merge
+the results.
+
+## When to use this
+
+- The dataset is large (thousands of cells per cell type, hundreds to
+  thousands of genes).
+- You have more than one CPU core available.
+- You do not have SLURM. If you do, use the array-job scripts in
+  `inst/slurm/` instead. Cluster fan-out is simpler than in-process
+  parallelism.
+
+When **not** to use this:
+
+- Small datasets. Parallel overhead beats the win.
+- Memory-tight systems. Each worker duplicates the input object on
+  Windows (multisession cannot fork).
+
+## The pattern
+
+Install `future.apply` if you do not have it:
+
+```r
+install.packages("future.apply")
+```
+
+Set up the parallel plan. Pick `workers` based on cores and memory:
+
+```r
+library(ripple)
+library(future.apply)
+library(data.table)
+
+plan(multisession, workers = 4)
+```
+
+Load the object once:
+
+```r
+xen <- readRDS("xenium_combined.rds")
+```
+
+Fan out over target cell types. Each worker gets a subset with only
+`query + one target`, runs a full `run_ripple()` for that pair, and
+writes to its own output subdirectory so there are no collisions:
+
+```r
+query <- "endothelial"
+target_types <- setdiff(unique(xen$annotation), query)
+out_root <- "ripple_out_parallel"
+
+results_list <- future_lapply(target_types, function(ct) {
+  keep <- xen$annotation %in% c(query, ct)
+  xen_sub <- xen[, keep]
+
+  ripple::run_ripple(
+    input                = xen_sub,
+    query_celltype       = query,
+    celltype_column      = "annotation",
+    sample_column        = "sample",
+    target_celltypes     = ct,
+    output_dir           = file.path(out_root, ct),
+    analysis_name        = "ripple",
+    min_cells_per_sample = 30,
+    min_expr_pct         = 0,
+    min_expr_floor       = 10,
+    verbose              = FALSE
+  )
+}, future.seed = TRUE)
+
+names(results_list) <- target_types
+```
+
+`future.seed = TRUE` silences the "non-reproducible RNG" warning.
+RIPPLE calls `set.seed(42)` internally, so per-worker seeding is
+deterministic either way.
+
+## Merge the per-cell-type results
+
+```r
+combined <- rbindlist(results_list, fill = TRUE)
+
+dir.create(file.path(out_root, "summary"),
+           recursive = TRUE, showWarnings = FALSE)
+fwrite(combined, file.path(out_root, "summary", "all_genes_results.csv"))
+```
+
+Downstream stages (`classify_gene_specificity`, `run_ripple_fgsea`,
+`plot_gradient_volcano`, `ripple_plot_qc`) take a data.table with
+the standard columns. They do not care whether it came from one
+`run_ripple()` call or from `rbindlist()` on a parallel fan-out.
+
+## Memory notes
+
+The `multisession` backend copies the R session to each worker. With
+`workers = 4` and a 500 MB Seurat object, expect ~2 GB extra RAM.
+Reduce `workers` if the machine starts to swap.
+
+On Linux and macOS you can pick `multicore` instead of `multisession`.
+It uses `fork()` and shares memory copy-on-write, so the extra RAM is
+much smaller. Windows does not have `fork()`; `multicore` falls back
+to sequential there, so use `multisession` on Windows.
+
+## Reset the plan when done
+
+```r
+plan(sequential)
+```
+
+## Alternative: SLURM array jobs
+
+If you have a cluster, use `inst/slurm/run_hymy_distance_correlation_v2.sh`
+and the associated array-driven scripts. One SLURM task per cell
+type, one core per task, no `future.apply` involvement. Same fan-out
+shape as this vignette, but at the scheduler level. This is what we
+used for the CosMx and HyMy paper analyses.
+
+## Session info
+
+```{r session-info, eval = TRUE}
+sessionInfo()
+```

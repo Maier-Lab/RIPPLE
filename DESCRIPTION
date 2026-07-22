@@ -41,6 +41,7 @@ Suggests:
     spdep (>= 1.2),
     R.utils,
     withr,
+    future.apply,
     testthat (>= 3.0),
     knitr,
     rmarkdown

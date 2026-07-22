@@ -105,13 +105,14 @@ On real data, `input` can be a `Seurat`, `SingleCellExperiment`, or `SpatialExpe
 
 ## Vignettes
 
-Four vignettes ship with the package:
+Five vignettes ship with the package:
 
 | Vignette | Description |
 |----------|-------------|
 | `getting_started` | 5-minute end-to-end run on the bundled synthetic dataset. The fastest way to see what RIPPLE does. |
 | `cosmx_nsclc_walkthrough` | Applied walkthrough on the public CosMx NSCLC dataset (He et al., 2022), reproducing paper Figure 4 panel by panel. Loads cached results from `inst/extdata/`, so the vignette renders without re-running the full pipeline. |
-| `methods_positioning` | Landscape table comparing RIPPLE with nnSVG / SpatialDE / SPARK, STdiff (spatialGE), MISTy, COMMOT / CellChat, NicheNet, and BANKSY / CellCharter. Clarifies the distinction between co-localization tests and continuous gradient detection. |
+| `methods_positioning` | Landscape table comparing RIPPLE with nnSVG / SpatialDE / SPARK, STdiff (spatialGE), MISTy, and BANKSY / CellCharter. Clarifies the distinction between co-localization tests and continuous gradient detection. |
+| `parallelization` | How to fan out `run_ripple()` over cell types on a multi-core machine using `future.apply`. For large datasets where a single-core run would take hours. |
 | `benchmarks` | FDR calibration, power curves, and runtime measurements from the synthetic benchmark suite. |
 
 Browse locally:

@@ -19,6 +19,9 @@ articles:
 - title: "Background"
   contents:
   - methods_positioning
+- title: "Scaling up"
+  contents:
+  - parallelization
 - title: "Validation"
   contents:
   - benchmarks
