@@ -77,4 +77,52 @@ test_that("per-celltype fan-out via future_lapply matches a single run_ripple ca
       )
     }
   }
+
+  # --- consolidate_parallel_ripple round-trip ---
+  # The worker output_dir was file.path(par_root, ct); run_ripple wrote to
+  # <output_dir>/<analysis_name>/ = <par_root>/<ct>/ripple/
+  worker_dirs <- file.path(par_root, targets, "ripple")
+  expect_true(all(dir.exists(worker_dirs)))
+
+  combined_dir <- file.path(par_root, "combined")
+  suppressMessages(
+    consolidate_parallel_ripple(
+      worker_dirs    = worker_dirs,
+      output_dir     = combined_dir,
+      query_celltype = query
+    )
+  )
+
+  # Consolidated tree has the shape ripple_plot_qc expects
+  expect_true(file.exists(file.path(combined_dir, "summary",
+                                    "all_genes_results.csv")))
+  expect_true(file.exists(file.path(combined_dir, "qc",
+                                    "cell_distances.csv.gz")))
+  for (ct in targets) {
+    expect_true(dir.exists(file.path(combined_dir, "per_celltype", ct)))
+  }
+
+  # Query rows should appear ONCE per (sample, dist) after consolidation,
+  # not N_workers times. Compare to any single worker's query row count.
+  merged_dist <- data.table::fread(
+    file.path(combined_dir, "qc", "cell_distances.csv.gz")
+  )
+  one_worker_dist <- data.table::fread(
+    file.path(worker_dirs[1], "qc", "cell_distances.csv.gz")
+  )
+  n_query_merged <- sum(merged_dist$cell_type == query)
+  n_query_one    <- sum(one_worker_dist$cell_type == query)
+  expect_equal(n_query_merged, n_query_one,
+    info = "Query cells duplicated across workers instead of deduped"
+  )
+
+  # Consolidated summary matches serial baseline on gene x celltype x FDR
+  consolidated <- data.table::fread(
+    file.path(combined_dir, "summary", "all_genes_results.csv")
+  )
+  data.table::setorderv(consolidated, key)
+  expect_equal(nrow(consolidated), nrow(serial_result))
+  expect_equal(
+    consolidated$fisher_fdr, serial_result$fisher_fdr, tolerance = 1e-8
+  )
 })

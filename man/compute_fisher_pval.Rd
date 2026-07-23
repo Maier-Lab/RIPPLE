@@ -4,7 +4,14 @@
 \alias{compute_fisher_pval}
 \title{Fisher's combined p-value with sign consistency gate - RECOMMENDED APPROACH}
 \usage{
-compute_fisher_pval(pvals, coefs, min_samples = 2, sign_threshold = 1)
+compute_fisher_pval(
+  pvals,
+  coefs,
+  min_samples = 2,
+  sign_threshold = 1,
+  min_sig_fraction = 0,
+  sig_alpha = 0.05
+)
 }
 \arguments{
 \item{pvals}{Numeric vector of per-sample p-values.}
@@ -16,12 +23,25 @@ compute_fisher_pval(pvals, coefs, min_samples = 2, sign_threshold = 1)
 
 \item{sign_threshold}{Numeric. Required fraction of samples agreeing on
 effect direction (default: 1.0, i.e., all samples must agree).}
+
+\item{min_sig_fraction}{Numeric. Optional per-sample significance gate
+(default: 0, disabled). When above 0, the combined p-value is set to 1
+unless at least \code{ceiling(min_sig_fraction * n_valid)} samples are
+individually significant at \code{sig_alpha}. This enforces
+reproducibility more strictly than the sign gate but costs power, since
+it discards genuine gradients that reach per-sample significance in only
+some replicates (e.g. samples with few target cells).}
+
+\item{sig_alpha}{Numeric. Per-sample significance threshold used for
+\code{n_sig_samples} and the optional \code{min_sig_fraction} gate
+(default: 0.05).}
 }
 \value{
 A list with components:
 \describe{
 \item{\code{fisher_pval}}{Numeric. Fisher's combined p-value
-(set to 1.0 if sign consistency is below threshold).}
+(set to 1.0 if sign consistency is below threshold, or if the
+optional \code{min_sig_fraction} gate is not met).}
 \item{\code{fisher_stat}}{Numeric. Fisher's test statistic
 (-2 * sum(log(p_i))).}
 \item{\code{median_coef}}{Numeric. Median coefficient across samples
@@ -29,6 +49,9 @@ A list with components:
 \item{\code{sign_consistency}}{Numeric. Fraction of samples agreeing
 on direction.}
 \item{\code{n_valid}}{Integer. Number of valid samples used.}
+\item{\code{n_sig_samples}}{Integer. Number of valid samples
+individually significant at \code{sig_alpha} (reproducibility
+diagnostic; reported whether or not the gate is enabled).}
 }
 }
 \description{

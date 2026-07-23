@@ -206,6 +206,18 @@ NULL
 #' @param sign_consistency Minimum fraction of replicates that must agree on
 #'   coefficient direction for Fisher's combined p-value to be computed. Set
 #'   to \code{1.0} (the default) to require unanimous agreement.
+#' @param min_sig_fraction Optional per-sample significance gate (default
+#'   \code{0}, disabled). When above \code{0}, a gene is only called if at
+#'   least \code{ceiling(min_sig_fraction * n_samples)} samples are
+#'   individually significant at \code{sig_alpha}; otherwise its combined
+#'   p-value is set to \code{1}. This is a stricter reproducibility filter
+#'   than the sign gate, at a cost in power (it discards genuine gradients
+#'   that reach per-sample significance in only some replicates, especially
+#'   in samples with few target cells). Off by default; the reproducibility
+#'   diagnostic \code{n_sig_samples} is reported regardless.
+#' @param sig_alpha Per-sample significance threshold used to compute
+#'   \code{n_sig_samples} and, if enabled, the \code{min_sig_fraction} gate
+#'   (default \code{0.05}).
 #' @param assay Seurat assay to pull counts from (Seurat input only). When
 #'   \code{NULL} (default), RIPPLE tries \code{"Xenium"}, then \code{"RNA"},
 #'   then \code{"Spatial"}; the first one present in the object wins. If none
@@ -219,7 +231,9 @@ NULL
 #' @return A \code{data.table} with columns: \code{gene}, \code{cell_type},
 #'   \code{median_coef}, \code{fisher_stat}, \code{fisher_pval},
 #'   \code{fisher_fdr}, \code{sign_consistency}, \code{n_samples},
-#'   \code{gradient_score} (= \code{median_coef}), \code{decay_pattern},
+#'   \code{n_sig_samples} (replicates individually significant at
+#'   \code{sig_alpha}), \code{gradient_score} (= \code{median_coef}),
+#'   \code{decay_pattern},
 #'   and per-gene expression / dispersion summaries. Results are also
 #'   written as CSV files to \code{output_dir}.
 #'
@@ -305,6 +319,8 @@ run_ripple <- function(
     query_label = NULL,
     analysis_name = "ripple",
     sign_consistency = 1.0,
+    min_sig_fraction = 0,
+    sig_alpha = 0.05,
     assay = NULL,
     verbose = TRUE) {
   # --------------------------------------------------------------------------
@@ -929,7 +945,9 @@ run_ripple <- function(
         pvals = gene_data$pval,
         coefs = gene_data$coef,
         min_samples = 2L,
-        sign_threshold = sign_consistency
+        sign_threshold = sign_consistency,
+        min_sig_fraction = min_sig_fraction,
+        sig_alpha = sig_alpha
       )
 
       gene_counts <- as.numeric(target_counts[g, target_barcodes])
@@ -944,6 +962,7 @@ run_ripple <- function(
         fisher_pval = fisher$fisher_pval,
         sign_consistency = fisher$sign_consistency,
         n_samples = fisher$n_valid,
+        n_sig_samples = fisher$n_sig_samples,
         mean_expr = mean(gene_counts, na.rm = TRUE),
         pct_expr = mean(gene_counts > 0, na.rm = TRUE),
         n_positive_samples = n_pos,
@@ -2312,4 +2331,165 @@ merge_ripple_results <- function(
   .msg(strrep("=", 70), verbose = verbose)
 
   return(invisible(all_results))
+}
+
+
+# ============================================================================
+# consolidate_parallel_ripple()
+# ============================================================================
+
+#' Consolidate output from a parallel per-cell-type `run_ripple()` fan-out
+#'
+#' The `parallelization` vignette runs `run_ripple()` once per target cell
+#' type inside `future_lapply()`, giving each worker its own `output_dir`.
+#' That fragments the outputs: each worker's `per_celltype/`, `summary/`,
+#' and `qc/` directories live under its own root. `ripple_plot_qc()` and
+#' `merge_ripple_results()` both read from a single `results_dir` and
+#' cannot see across worker roots. This helper merges the per-worker
+#' outputs into a canonical results directory.
+#'
+#' What it does:
+#' \itemize{
+#'   \item Copies each worker's `per_celltype/<ct>/` into
+#'     `output_dir/per_celltype/`.
+#'   \item Concatenates `qc/cell_distances.csv.gz` across workers. Query
+#'     cells appear in every worker's file (each worker analyses query +
+#'     one target); the merge takes query rows from a single worker plus
+#'     target rows from every worker, so query counts are not inflated
+#'     N-fold in the composition and distance QC panels.
+#'   \item Calls `\link{merge_ripple_results}()` on the consolidated tree
+#'     to rebuild `summary/all_genes_results.csv` and friends.
+#' }
+#'
+#' `sample_summary.csv` and `filtered_celltype_counts.csv` are not
+#' merged: they are computed per-worker over the query + one target
+#' subset and are not consumed by downstream RIPPLE functions. Anything
+#' `\link{ripple_plot_qc}()` needs is derived from
+#' `cell_distances.csv.gz` and the merged summary.
+#'
+#' @param worker_dirs Character vector of per-worker RIPPLE output
+#'   directories. Each should be the exact directory each `run_ripple()`
+#'   call wrote to (typically `file.path(out_root, ct, analysis_name)`
+#'   from the vignette pattern).
+#' @param output_dir Path for the consolidated results tree. Created if
+#'   missing.
+#' @param query_celltype Query cell type label used in the parallel run.
+#'   Needed to correctly dedupe query rows in `cell_distances.csv.gz`.
+#' @param celltype_column Name of the cell type column in the QC files
+#'   (default `"cell_type"`). Change only if the workers used a
+#'   nonstandard column name.
+#' @param verbose Print progress (default `TRUE`).
+#'
+#' @return Invisibly, the `output_dir` path. The directory can be passed
+#'   directly as `results_dir` to `\link{ripple_plot_qc}()` and the
+#'   other functions that expect a full RIPPLE results tree.
+#'
+#' @seealso [merge_ripple_results()], [ripple_plot_qc()]. The
+#'   `parallelization` vignette (`vignette("parallelization")`) shows
+#'   the full fan-out and consolidation pattern.
+#'
+#' @examples
+#' \dontrun{
+#' # After the future_lapply() fan-out in the parallelization vignette:
+#' worker_dirs <- file.path("ripple_out_parallel", targets, "ripple")
+#'
+#' final_dir <- consolidate_parallel_ripple(
+#'   worker_dirs    = worker_dirs,
+#'   output_dir     = "ripple_out_parallel/combined",
+#'   query_celltype = "endothelial"
+#' )
+#'
+#' ripple_plot_qc(final_dir, query_label = "endothelial")
+#' }
+#' @export
+consolidate_parallel_ripple <- function(worker_dirs,
+                                        output_dir,
+                                        query_celltype,
+                                        celltype_column = "cell_type",
+                                        verbose = TRUE) {
+  if (missing(worker_dirs) || !length(worker_dirs)) {
+    stop("worker_dirs must be a non-empty character vector.", call. = FALSE)
+  }
+  if (missing(output_dir) || !nzchar(output_dir)) {
+    stop("output_dir is required.", call. = FALSE)
+  }
+  if (missing(query_celltype) || !nzchar(query_celltype)) {
+    stop("query_celltype is required to dedupe query rows in ",
+      "cell_distances.csv.gz.",
+      call. = FALSE
+    )
+  }
+  missing_dirs <- worker_dirs[!dir.exists(worker_dirs)]
+  if (length(missing_dirs)) {
+    stop("Worker directory/directories do not exist:\n  ",
+      paste(missing_dirs, collapse = "\n  "),
+      call. = FALSE
+    )
+  }
+
+  .msg <- function(...) if (isTRUE(verbose)) message(...)
+  .ensure_dir(output_dir)
+  .ensure_dir(file.path(output_dir, "per_celltype"))
+  .ensure_dir(file.path(output_dir, "qc"))
+
+  # --- 1. Copy per-celltype directories ---
+  n_copied <- 0L
+  for (wd in worker_dirs) {
+    src_root <- file.path(wd, "per_celltype")
+    if (!dir.exists(src_root)) {
+      warning("No per_celltype/ under worker dir: ", wd, call. = FALSE)
+      next
+    }
+    for (ct_dir in list.dirs(src_root, recursive = FALSE)) {
+      file.copy(ct_dir, file.path(output_dir, "per_celltype"),
+        recursive = TRUE, overwrite = TRUE
+      )
+      n_copied <- n_copied + 1L
+    }
+  }
+  .msg("  Copied ", n_copied, " per_celltype/ subdirectories")
+
+  # --- 2. Merge cell_distances.csv.gz with query dedupe ---
+  dist_files <- vapply(worker_dirs, function(wd) {
+    f <- file.path(wd, "qc", "cell_distances.csv.gz")
+    if (file.exists(f)) f else NA_character_
+  }, character(1))
+  dist_files <- dist_files[!is.na(dist_files)]
+
+  if (length(dist_files)) {
+    first <- data.table::fread(dist_files[1])
+    if (!celltype_column %in% names(first)) {
+      stop("celltype_column '", celltype_column,
+        "' not found in cell_distances.csv.gz. Available: ",
+        paste(names(first), collapse = ", "),
+        call. = FALSE
+      )
+    }
+    query_rows <- first[get(celltype_column) == query_celltype]
+
+    target_rows <- data.table::rbindlist(lapply(dist_files, function(f) {
+      dt <- data.table::fread(f)
+      dt[get(celltype_column) != query_celltype]
+    }))
+
+    merged_dist <- data.table::rbindlist(
+      list(query_rows, target_rows),
+      use.names = TRUE
+    )
+    data.table::fwrite(
+      merged_dist,
+      file.path(output_dir, "qc", "cell_distances.csv.gz")
+    )
+    .msg("  Merged cell_distances: ", nrow(query_rows),
+      " query + ", nrow(target_rows), " target = ",
+      nrow(merged_dist), " total"
+    )
+  } else {
+    .msg("  No cell_distances.csv.gz found in any worker; skipping QC merge")
+  }
+
+  # --- 3. Rebuild summary via merge_ripple_results ---
+  merge_ripple_results(output_dir, verbose = verbose)
+
+  invisible(output_dir)
 }

@@ -96,18 +96,45 @@ deterministic either way.
 
 ## Merge the per-cell-type results
 
+For a quick combined data.table, `rbindlist` is enough:
+
 ```r
 combined <- rbindlist(results_list, fill = TRUE)
-
-dir.create(file.path(out_root, "summary"),
-           recursive = TRUE, showWarnings = FALSE)
-fwrite(combined, file.path(out_root, "summary", "all_genes_results.csv"))
 ```
 
-Downstream stages (`classify_gene_specificity`, `run_ripple_fgsea`,
-`plot_gradient_volcano`, `ripple_plot_qc`) take a data.table with
-the standard columns. They do not care whether it came from one
-`run_ripple()` call or from `rbindlist()` on a parallel fan-out.
+`classify_gene_specificity`, `run_ripple_fgsea`, and
+`plot_gradient_volcano` accept this combined data.table directly.
+
+`ripple_plot_qc()` is the exception. It expects a full results
+directory (per_celltype/, qc/, summary/) rather than a data.table, and
+the parallel fan-out fragments that tree across worker directories.
+Use `consolidate_parallel_ripple()` to merge the workers into a single
+canonical results tree:
+
+```r
+worker_dirs <- file.path(out_root, target_types, "ripple")
+
+final_dir <- consolidate_parallel_ripple(
+  worker_dirs    = worker_dirs,
+  output_dir     = file.path(out_root, "combined"),
+  query_celltype = query
+)
+```
+
+The consolidation copies each worker's per_celltype/ subtree, merges
+`cell_distances.csv.gz` across workers (deduping the query cells so
+they are not counted N times), and rebuilds the combined summary via
+`merge_ripple_results()`. Now `ripple_plot_qc()` and any other
+directory-based downstream function work as if the run had been
+serial:
+
+```r
+ripple_plot_qc(
+  results_dir           = final_dir,
+  query_signature_genes = c("EPCAM", "KRT8"),  # your query markers
+  query_label           = query
+)
+```
 
 ## Memory notes
 

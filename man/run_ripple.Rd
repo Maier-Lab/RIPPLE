@@ -28,6 +28,8 @@ run_ripple(
   query_label = NULL,
   analysis_name = "ripple",
   sign_consistency = 1,
+  min_sig_fraction = 0,
+  sig_alpha = 0.05,
   assay = NULL,
   verbose = TRUE
 )
@@ -112,6 +114,20 @@ contamination checking (default: \code{NULL} = no check).}
 coefficient direction for Fisher's combined p-value to be computed. Set
 to \code{1.0} (the default) to require unanimous agreement.}
 
+\item{min_sig_fraction}{Optional per-sample significance gate (default
+\code{0}, disabled). When above \code{0}, a gene is only called if at
+least \code{ceiling(min_sig_fraction * n_samples)} samples are
+individually significant at \code{sig_alpha}; otherwise its combined
+p-value is set to \code{1}. This is a stricter reproducibility filter
+than the sign gate, at a cost in power (it discards genuine gradients
+that reach per-sample significance in only some replicates, especially
+in samples with few target cells). Off by default; the reproducibility
+diagnostic \code{n_sig_samples} is reported regardless.}
+
+\item{sig_alpha}{Per-sample significance threshold used to compute
+\code{n_sig_samples} and, if enabled, the \code{min_sig_fraction} gate
+(default \code{0.05}).}
+
 \item{assay}{Seurat assay to pull counts from (Seurat input only). When
 \code{NULL} (default), RIPPLE tries \code{"Xenium"}, then \code{"RNA"},
 then \code{"Spatial"}; the first one present in the object wins. If none
@@ -127,7 +143,9 @@ to override. Ignored for SCE / SPE / file-path inputs.}
 A \code{data.table} with columns: \code{gene}, \code{cell_type},
 \code{median_coef}, \code{fisher_stat}, \code{fisher_pval},
 \code{fisher_fdr}, \code{sign_consistency}, \code{n_samples},
-\code{gradient_score} (= \code{median_coef}), \code{decay_pattern},
+\code{n_sig_samples} (replicates individually significant at
+\code{sig_alpha}), \code{gradient_score} (= \code{median_coef}),
+\code{decay_pattern},
 and per-gene expression / dispersion summaries. Results are also
 written as CSV files to \code{output_dir}.
 }

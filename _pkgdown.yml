@@ -33,6 +33,7 @@ reference:
   - run_ripple
   - run_ripple_confounder
   - merge_ripple_results
+  - consolidate_parallel_ripple
 
 - title: "Input constructors"
   desc: Build canonical objects from raw data or CSV files.

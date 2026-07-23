@@ -10,6 +10,15 @@ development is collected here under 0.1.0.
   gene expression (`fit_poisson()`, `fit_poisson_controlled()`).
 * Cross-replicate inference via Fisher's combined p-value with sign-consistency
   gating (`compute_fisher_pval()`).
+* Reproducibility diagnostic `n_sig_samples` (number of replicates individually
+  significant at `sig_alpha`) is reported on every call, so users can see which
+  gradients are supported by multiple replicates rather than one strong sample.
+* Optional per-sample significance gate `min_sig_fraction` (default `0`, off).
+  When set, a gene is only called if at least
+  `ceiling(min_sig_fraction * n_samples)` replicates are individually
+  significant. Off by default because it trades power for stricter
+  reproducibility (it discards genuine gradients that reach per-sample
+  significance in only some replicates, especially in small samples).
 * `gradient_score` is defined as `median_coef`, the median of the per-sample
   Poisson GLM coefficients (equal weight per replicate).
 * Two-tier expression filtering (strict for regular genes, lenient for
@@ -110,6 +119,12 @@ development is collected here under 0.1.0.
   is documented in the `parallelization` vignette. No changes to
   `run_ripple()`; users subset the input to `query + one target` per worker
   and `rbindlist()` the results.
+* `consolidate_parallel_ripple()` merges the per-worker output trees
+  produced by the parallel fan-out into a single canonical results
+  directory, so `ripple_plot_qc()` and other directory-based downstream
+  functions work without modification. Query cells in
+  `qc/cell_distances.csv.gz` are deduped across workers to avoid
+  N-fold inflation in the composition and distance panels.
 
 ## Data
 

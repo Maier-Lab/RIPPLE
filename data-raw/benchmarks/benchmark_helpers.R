@@ -25,6 +25,13 @@ library(Matrix)
 #   field_um        - size of spatial field (um)
 #   tumor_radius    - radius of query cell cluster (um)
 #   background_rate - baseline Poisson rate for all genes
+#   dispersion      - variance-to-mean ratio for count noise. 1 (default) draws
+#                     from Poisson (var = mean), matching the model RIPPLE fits.
+#                     Values > 1 draw from a negative binomial with a constant
+#                     variance-to-mean ratio of `dispersion` at every cell/gene
+#                     (size = mu / (dispersion - 1)), so counts are overdispersed
+#                     relative to the fitted Poisson. Used to test null
+#                     calibration when the Poisson assumption is violated.
 #   seed            - random seed (set before generation)
 #
 # Returns: a SpatialExperiment with columns cell_type, sample_id in colData
@@ -39,8 +46,21 @@ generate_benchmark_data <- function(
     field_um = 500,
     tumor_radius = 60,
     background_rate = 3,
+    dispersion = 1,
     seed = NULL) {
   if (!is.null(seed)) set.seed(seed)
+  if (dispersion < 1) stop("dispersion must be >= 1 (1 = Poisson)")
+
+  # Count sampler: Poisson when dispersion == 1, else negative binomial with a
+  # constant variance-to-mean ratio equal to `dispersion` (var = dispersion*mu).
+  draw_counts <- function(mu) {
+    mu <- pmax(mu, 0.1)
+    if (dispersion == 1) {
+      rpois(length(mu), mu)
+    } else {
+      rnbinom(length(mu), mu = mu, size = mu / (dispersion - 1))
+    }
+  }
 
   n_genes <- n_gradient_neg + n_gradient_pos + n_background
   gene_names <- character(n_genes)
@@ -130,7 +150,7 @@ generate_benchmark_data <- function(
       }
     }
 
-    counts <- matrix(rpois(length(rate_mat), pmax(as.vector(rate_mat), 0.1)),
+    counts <- matrix(draw_counts(as.vector(rate_mat)),
       nrow = n_genes, ncol = n_total
     )
     rownames(counts) <- gene_names
