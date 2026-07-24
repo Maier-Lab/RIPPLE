@@ -156,7 +156,7 @@ glm(counts ~ distance_to_query + offset(log(total_counts)), family = poisson)
 ```
 
 - `distance_to_query`: Euclidean distance (um) to the nearest query cell (default k = 1)
-- `offset(log(total_counts))`: cell-size correction -- converts raw counts to rates, controls for ambient RNA and segmentation differences that co-vary with cell size
+- `offset(log(total_counts))`: cell-size correction converts raw counts to rates, controls for ambient RNA and segmentation differences that co-vary with cell size
 - **Coefficient (beta)**: log-rate change per um. Negative = expression increases near query cells (induced). Positive = expression decreases (repressed).
 
 Per-sample coefficients are combined via Fisher's combined p-value. The sign-consistency gate requires all replicates to agree on the direction of the effect (`sign_consistency = 1.0` by default; relax to 0.75 for N >= 6). `fisher_fdr` is the primary significance metric for all downstream analyses.
@@ -167,7 +167,7 @@ Per-sample coefficients are combined via Fisher's combined p-value. The sign-con
 
 | Component | Expected |
 |-----------|----------|
-| Counts | Raw integer counts in `assays(spe, "counts")` for a `SpatialExperiment`, or `obj[["RNA"]]$counts` for Seurat. The Poisson model handles normalization internally via the offset -- pre-normalized data will produce incorrect results. |
+| Counts | Raw integer counts in `assays(spe, "counts")` for a `SpatialExperiment`, or `obj[["RNA"]]$counts` for Seurat. The Poisson model handles normalization internally via the offset. Pre-normalized data will produce incorrect results. |
 | Spatial coordinates | `spatialCoords()` for `SpatialExperiment`, or X/Y columns in cell metadata for Seurat/SCE. Common column names (`x_centroid`/`y_centroid`, `spatial_x`/`spatial_y`, `x`/`y`) are auto-detected; override via `x_column` / `y_column`. |
 | Cell types | Metadata column named by `celltype_column`, containing the query population. |
 | Replicate ID | Metadata column named by `sample_column` (default `"sample_id"`). Minimum 3 biological replicates; 4+ recommended. |
@@ -215,7 +215,7 @@ table(specificity$specificity_class)
 #      68       187       412
 # Three classes: "specific" (1 cell type), "moderate" (2 up to
 # broad_threshold-1), and "broad" (>= broad_threshold cell types).
-# broad_threshold (default 4) is the single boundary -- raise it to flag
+# broad_threshold (default 4) is the single boundary - raise it to flag
 # fewer genes as broad. See ?classify_gene_specificity.
 
 # 2. Pull the broad-class candidates aside.
