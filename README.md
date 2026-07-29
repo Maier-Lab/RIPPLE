@@ -257,10 +257,14 @@ RIPPLE was developed with Claude Opus 4.6/8 on Claude Code by Anthropic.
 ---
 ## Citation
 
-A bibentry ships in `inst/CITATION` and can be retrieved with
-`citation("ripple")`. It will be replaced once the accompanying
-manuscript is posted on bioRxiv.
+If you use RIPPLE, please cite the preprint:
 
-> *Citation (bioRxiv preprint in preparation).*
+> Mangana C, Maier BB (2026). RIPPLE: replicate-aware detection of
+> cell-type-anchored proximity gradients in spatial transcriptomics.
+> *bioRxiv*, doi:
+> [10.64898/2026.07.23.740288](https://doi.org/10.64898/2026.07.23.740288).
+
+A machine-readable bibentry ships in `inst/CITATION` and can be
+retrieved with `citation("ripple")`.
 
 

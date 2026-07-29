@@ -4,6 +4,15 @@ Initial release of the RIPPLE package, accompanying the preprint. Version
 numbering starts counting from the first public release; all pre-release
 development is collected here under 0.1.0.
 
+## Preprint
+
+* Mangana C, Maier BB (2026). RIPPLE: replicate-aware detection of
+  cell-type-anchored proximity gradients in spatial transcriptomics.
+  *bioRxiv*, doi:
+  [10.64898/2026.07.23.740288](https://doi.org/10.64898/2026.07.23.740288).
+* `inst/CITATION` and `citation("ripple")` now point at the preprint;
+  the earlier "preprint in preparation" placeholder is retired.
+
 ## Core method
 
 * Per-replicate Poisson GLM with cell-size offset for distance-conditioned
