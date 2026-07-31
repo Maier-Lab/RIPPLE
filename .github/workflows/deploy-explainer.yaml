@@ -1,0 +1,63 @@
+# Sync the interactive explainer from main -> gh-pages
+#
+# The README links at https://maier-lab.github.io/RIPPLE/ which is served
+# from the gh-pages branch, not main. The source of truth for the page
+# lives at pkgdown/assets/interactive_ripple_explainer.html on main. On
+# gh-pages, both index.html (the default landing page the URL resolves to)
+# and interactive_ripple_explainer.html (a same-content alternate) hold
+# copies of the same React app inline. This workflow keeps both in sync
+# whenever the source file changes on main.
+
+name: Deploy explainer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pkgdown/assets/interactive_ripple_explainer.html'
+  workflow_dispatch:
+
+# Least-privilege: contents:write is required to push to gh-pages.
+# Everything else stays read-only.
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Sync explainer to gh-pages
+        env:
+          SRC: pkgdown/assets/interactive_ripple_explainer.html
+        run: |
+          set -euo pipefail
+
+          if [ ! -f "$SRC" ]; then
+            echo "Source file not found: $SRC" >&2
+            exit 1
+          fi
+
+          # Copy the source aside; the worktree checkout below will
+          # replace the on-disk main copy with the gh-pages version.
+          cp "$SRC" /tmp/explainer.html
+
+          git fetch origin gh-pages
+          git worktree add gh-pages-out gh-pages
+
+          cp /tmp/explainer.html gh-pages-out/index.html
+          cp /tmp/explainer.html gh-pages-out/interactive_ripple_explainer.html
+
+          cd gh-pages-out
+          if git diff --quiet; then
+            echo "gh-pages already matches main; nothing to deploy."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html interactive_ripple_explainer.html
+          git commit -m "Sync explainer from main (${GITHUB_SHA::7})"
+          git push origin gh-pages
