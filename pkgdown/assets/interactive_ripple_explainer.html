@@ -377,10 +377,10 @@ function PoissonWalkthrough() {
     desc: "Each dot is one target cell. X-axis = distance to nearest query cell. Y-axis = transcript counts for gene X."
   }, {
     label: "Poisson assumption",
-    desc: "Transcript counts are non-negative integers (classic count data). The Poisson distribution models the probability of observing 0, 1, 2, \u2026 transcripts per cell."
+    desc: "Transcript counts are non-negative integers. We model each cell's counts as Poisson with a rate that depends on its distance to the query. The histogram on the right shows the counts pooled across all cells; the model assumes that at any given distance, the count follows a Poisson."
   }, {
     label: "Fit the GLM",
-    desc: "We fit log(E[counts]) = \u03B2\u2080 + \u03B2\u2081 \u00B7 distance. The line shows expected counts decreasing with distance; gene X is expressed more near the query cells."
+    desc: "We fit log(E[counts]) = \u03B2\u2080 + \u03B2\u2081 \u00B7 distance + log(total_counts). The last term is an offset that converts counts to per-cell rates (explained next). The line shows the expected rate decreasing with distance; gene X is expressed more near the query cells."
   }];
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("svg", {
     viewBox: "0 0 " + chartW + " " + chartH,
@@ -641,9 +641,12 @@ function PerSampleDiagram() {
     color: C.red
   }];
   var [showAgg, setShowAgg] = useState(false);
-  var meanBeta = samples.reduce(function (s, m) {
-    return s + m.beta;
-  }, 0) / samples.length;
+  // RIPPLE's gradient_score is the median of per-sample coefficients.
+  var sortedBetas = samples.map(function (m) { return m.beta; }).sort(function (a, b) { return a - b; });
+  var n = sortedBetas.length;
+  var medianBeta = n % 2 === 0
+    ? (sortedBetas[n / 2 - 1] + sortedBetas[n / 2]) / 2
+    : sortedBetas[Math.floor(n / 2)];
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("svg", {
     viewBox: "0 0 420 200",
     className: "w-full max-w-lg mx-auto mb-3"
@@ -758,14 +761,14 @@ function PerSampleDiagram() {
     fontFamily: "monospace",
     fill: C.dark,
     fontWeight: "700"
-  }, "gradient = " + meanBeta.toFixed(3)), /*#__PURE__*/React.createElement("text", {
+  }, "gradient = " + medianBeta.toFixed(3)), /*#__PURE__*/React.createElement("text", {
     x: "210",
     y: "192",
     textAnchor: "middle",
     fontSize: "9",
     fontFamily: "monospace",
     fill: C.blue2
-  }, "p_combined = 2.1e-04"))), /*#__PURE__*/React.createElement("div", {
+  }, "p_combined = 2.1e-06"))), /*#__PURE__*/React.createElement("div", {
     className: "flex justify-center"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: function () {
