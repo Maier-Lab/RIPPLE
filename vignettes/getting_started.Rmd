@@ -374,7 +374,6 @@ the specificity check, the QC dashboard. The stages below are
   reproduction of paper Figure 3.
 - **Statistical validation:** `vignette("benchmarks", package = "ripple")`.
   FDR calibration and power benchmarks.
-- **Methods comparison:** `vignette("methods_positioning", package = "ripple")`.
   RIPPLE vs MISTy, nnSVG, CellChat, NicheNet.
 
 ## Session info

@@ -516,7 +516,9 @@ run_ripple <- function(
       },
       ".\nIf you are analysing one section, aggregate across independent ",
       "replicates first, or use a per-sample analysis method instead of ",
-      "RIPPLE. See vignette('methods_positioning') for alternatives.",
+      "RIPPLE. For single-section analysis, spatially variable gene ",
+      "methods (nnSVG, SpatialDE, SPARK) or neighbourhood-composition ",
+      "methods (Niche-DE, C-SIDE) are more appropriate.",
       call. = FALSE
     )
   }

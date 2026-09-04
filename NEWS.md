@@ -152,9 +152,8 @@ development is collected here under 0.1.0.
 
 * Comprehensive README covering pipeline stages, statistical model,
   configuration, and troubleshooting.
-* Roxygen2 documentation for all exported functions; five vignettes
-  (getting started, CosMx NSCLC walkthrough, methods positioning,
-  parallelization, benchmarks).
+* Roxygen2 documentation for all exported functions; four vignettes
+  (getting started, CosMx NSCLC walkthrough, parallelization, benchmarks).
 
 ## Packaging
 

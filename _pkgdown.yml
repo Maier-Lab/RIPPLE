@@ -18,7 +18,6 @@ articles:
   - cosmx_nsclc_walkthrough
 - title: "Background"
   contents:
-  - methods_positioning
 - title: "Scaling up"
   contents:
   - parallelization
