@@ -52,3 +52,31 @@ data-raw/benchmarks/bench_covariate_divergence.R
 data-raw/benchmarks/plot_covariate_divergence.R
 data-raw/benchmarks/results/bench_covariate_divergence.rds
 paper/figures/fig_covariate_divergence.*
+
+# Comparator benchmarks (nnSVG, Niche-DE) and the RIPPLE runs that support
+# them. Held back for a potential revision rather than the initial submission,
+# so none of it is committed: scripts, SLURM wrappers, logs, portable data
+# exports and results all stay local.
+data-raw/benchmarks/bench_nnsvg*
+data-raw/benchmarks/plot_nnsvg*
+data-raw/benchmarks/README_nnsvg*
+data-raw/benchmarks/nnsvg_*.log
+data-raw/benchmarks/bench_nichede*
+data-raw/benchmarks/README_nichede*
+data-raw/benchmarks/bench_comparison.R
+data-raw/benchmarks/bench_ripple_allcelltypes.R
+data-raw/benchmarks/bench_ripple_contamination.R
+data-raw/benchmarks/cosmx_portable/
+data-raw/benchmarks/cosmx_portable_full/
+data-raw/benchmarks/results/nnsvg_real_*
+data-raw/benchmarks/results/bench_nnsvg_*
+data-raw/benchmarks/results/*nichede*
+data-raw/benchmarks/results/nichede_objects/
+data-raw/benchmarks/results/INVALID_nichede_*
+data-raw/benchmarks/results/*ripple_allct*
+data-raw/benchmarks/results/ripple_real_*
+inst/slurm/bench_nnsvg_real_*.sh
+inst/slurm/bench_nichede_*.sh
+inst/slurm/bench_ripple_allct.sh
+inst/slurm/bench_ripple_contamination.sh
+inst/slurm/_debug_*.sh
