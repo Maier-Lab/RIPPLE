@@ -95,7 +95,7 @@ results <- run_ripple(
 head(results[order(fisher_fdr)], 12)
 ```
 
-On real data, `input` can be a `Seurat`, `SingleCellExperiment`, or `SpatialExperiment` object (in memory or as an `.rds` path). For raw matrices or CSV inputs, use `make_ripple_input()` or `read_ripple_csv()` to build a canonical object first. See `?run_ripple` for the full argument list.
+On real data, `input` can be a `Seurat`, `SingleCellExperiment`, or `SpatialExperiment` object (in memory or as an `.rds` path). For raw matrices or CSV inputs, use `make_ripple_input()` or `read_ripple_csv()` to build a canonical object first. See `?run_ripple` for the full argument list. See the CosMx vignette to check how we converted h5ad files befor RIPPLE.
 
 ---
 
