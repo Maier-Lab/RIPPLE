@@ -32,5 +32,23 @@ inst/extdata/naive_trc_cached/
 inst/extdata/ksweep_T_cell_all_results.rds
 data-raw/xenium_tdln/frc_subcluster_annotation.csv
 
+# Anything DERIVED from the unpublished Xenium data is unpublished too.
+# Line 15 un-ignores data-raw/benchmarks/results/*.rds, which would otherwise
+# sweep these in by default. The nnSVG comparison writes per-sample results
+# keyed by mouse ID, plus the prepped SpatialExperiment and the RIPPLE run,
+# all computed on the naive LN cells. Synthetic-benchmark results are
+# unaffected and stay tracked.
+data-raw/benchmarks/results/nnsvg_real_xenium*
+data-raw/benchmarks/results/ripple_real_xenium/
+data-raw/benchmarks/results/_draft_subsampled_5000/
+
 # Project dev notes — kept local, not for the public repo
 /CLAUDE.md
+
+# Covariate divergence test (distance vs local abundance). Held back for a
+# potential revision rather than the initial submission, so the script, its
+# results and its figure all stay local.
+data-raw/benchmarks/bench_covariate_divergence.R
+data-raw/benchmarks/plot_covariate_divergence.R
+data-raw/benchmarks/results/bench_covariate_divergence.rds
+paper/figures/fig_covariate_divergence.*
