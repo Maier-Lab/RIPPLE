@@ -14,6 +14,9 @@
   <a href="https://github.com/Maier-Lab/RIPPLE/actions/workflows/R-CMD-check.yaml">
     <img alt="R-CMD-check status" src="https://github.com/Maier-Lab/RIPPLE/actions/workflows/R-CMD-check.yaml/badge.svg">
   </a>
+  <a href="https://doi.org/10.5281/zenodo.22305056">
+    <img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.22305056.svg">
+  </a>
 </p>
 
 RIPPLE is an R package that detects distance-dependent gene expression gradients from a chosen query cell type in spatial transcriptomics data.
