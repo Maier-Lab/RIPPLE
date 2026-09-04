@@ -35,16 +35,8 @@ For each gene in each target cell type, RIPPLE fits a per-sample Poisson GLM wit
 
 ## Installation
 
-To build the vignettes at install time (they are skipped by default), install
-the packages above first, then:
-
-```r
-devtools::install_github("Maier-Lab/RIPPLE", build_vignettes = TRUE)
-```
-
-It is recommended you install this as well, because `SpatialExperiment` is needed even for the quick start below. Install the Bioconductor
+It is recommended you install these packages because `SpatialExperiment` is needed even for the quick start below. Install the Bioconductor
 packages first so the object loads and the vignettes build:
-
 ```r
 if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
 BiocManager::install(c(
@@ -53,10 +45,14 @@ BiocManager::install(c(
 ))
 install.packages(c("R.utils", "knitr", "rmarkdown"))
 ```
-Then:
+Then, install RIPPLE without or with vignettes:
 ```r
 # install.packages("devtools")
 devtools::install_github("Maier-Lab/RIPPLE")
+```
+```r
+# To build the vignettes at install time (they are skipped by default),  run this instead:
+devtools::install_github("Maier-Lab/RIPPLE", build_vignettes = TRUE)
 ```
 
 Optional functionality requires additional packages:
@@ -105,7 +101,7 @@ On real data, `input` can be a `Seurat`, `SingleCellExperiment`, or `SpatialExpe
 
 ## Vignettes
 
-Five vignettes ship with the package:
+Four vignettes ship with the package:
 
 | Vignette | Description |
 |----------|-------------|
