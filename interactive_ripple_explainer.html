@@ -1104,9 +1104,9 @@ function App() {
       lineHeight: 1.7,
       marginBottom: 16
     }
-  }, "RIPPLE solves this by fitting a ", /*#__PURE__*/React.createElement("strong", null, "separate Poisson GLM per biological replicate"), " (e.g., per mouse). Each sample yields its own ", "\u03B2\u2081", " estimate. These per-sample estimates are then aggregated into a single significance test. A gradient is only called significant if it is ", /*#__PURE__*/React.createElement("strong", null, "reproducible across independent samples"), "."), /*#__PURE__*/React.createElement(PerSampleDiagram, null), /*#__PURE__*/React.createElement(Callout, {
+  }, "RIPPLE fits a ", /*#__PURE__*/React.createElement("strong", null, "separate Poisson GLM per biological replicate"), " (e.g., per mouse). Each sample yields its own ", "\u03B2\u2081", " estimate. These per-sample estimates are then aggregated into a single significance test. A gradient is only called significant if it is ", /*#__PURE__*/React.createElement("strong", null, "directionally consistent across valid samples under the default sign gate"), "."), /*#__PURE__*/React.createElement(PerSampleDiagram, null), /*#__PURE__*/React.createElement(Callout, {
     accent: "red"
-  }, /*#__PURE__*/React.createElement("strong", null, "This is the most important statistical design choice in RIPPLE."), " It prevents inflated significance from pseudoreplication, a common pitfall in spatial and single-cell analyses where n = cells but the true n = samples.")), /*#__PURE__*/React.createElement(Section, {
+  }, /*#__PURE__*/React.createElement("strong", null, "This is the most important statistical design choice in RIPPLE."), " It combines evidence across biological replicates. Within-sample p-values still depend on Poisson variance and cell-independence assumptions; aggregation does not correct violations of those assumptions.")), /*#__PURE__*/React.createElement(Section, {
     id: "output"
   }, /*#__PURE__*/React.createElement(SectionTitle, {
     num: "05",
